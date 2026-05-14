@@ -4,10 +4,10 @@ A personal movie and TV show tracker with AI-powered insights. Track what you're
 
 ## Features
 
-**Track your media** - Organize movies and TV shows into Watchlist, Watching, and Finished
-**Rich search** - Search TMDB for movies and TV shows with posters, ratings, and overviews
-**AI-powered insights** - Get spoiler-free pitches, progress recaps, and personalized recommendations
-**Ask anything** - Chat with AI about any title (spoiler-aware based on your progress)
+**Track your media** - Organize movies and TV shows into Watchlist, Watching, and Finished  
+**Rich search** - Search TMDB for movies and TV shows with posters, ratings, and overviews  
+**AI-powered insights** - Get spoiler-free pitches, progress recaps, and personalized recommendations  
+**Ask anything** - Chat with AI about any title (spoiler-aware based on your progress)  
 **Rate & review** - Rate out of 10 and add private notes
 
 ### Prerequisites
