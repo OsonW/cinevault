@@ -41,15 +41,6 @@ init_db()
 poster_cache: dict[str, tuple[bytes, str]] = {}
 search_cache: dict[str, list]              = {}
 
-MOOD_LABELS = {
-    "cozy":              "cozy and relaxing",
-    "intense":           "intense and gripping",
-    "mindless":          "easy and mindless fun",
-    "thought-provoking": "thought-provoking and deep",
-    "funny":             "funny and lighthearted",
-    "emotional":         "emotional and moving",
-}
-
 
 # ═══════════════════════════════════════════════
 # UI
@@ -198,7 +189,6 @@ def add_media():
             last_season      = last_season,
             last_episode_num = last_episode_num,
             notes            = data.get("notes"),
-            mood_tags        = data.get("mood_tags"),
         )
     else:
         add_media_entry(
@@ -206,7 +196,6 @@ def add_media():
             title      = data["title"],
             media_type = data["media_type"],
             status     = data.get("status", "watchlist"),
-            mood_tags  = data.get("mood_tags"),
         )
 
     return jsonify({"status": "ok"})
@@ -290,32 +279,26 @@ def ai_card():
     media_type   = media["media_type"]
     status       = media["status"]
     last_episode = media["last_episode"] or ""
-    mood_tags    = media["mood_tags"] or ""
-
-    mood_str = ""
-    if mood_tags:
-        labels   = [MOOD_LABELS.get(t, t) for t in mood_tags.split(",") if t]
-        mood_str = f"The user tagged it as: {', '.join(labels)}."
 
     if status == "watchlist":
         prompt = f"""Give a punchy 2-sentence spoiler-free pitch for "{title}" ({media_type}).
 Cover: genre/tone, what makes it worth watching, and 2 comparable titles.
-No plot details beyond the premise. {mood_str}
+No plot details beyond the premise.
 Format: plain sentences, no markdown."""
 
     elif status == "watching":
         if media_type == "tv" and last_episode:
             prompt = f"""The user is watching "{title}" and has reached {last_episode}.
-Write 2 sentences recapping story beats that happened BEFORE {last_episode} only. {mood_str}
+Write 2 sentences recapping story beats that happened BEFORE {last_episode} only.
 No spoilers for anything after that point.
 Format: plain sentences, no markdown."""
         else:
             prompt = f"""The user is currently watching "{title}".
-In 2 sentences, describe the overall tone, standout performances, and what makes this film special — without revealing plot details. {mood_str}
+In 2 sentences, describe the overall tone, standout performances, and what makes this film special — without revealing plot details.
 Format: plain sentences, no markdown."""
 
     else:  # finished
-        prompt = f"""The user just finished "{title}". {mood_str}
+        prompt = f"""The user just finished "{title}".
 Recommend exactly 3 similar titles they'd likely enjoy.
 Format each as: Title (Year) — one sentence why.
 No markdown, just plain text."""

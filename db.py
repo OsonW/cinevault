@@ -25,13 +25,11 @@ def init_db():
                 last_season      INTEGER,
                 last_episode_num INTEGER,
                 notes            TEXT,
-                mood_tags        TEXT,
                 date_added       TEXT DEFAULT (date('now'))
             )
         """)
         # Migrate older databases that may be missing columns
         for col, defn in [
-            ("mood_tags",        "TEXT"),
             ("date_added",       "TEXT DEFAULT (date('now'))"),
             ("last_season",      "INTEGER"),
             ("last_episode_num", "INTEGER"),
@@ -74,17 +72,17 @@ def get_media_by_id(media_id: int):
 def add_media_entry(tmdb_id, title, media_type, status="watchlist",
                     rating=None, last_timestamp=None, last_episode=None,
                     last_season=None, last_episode_num=None,
-                    notes=None, mood_tags=None):
+                    notes=None):
     with get_conn() as conn:
         conn.execute("""
             INSERT INTO media
                 (tmdb_id, title, media_type, status, rating,
                  last_timestamp, last_episode, last_season, last_episode_num,
-                 notes, mood_tags)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (tmdb_id, title, media_type, status, rating,
               last_timestamp, last_episode, last_season, last_episode_num,
-              notes, mood_tags))
+              notes))
 
 
 def update_media_entry(media_id: int, **fields):
@@ -92,7 +90,7 @@ def update_media_entry(media_id: int, **fields):
     allowed = {
         "status", "rating", "last_timestamp",
         "last_episode", "last_season", "last_episode_num",
-        "notes", "mood_tags",
+        "notes",
     }
     updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
     if not updates:
