@@ -675,7 +675,7 @@ function autoSelectFirst() {
   const items = sortedItems();
   if (items.length) selectItem(items[0].id);
   else document.getElementById('detailPanel').innerHTML =
-    '<div class="detail-empty"><p>Nothing here — add something!</p></div>';
+    '<div class="detail-empty"><p>Nothing here - add something!</p></div>';
 }
 
 // ─────────────────────────────────────────────
@@ -712,7 +712,7 @@ function renderGrid() {
 
   if (!items.length) {
     panel.innerHTML = statsHtml + toolbar +
-      '<div class="poster-grid"><div class="grid-empty"><span>🎬</span>Nothing here — add something!</div></div>';
+      '<div class="poster-grid"><div class="grid-empty"><span>🎬</span>Nothing here - add something!</div></div>';
     return;
   }
 
