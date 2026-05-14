@@ -20,5 +20,5 @@ A personal movie and TV show tracker with AI-powered insights. Track what you're
 
 1. Clone the repository:
 ```bash
-git clone [https://github.com/YOUR_USERNAME/cinevault.git](https://github.com/OsonW/cinevault.git)
+git clone https://github.com/OsonW/cinevault.git
 cd cinevault
