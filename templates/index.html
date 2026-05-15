@@ -88,7 +88,7 @@ body {
 
 /* ── Search area ──────────────────────────────── */
 /* FIX #1: type buttons now live AFTER the caret, outside search-wrap */
-.search-wrap { display: flex; gap: 0; flex: 1; max-width: 480px; position: relative; }
+.search-wrap { display: flex; gap: 0; flex: 1; max-width: 640px; position: relative; }
 .search-anchor { position: relative; flex: 1; display: flex; }
 .search-anchor input {
   width: 100%;
@@ -616,6 +616,11 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .vm-type-btn.active[data-vtype="book"]  { color: var(--amber); border-color: var(--amber-dim); background: var(--amber-glow); }
 .vm-type-btn.active[data-vtype="manga"] { color: var(--pink);  border-color: var(--pink-dim);  background: var(--pink-glow); }
 
+.vm-ai-hint {
+  font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--accent); font-weight: 500;
+}
+
 .vm-body { overflow-y: auto; flex: 1; padding: 20px 24px; }
 .vm-close {
   position: absolute; top: 16px; right: 20px;
@@ -754,21 +759,24 @@ input[type="range"]::-webkit-slider-thumb {
 .qa-input-row input::placeholder { color: var(--muted); }
 .qa-answer {
   padding: 10px 12px; background: var(--card); border-left: 2px solid var(--accent);
-  border-radius: 0 var(--radius) var(--radius) 0; font-size: 13px; line-height: 1.6;
+  border-radius: 0 var(--radius) 0 0; font-size: 13px; line-height: 1.6;
   color: #c8c4be; display: none;
 }
 .qa-answer.show { display: block; }
 
+
+
 /* Continue in chat nudge */
 .chat-nudge {
-  display: none; margin-top: 6px;
-  font-size: 11px; color: var(--muted);
-  padding: 6px 8px; border-radius: var(--radius);
-  background: var(--amber-glow); border: 1px solid var(--amber-dim);
-  cursor: pointer; transition: all 0.15s;
+  display: none; margin-top: 6px; align-items: center; gap: 5px;
+  padding: 5px 10px;
+  border-radius: 0 0 var(--radius) var(--radius); border: 1px solid var(--amber-dim);
+  background: var(--amber-glow); color: var(--amber);
+  font-size: 11px; font-family: 'DM Sans', sans-serif; cursor: pointer;
+  transition: all 0.15s;
 }
-.chat-nudge:hover { color: var(--amber); }
-.chat-nudge.show { display: block; }
+.chat-nudge:hover { border-color: var(--amber); }
+.chat-nudge.show { display: flex; }
 
 .divider { height: 1px; background: var(--border); margin: 16px 0; }
 
@@ -1216,16 +1224,16 @@ body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); 
         placeholder="e.g. &quot;breaking bad&quot;, &quot;cozy mysteries set in Japan&quot;, &quot;short and funny&quot;, &quot;dark academia with found family&quot;…"
         onkeydown="onVibeKey(event)"></textarea>
       <div class="vm-controls">
-        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;flex:1">
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
           <div class="vm-type-toggle" id="vibeTypeToggle">
             <button class="vm-type-btn" data-vtype="movie" onclick="toggleVibeType(this)">🎬 Movies</button>
             <button class="vm-type-btn" data-vtype="tv"    onclick="toggleVibeType(this)">📺 TV</button>
             <button class="vm-type-btn" data-vtype="book"  onclick="toggleVibeType(this)">📚 Books</button>
             <button class="vm-type-btn" data-vtype="manga" onclick="toggleVibeType(this)">🎌 Manga</button>
           </div>
-          <span class="vm-ai-hint" id="vibeAiHint" style="display:none;font-size:10px;color:var(--accent);white-space:nowrap">✦ AI picked</span>
+          <span class="vm-ai-hint" id="vibeAiHint">✦ AI picked</span>
         </div>
-        <button class="btn btn-accent btn-sm" onclick="startVibeSearch()">Find matches</button>
+        <button class="btn btn-accent btn-sm" style="margin-left: auto;" onclick="startVibeSearch()">Find matches</button>
       </div>
     </div>
     <div class="vm-body" id="vibeBody">
@@ -1635,7 +1643,7 @@ function renderDetail(item) {
           <button class="btn btn-accent" onclick="askQuestion(${item.id})">Ask</button>
         </div>
         <div class="qa-answer" id="qaAnswer"></div>
-        <div class="chat-nudge" id="chatNudge" onclick="jumpToQAChat()">💬 Continue this conversation in Chats →</div>
+        <div class="chat-nudge" id="chatNudge" onclick="jumpToQAChat()">💬 Continue this conversation in Chats</div>
       </div>
       <div class="divider"></div>
       <button class="delete-btn" onclick="deleteItem(${item.id})">Remove from library</button>
@@ -1776,7 +1784,7 @@ async function loadAICard(item) {
 function renderAICard(card, content, status, mediaType) {
   let title, sub;
   if (status === 'watchlist') {
-    title = '✦ Why experience it'; sub = 'spoiler-free pitch';
+    title = '✦ Why watch it'; sub = 'spoiler-free pitch';
   } else if (status === 'finished') {
     title = '✦ You might also like'; sub = 'recommendations';
   } else if (mediaType === 'book') {
@@ -1792,7 +1800,7 @@ function renderAICard(card, content, status, mediaType) {
     <div class="ai-card-label">${title}
       <span style="color:var(--muted);font-weight:300;font-size:10px;text-transform:none;letter-spacing:0">${sub}</span>
     </div>
-    <div class="ai-card-body">${esc(content)}</div>`;
+    <div class="ai-card-body">${formatAI(esc(content))}</div>`;
 }
 
 // Media-linked chat
@@ -1922,7 +1930,7 @@ async function askQuestion(mediaId) {
       question: q,
       chat_id:  qaAutoChat || undefined,
     });
-    answer.textContent = data.answer || data.error || '—';
+    answer.innerHTML = formatAI(esc(data.answer || data.error || '—'));
     if (data.chat_id) {
       qaAutoChat = data.chat_id;
       await loadChats();
@@ -2161,7 +2169,7 @@ function onChatMovieSearchInput() {
   } else {
     list.innerHTML = chatMovieFilter
       ? '<div class="chat-list-empty-filter">No chats match that title.</div>'
-      : '<div class="chat-list-empty-filter">No chats yet — start from a title\'s detail panel.</div>';
+      : '<div class="chat-list-empty-filter">No chats yet — start from a title\'s detail panel, or create one.</div>';
   }
   if (countEl) {
     const n = allChats.length;
@@ -2185,7 +2193,7 @@ function renderChatsTab() {
   } else if (chatMovieFilter) {
     listHtml = '<div class="chat-list-empty-filter">No chats match that title.</div>';
   } else {
-    listHtml = '<div class="chat-list-empty-filter">No chats yet — start from a title\'s detail panel.</div>';
+    listHtml = '<div class="chat-list-empty-filter">No chats yet — start from a title\'s detail panel, or create one.</div>';
   }
   grid.innerHTML = `
     <div class="chat-grid-header">
@@ -2240,7 +2248,7 @@ function renderChatListItem(c) {
       <div class="cli-sub">${updatedAt}</div>
     </div>
     ${tag ? `<span class="cli-badge" style="color:${tagColor};border-color:${tagBorderColor}">${tag}</span>` : ''}
-    <button class="cli-delete" title="Delete chat" onclick="deleteChatItem(event,${c.id})">×</button>
+    <button class="cli-delete" onclick="deleteChatItem(event,${c.id})">×</button>
   </div>`;
 }
 
@@ -2291,7 +2299,7 @@ function renderChatMsg(m, idx = 0, chat = null) {
     && m.role === 'assistant';
   const label = isExtendedInsight ? '<span class="extended-insight-label">Extended insight</span>' : '<span></span>';
   return `<div class="chat-msg ${m.role}" style="${m.role==='user'?'align-self:flex-end':'align-self:flex-start'}">
-    ${esc(m.content)}
+    ${formatAI(esc(m.content))}
     <div class="chat-msg-footer">${label}<div class="chat-msg-time">${t}</div></div>
   </div>`;
 }
@@ -2372,7 +2380,7 @@ async function sendChatMessage(chatId) {
               firstToken = false;
             }
             fullText += obj.token;
-            asstBubble.textContent = fullText;
+            asstBubble.textContent = formatAI(esc(fullText));
             scrollChatBottom();
           } else if (obj.done) {
             if (firstToken) {
@@ -2502,7 +2510,7 @@ function openNewChatForm() {
       </div>
       <div>
         <span class="ncf-label">Find a title</span>
-        <input type="text" class="ncf-select" id="ncfMediaSearch" placeholder="Type to search your library…"
+        <input type="text" autocomplete="off" class="ncf-select" id="ncfMediaSearch" placeholder="Type to search your library…"
                oninput="ncfFilterItems()" onkeydown="if(event.key==='Enter')event.preventDefault()">
         <div class="ncf-dropdown" id="ncfDropdown"></div>
       </div>
@@ -2516,7 +2524,7 @@ function openNewChatForm() {
       </div>
       <div>
         <span class="ncf-label">Chat title</span>
-        <input type="text" class="ncf-select" id="ncfTitle" placeholder="e.g. Discussing themes…">
+        <input type="text" autocomplete="off" class="ncf-select" id="ncfTitle" placeholder="e.g. Discussing themes…">
       </div>
       <button class="btn btn-accent" onclick="createNewChat()">Start chat</button>
     </div>`;
@@ -3069,7 +3077,7 @@ function renderVibeResults(results) {
           ${r.year?`<span class="sm-chip year">${esc(r.year)}</span>`:''}
           <span class="sm-chip ${r.media_type}">${TYPE_EMOJI[r.media_type]} ${TYPE_LABEL[r.media_type]}</span>
         </div>
-        <div class="sm-reason">${esc(r.reason)}</div>
+        <div class="sm-reason">${formatAI(esc(r.reason))}</div>
         <button class="sm-add-btn" id="${btnId}"
           onclick="addVibeResult('${safeKey}')"
           ${already?'disabled':''}>
@@ -3164,6 +3172,11 @@ function esc(str) {
   return String(str || '')
     .replace(/&/g, '&amp;').replace(/</g, '&lt;')
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function formatAI(text) {
+  if (!text) return '';
+  return text.replace(/\*(.*?)\*/g, '<strong>$1</strong>');
 }
 </script>
 </body>
