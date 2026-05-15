@@ -329,9 +329,6 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 }
 .sm-chip.year   { color: var(--text);    border-color: var(--border-md); }
 .sm-chip.type   { color: var(--accent);  border-color: var(--accent-dim); }
-.sm-chip.runtime{ color: var(--blue);    border-color: var(--blue-dim); }
-.sm-chip.seasons{ color: var(--green);   border-color: var(--green-dim); }
-.sm-chip.rating { color: #f0c060;        border-color: rgba(240,192,96,0.3); }
 
 .sm-overview {
   font-size: 11px;
@@ -642,6 +639,7 @@ async function apiPost(path, body) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
 
@@ -830,11 +828,12 @@ function aiCacheKey(item) {
 async function loadAICard(item) {
   const key  = aiCacheKey(item);
   const thisItemId = item.id;
+  const thisItemStatus = item.status;
   const card = document.getElementById('aiCard');
   if (!card) return;
 
   if (aiCache[key]) {
-    if (selectedId === thisItemId) {
+    if (selectedId === thisItemId && item.status === thisItemStatus) {
       renderAICard(card, aiCache[key], item.status, item.media_type);
     }
     return;
@@ -845,10 +844,10 @@ async function loadAICard(item) {
     const content = data.content || data.error || '—';
     aiCache[key]  = content;
     const live = document.getElementById('aiCard');
-    if (live && selectedId === thisItemId) renderAICard(live, content, item.status, item.media_type);
+    if (live && selectedId === thisItemId && item.status === thisItemStatus) renderAICard(live, content, item.status, item.media_type);
   } catch {
     const live = document.getElementById('aiCard');
-    if (live && selectedId === thisItemId) renderAICard(live, 'Unable to load.', item.status, item.media_type);
+    if (live && selectedId === thisItemId && item.status === thisItemStatus) renderAICard(live, 'Unable to load.', item.status, item.media_type);
   }
 }
 
@@ -900,6 +899,7 @@ async function saveEpisode(id, field, rawValue) {
 
   const item = allItems.find(i => i.id === id);
   if (!item) return;
+  const oldSeason = item.last_season;
   const oldEpisode = item.last_episode;
 
   if (field === 'season')  item.last_season = value;
@@ -907,7 +907,7 @@ async function saveEpisode(id, field, rawValue) {
 
   await apiPost('/api/add', { id, last_season: item.last_season, last_episode: item.last_episode });
 
-  if (item.last_episode !== oldEpisode) {
+  if (item.last_episode !== oldEpisode || item.last_season !== oldSeason) {
     Object.keys(aiCache).forEach(k => {
       if (k.startsWith(`${id}_watching_`) && k !== `${id}_watching_movie`) delete aiCache[k];
     });
@@ -1164,11 +1164,6 @@ function renderSmCard(r) {
   const chips = [];
   if (r.year)          chips.push(`<span class="sm-chip year">${esc(r.year)}</span>`);
   chips.push(`<span class="sm-chip type">${r.media_type === 'tv' ? 'TV' : 'Movie'}</span>`);
-  if (r.runtime)       chips.push(`<span class="sm-chip runtime">${r.runtime}m</span>`);
-  if (r.number_of_seasons)
-    chips.push(`<span class="sm-chip seasons">${r.number_of_seasons}S · ${r.number_of_episodes || '?'}Ep</span>`);
-  if (r.vote_average && r.vote_average > 0)
-    chips.push(`<span class="sm-chip rating">★ ${r.vote_average}</span>`);
 
   const safeTitle = esc(r.title).replace(/'/g, "\\'");
 
