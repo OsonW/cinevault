@@ -37,12 +37,11 @@ poster_cache: dict[str, tuple[bytes, str]] = {}
 search_cache: dict[str, list]              = {}
 media_cache:  dict[int, dict]             = {}
 memory_cache: dict[str, str]              = {}
-ai_card_cache: dict[str, tuple[str, float]] = {}  # value: (content, expiry)
+ai_card_cache: dict[str, tuple[str, float]] = {}  # (content, expiry)
 
-MAX_CHAT_HISTORY = 12          # send only the last 12 messages (6 user+model pairs)
-AI_CARD_TTL      = 600         # 10 minutes
+MAX_CHAT_HISTORY = 12
+AI_CARD_TTL      = 600
 
-# Populate memory cache at startup
 try:
     memory_cache = get_all_memory()
 except Exception:
@@ -87,10 +86,6 @@ def _progress_str(media: dict) -> str:
     return ""
 
 
-# ═══════════════════════════════════════════════════
-# Helpers
-# ═══════════════════════════════════════════════════
-
 def _append_gemini_content(contents: list, role: str, text: str):
     if not text:
         return
@@ -112,7 +107,6 @@ def _iter_gemini_response_tokens(contents):
             return
         except TypeError:
             pass
-
     resp = gemini.models.generate_content(model=GEMINI_MODEL, contents=contents)
     text = (getattr(resp, "text", "") or "").strip()
     if text:
@@ -125,7 +119,7 @@ def index():
 
 
 # ═══════════════════════════════════════════════════
-# Search (TMDB, Books, Manga) – original endpoints restored
+# Search (TMDB, Books, Manga)
 # ═══════════════════════════════════════════════════
 
 @app.route("/api/search")
@@ -151,9 +145,11 @@ def search():
                     "media_type":   "movie",
                     "poster_path":  getattr(r, "poster_path", None),
                     "overview":     getattr(r, "overview", None),
+                    "popularity":   getattr(r, "popularity", 0) or 0,
                 }
                 for r in results if hasattr(r, "id")
             ]
+            items.sort(key=lambda x: x.get("popularity", 0), reverse=True)
         else:
             results = tv_api.search(query)
             items = [
@@ -165,9 +161,11 @@ def search():
                     "media_type":   "tv",
                     "poster_path":  getattr(r, "poster_path", None),
                     "overview":     getattr(r, "overview", None),
+                    "popularity":   getattr(r, "popularity", 0) or 0,
                 }
                 for r in results if hasattr(r, "id")
             ]
+            items.sort(key=lambda x: x.get("popularity", 0), reverse=True)
     except Exception as e:
         print(f"Search error: {e}")
         items = []
@@ -192,7 +190,7 @@ def search_books():
 
     try:
         gbooks_key = os.getenv("GOOGLE_BOOKS_API_KEY", "")
-        params = {"q": query, "maxResults": 10, "printType": "books"}
+        params = {"q": query, "maxResults": 10, "printType": "books", "orderBy": "relevance"}
         if gbooks_key:
             params["key"] = gbooks_key
         resp = requests.get(
@@ -217,6 +215,7 @@ def search_books():
                 "cover_url":   cover,
                 "total_pages": info.get("pageCount"),
                 "overview":    info.get("description", ""),
+                "popularity":  0,
             })
     except Exception as e:
         print(f"Books search error: {e}")
@@ -246,6 +245,7 @@ def search_manga():
                 "limit":                10,
                 "includes[]":           ["cover_art", "author"],
                 "availableTranslatedLanguage[]": ["en"],
+                "order[followedCount]": "desc",
             },
             timeout=8,
         )
@@ -258,7 +258,6 @@ def search_manga():
                 attrs.get("title", {}).get("en")
                 or next(iter(attrs.get("title", {}).values()), "Unknown")
             )
-            # Cover art
             cover_url = ""
             for rel in m.get("relationships", []):
                 if rel["type"] == "cover_art":
@@ -266,13 +265,11 @@ def search_manga():
                     if fn:
                         cover_url = f"https://uploads.mangadex.org/covers/{m['id']}/{fn}.256.jpg"
                     break
-            # Author
             author = ""
             for rel in m.get("relationships", []):
                 if rel["type"] == "author":
                     author = rel.get("attributes", {}).get("name", "")
                     break
-            # Description
             desc = attrs.get("description", {})
             overview = desc.get("en") or next(iter(desc.values()), "")
 
@@ -286,6 +283,7 @@ def search_manga():
                 "overview":    overview[:300] if overview else "",
                 "last_volume": attrs.get("lastVolume"),
                 "last_chapter": attrs.get("lastChapter"),
+                "popularity":  0,
             })
     except Exception as e:
         print(f"Manga search error: {e}")
@@ -298,7 +296,7 @@ def search_manga():
 
 
 # ═══════════════════════════════════════════════════
-# Poster proxy – restored original implementation
+# Poster proxy
 # ═══════════════════════════════════════════════════
 
 @app.route("/api/poster/<string:media_type>/<path:item_id>")
@@ -313,7 +311,6 @@ def get_poster(media_type, item_id):
             headers={"Cache-Control": "public, max-age=31536000, immutable"},
         )
 
-    # ── books / manga — proxy the stored cover_url ──
     if media_type in ("book", "manga"):
         row = None
         with get_conn() as conn:
@@ -337,7 +334,6 @@ def get_poster(media_type, item_id):
         except Exception:
             return "", 404
 
-    # ── movie / tv — TMDB ──────────────────────────
     endpoint = "movie" if media_type == "movie" else "tv"
     meta_url = (
         f"https://api.themoviedb.org/3/{endpoint}/{item_id}"
@@ -367,7 +363,7 @@ def get_poster(media_type, item_id):
 
 
 # ═══════════════════════════════════════════════════
-# Library CRUD (using cached media functions)
+# Library CRUD + undo support
 # ═══════════════════════════════════════════════════
 
 @app.route("/api/list")
@@ -417,9 +413,101 @@ def delete_media(media_id):
     return jsonify({"status": "deleted"})
 
 
+@app.route("/api/media-with-chats/<int:media_id>")
+def media_with_chats(media_id):
+    """Return media item and its associated chats (full data) for undo."""
+    media = cached_get_media(media_id)
+    if not media:
+        return jsonify({"error": "Media not found"}), 404
+    with get_conn() as conn:
+        chats_rows = conn.execute(
+            "SELECT * FROM chats WHERE media_id = ?", (media_id,)
+        ).fetchall()
+    chats = []
+    for chat_row in chats_rows:
+        msgs = get_chat_messages(chat_row["id"])
+        chats.append({**dict(chat_row), "messages": msgs})
+    return jsonify({"media": media, "chats": chats})
+
+
+@app.route("/api/restore-media-chats", methods=["POST"])
+def restore_media_chats():
+    data = request.json or {}
+    media_data = data.get("media")
+    chats_data = data.get("chats", [])
+    if not media_data:
+        return jsonify({"error": "Missing media data"}), 400
+
+    new_media_id = add_media_entry(
+        title=media_data["title"],
+        media_type=media_data["media_type"],
+        status=media_data["status"],
+        tmdb_id=media_data.get("tmdb_id"),
+        external_id=media_data.get("external_id"),
+        cover_url=media_data.get("cover_url"),
+        author=media_data.get("author"),
+        total_pages=media_data.get("total_pages"),
+    )
+    update_fields = {k: media_data[k] for k in ["rating", "notes", "last_timestamp", "last_season",
+                                                 "last_episode", "last_volume", "last_chapter",
+                                                 "current_page", "total_pages"] if k in media_data}
+    if update_fields:
+        update_media_entry(new_media_id, **update_fields)
+
+    for chat in chats_data:
+        chat_id = create_chat(
+            media_id=new_media_id,
+            title=chat["title"],
+            context_tag=chat.get("context_tag")
+        )
+        for msg in chat.get("messages", []):
+            append_message(chat_id, msg["role"], msg["content"])
+
+    return jsonify({"new_media_id": new_media_id})
+
+
 # ═══════════════════════════════════════════════════
-# Vibe Search – unchanged
+# Vibe Search (two-step)
 # ═══════════════════════════════════════════════════
+
+@app.route("/api/vibe-search/types", methods=["POST"])
+def vibe_search_types():
+    data  = request.json or {}
+    query = data.get("query", "").strip()
+    if not query:
+        return jsonify({"types": ["movie", "tv"]}), 400
+
+    type_prompt = (
+        f'The user is searching for: "{query}"\n'
+        f'Available media types: movie, tv, book, manga\n'
+        f'Decide which media types are most relevant.\n'
+        f'Rules:\n'
+        f'- If the query looks like a specific title (e.g. "breaking bad", "one piece", "dune"), '
+        f'include the type(s) that title belongs to.\n'
+        f'- If the query is a mood/vibe (e.g. "cozy mysteries", "dark thriller"), pick the types '
+        f'where those vibes are most common.\n'
+        f'- Return ONLY a JSON array from: ["movie","tv","book","manga"]. No other text.\n'
+        f'Examples:\n'
+        f'  "breaking bad" -> ["tv"]\n'
+        f'  "one piece" -> ["manga","tv"]\n'
+        f'  "dune" -> ["movie","book"]\n'
+        f'  "short and funny" -> ["movie","manga"]\n'
+        f'  "dark academia" -> ["book","movie","tv"]\n'
+        f'  "studio ghibli" -> ["movie"]\n'
+    )
+    suggested_types = ["movie", "tv"]
+    try:
+        resp = gemini.models.generate_content(model=GEMINI_MODEL, contents=type_prompt)
+        raw  = resp.text.strip()
+        raw  = re.sub(r"^```[a-z]*\n?", "", raw).rstrip("` \n")
+        parsed = json.loads(raw)
+        valid  = [t for t in parsed if t in ("movie", "tv", "book", "manga")]
+        if valid:
+            suggested_types = valid
+    except Exception as e:
+        print(f"Vibe type detection error: {e}")
+    return jsonify({"types": suggested_types})
+
 
 @app.route("/api/vibe-search", methods=["POST"])
 def vibe_search():
@@ -432,16 +520,20 @@ def vibe_search():
 
     type_list = ", ".join(types)
     prompt = (
-        f"You are a media recommendation engine. "
-        f"The user wants: \"{query}\"\n"
-        f"Media types to consider: {type_list}.\n"
-        f"Return ONLY a JSON array of up to 8 objects. "
-        f"Each object must have EXACTLY these keys:\n"
-        f'  "title"      : exact title string\n'
+        f'You are a media recommendation engine.\n'
+        f'User input: "{query}"\n'
+        f'Media types to search: {type_list}.\n'
+        f'\n'
+        f'IMPORTANT: If the input looks like a specific title (e.g. "breaking bad", "one piece"),'
+        f' include that title as the first result and add similar titles after it.\n'
+        f'If the input is a mood or vibe description, recommend media that fits it.\n'
+        f'\n'
+        f'Return ONLY a JSON array of up to 8 objects with EXACTLY these keys:\n'
+        f'  "title"      : exact, well-known title string\n'
         f'  "year"       : release year as a string (e.g. "2019") or ""\n'
         f'  "media_type" : one of {type_list}\n'
-        f'  "reason"     : one sentence why it fits the vibe\n'
-        f"Do not include any markdown, explanation, or keys beyond those four."
+        f'  "reason"     : one sentence why it fits\n'
+        f'No markdown, no extra keys, no explanation.'
     )
 
     try:
@@ -450,7 +542,7 @@ def vibe_search():
         raw  = re.sub(r"^```[a-z]*\n?", "", raw).rstrip("` \n")
         recs = json.loads(raw)
     except Exception as e:
-        return jsonify({"error": f"Gemini error: {e}"}), 500
+        return jsonify({"error": f"AI error: {e}"}), 500
 
     enriched = []
     for rec in recs[:8]:
@@ -557,7 +649,7 @@ def vibe_search():
 
 
 # ═══════════════════════════════════════════════════
-# Chats (with streaming, caching, trimmed history)
+# Chats (streaming, caching, trimmed history)
 # ═══════════════════════════════════════════════════
 
 @app.route("/api/chats")
@@ -603,24 +695,29 @@ def chat_message(chat_id):
     if not chat:
         return jsonify({"error": "Chat not found"}), 404
 
-    # ── System context (cached) ────────────────────
     media      = cached_get_media(chat["media_id"]) if chat.get("media_id") else None
     memory     = memory_cache
     memory_str = "\n".join(f"- {k}: {v}" for k, v in memory.items()) if memory else "None"
 
+    effective_status = chat.get("context_tag") or (media["status"] if media else "finished")
+
     if media:
         progress = _progress_str(media)
+        if effective_status == "finished":
+            spoiler_rules = "The user has finished this title. Full discussion of all plot, characters, endings, and themes is allowed."
+        elif effective_status == "watchlist":
+            spoiler_rules = "watchlist → no spoilers, premise only"
+        else:
+            spoiler_rules = f"watching → only discuss up to {progress or 'current point'}"
+
         system = (
             f"You are CineVault AI, an enthusiastic media companion.\n"
             f"Discussing: \"{media['title']}\" ({media['media_type']})\n"
-            f"Status: {chat.get('context_tag') or media['status']}\n"
+            f"Status: {effective_status}\n"
             f"Progress: {progress or 'not tracked'}\n"
             f"Notes: {media.get('notes') or 'none'}\n\n"
             f"User facts:\n{memory_str}\n\n"
-            f"Spoiler rules:\n"
-            f"- watchlist → no spoilers, premise only\n"
-            f"- watching  → only discuss up to {progress or 'current point'}\n"
-            f"- finished  → full discussion allowed\n"
+            f"Spoiler rules:\n{spoiler_rules}\n"
             f"Be conversational, insightful, fun. 2-4 sentences per reply."
         )
     else:
@@ -631,7 +728,6 @@ def chat_message(chat_id):
             f"Be conversational, knowledgeable, and fun."
         )
 
-    # ── Build Gemini contents (trimmed) ────────────
     history = get_chat_messages(chat_id)
     if len(history) > MAX_CHAT_HISTORY:
         trimmed = history[-MAX_CHAT_HISTORY:]
@@ -650,10 +746,8 @@ def chat_message(chat_id):
         _append_gemini_content(gemini_contents, role, msg["content"])
     _append_gemini_content(gemini_contents, "user", content)
 
-    # Persist user message
     append_message(chat_id, "user", content)
 
-    # ── Stream the response ────────────────────────
     def generate():
         full_answer = []
         try:
@@ -720,7 +814,7 @@ def _extended_ai_card_prompt(media: dict) -> str:
         spoiler_rule = f"Discuss only up to {progress or 'the user current progress'} and do not reveal anything later."
         focus = "what has been established so far, important character or theme threads, and what makes the current stretch interesting"
     else:
-        spoiler_rule = "The user has finished it, so full-work reflection is allowed."
+        spoiler_rule = "The user has finished it, so full-work reflection is allowed including endings, twists, and resolution."
         focus = "what makes it memorable, how its themes or craft land, and several thoughtful follow-up recommendations"
 
     return (
@@ -811,7 +905,7 @@ def ai_card():
                 f'In {depth}, describe the overall tone, standout elements, '
                 f'and what makes it special — without revealing plot details.'
             )
-    else:  # finished
+    else:
         count = "3"
         prompt = (
             f'The user just finished "{title}" ({media_type}). '
@@ -864,16 +958,14 @@ def ask_ai():
         spoiler_rule = f"The user has only experienced {ep}. Refuse to reveal ANYTHING after that point."
         progress_ctx = ep
     else:
-        spoiler_rule = "The user has finished this. Full discussion is fine."
+        spoiler_rule = "The user has finished this. Full discussion of plot, characters, endings, themes, and twists is allowed."
         progress_ctx = "completed"
 
     prompt = (
         f'You are an enthusiastic but careful media assistant.\n'
         f'Title: "{title}" ({media["media_type"]}) | Progress: {progress_ctx}\n'
         f'Rule: {spoiler_rule}\n'
-        f'If the answer would spoil anything beyond their progress, reply ONLY: '
-        f'"That\'s past where you are — keep going!"\n'
-        f'Otherwise answer in 2-4 sentences, conversationally and helpfully.\n\n'
+        f'Answer in 2-4 sentences, conversationally and helpfully.\n\n'
         f'Question: {question}'
     )
 

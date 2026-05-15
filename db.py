@@ -20,7 +20,7 @@ def init_db():
                 tmdb_id         INTEGER,
                 external_id     TEXT,
                 title           TEXT NOT NULL,
-                media_type      TEXT NOT NULL,   -- movie|tv|book|manga
+                media_type      TEXT NOT NULL,
                 status          TEXT NOT NULL DEFAULT 'watchlist',
                 rating          REAL,
                 last_timestamp  TEXT,
@@ -38,13 +38,13 @@ def init_db():
             )
         """)
 
-        # ── Chat sessions ─────────────────────────────────────────────────
+        # ── Chat sessions with CASCADE delete ────────────────────────────
         conn.execute("""
             CREATE TABLE IF NOT EXISTS chats (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                media_id    INTEGER REFERENCES media(id) ON DELETE SET NULL,
+                media_id    INTEGER REFERENCES media(id) ON DELETE CASCADE,
                 title       TEXT NOT NULL,
-                context_tag TEXT,              -- watchlist|watching|finished (snapshot)
+                context_tag TEXT,
                 created_at  TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S','now')),
                 updated_at  TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S','now'))
             )
@@ -55,13 +55,13 @@ def init_db():
             CREATE TABLE IF NOT EXISTS chat_messages (
                 id         INTEGER PRIMARY KEY AUTOINCREMENT,
                 chat_id    INTEGER NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
-                role       TEXT NOT NULL,   -- user|assistant
+                role       TEXT NOT NULL,
                 content    TEXT NOT NULL,
                 created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S','now'))
             )
         """)
 
-        # ── User memory (persistent facts Gemini can reference) ───────────
+        # ── User memory ───────────────────────────────────────────────────
         conn.execute("""
             CREATE TABLE IF NOT EXISTS user_memory (
                 id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -69,31 +69,6 @@ def init_db():
                 value      TEXT NOT NULL,
                 updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S','now'))
             )
-        """)
-
-        # ── Non-destructive migrations for old databases ──────────────────
-        migration_cols = [
-            ("date_added",     "TEXT DEFAULT (date('now'))"),
-            ("last_season",    "INTEGER"),
-            ("last_episode",   "INTEGER"),
-            ("last_volume",    "INTEGER"),
-            ("last_chapter",   "REAL"),
-            ("current_page",   "INTEGER"),
-            ("total_pages",    "INTEGER"),
-            ("cover_url",      "TEXT"),
-            ("author",         "TEXT"),
-            ("external_id",    "TEXT"),
-        ]
-        for col, defn in migration_cols:
-            try:
-                conn.execute(f"ALTER TABLE media ADD COLUMN {col} {defn}")
-            except sqlite3.OperationalError:
-                pass  # column already exists
-
-        # Backfill external_id from tmdb_id for existing rows
-        conn.execute("""
-            UPDATE media SET external_id = CAST(tmdb_id AS TEXT)
-            WHERE external_id IS NULL AND tmdb_id IS NOT NULL
         """)
 
 
@@ -125,12 +100,6 @@ def add_media_entry(
     cover_url=None, author=None,
     total_pages=None,
 ):
-    """
-    Insert a new media entry. Uses INSERT OR IGNORE for idempotency.
-    external_id is the canonical unique identifier (tmdb_id cast to str for
-    movies/TV; ISBN / MangaDex UUID for books/manga).
-    Returns the row id.
-    """
     ext = external_id or (str(tmdb_id) if tmdb_id else None)
     with get_conn() as conn:
         conn.execute("""
@@ -168,6 +137,9 @@ def update_media_entry(media_id: int, **fields):
 
 def delete_media_entry(media_id: int):
     with get_conn() as conn:
+        # First delete all chats linked to this media
+        conn.execute("DELETE FROM chats WHERE media_id = ?", (media_id,))
+        # Then delete the media entry
         conn.execute("DELETE FROM media WHERE id = ?", (media_id,))
 
 
@@ -176,7 +148,6 @@ def delete_media_entry(media_id: int):
 # ══════════════════════════════════════════════════
 
 def get_all_chats():
-    """Return all chats with basic media info joined in."""
     with get_conn() as conn:
         rows = conn.execute("""
             SELECT c.*,
