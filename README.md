@@ -62,6 +62,6 @@ Navigate to http://127.0.0.1:5000/ on your browser. Enjoy!
 
 [ ] Add IMDB ratings  
 [ ] Add manga and book API's. Classes for each
-[ ] Gemini-powered "vibe search" for recommendations (based on mood/description). Drop down search menu to choose between standard and Gemini search
+[x] Gemini-powered "vibe search" for recommendations (based on mood/description). Drop down search menu to choose between standard and Gemini search
 [ ] UI overhaul, less 'claude slop'
-[ ] "Deep think" option for AI insights, expanding more, and able to chat afterwards. Fourth "Chatbox" section to save conversations with Gemini
+[x] "Deep think" option for AI insights, expanding more, and able to chat afterwards. Fourth "Chatbox" section to save conversations with Gemini

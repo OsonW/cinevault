@@ -28,6 +28,12 @@
   --purple:      #a78bfa;
   --purple-dim:  rgba(167,139,250,0.18);
   --purple-glow: rgba(167,139,250,0.07);
+  --amber:       #f4a261;
+  --amber-dim:   rgba(244,162,97,0.15);
+  --amber-glow:  rgba(244,162,97,0.07);
+  --pink:        #e07aab;
+  --pink-dim:    rgba(224,122,171,0.15);
+  --pink-glow:   rgba(224,122,171,0.07);
   --text:        #f0ede8;
   --muted:       #7a7885;
   --subtle:      #3a3a44;
@@ -80,17 +86,92 @@ body {
 }
 .logo em { color: var(--accent); font-style: italic; }
 
-.search-wrap { display: flex; gap: 8px; flex: 1; max-width: 540px; }
+/* ── Search area ──────────────────────────────── */
+.search-wrap { display: flex; gap: 0; flex: 1; max-width: 560px; position: relative; }
 .search-anchor { position: relative; flex: 1; display: flex; }
-.search-anchor input { width: 100%; }
+.search-anchor input {
+  width: 100%;
+  border-radius: var(--radius) 0 0 var(--radius);
+  border-right: none;
+}
+
+.search-btn-group { display: flex; position: relative; }
+
+.btn-search-main {
+  padding: 8px 14px;
+  border-radius: 0;
+  border: 1px solid var(--border);
+  border-left: none;
+  background: var(--accent);
+  color: #0e0e10;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.btn-search-main:hover { background: #8b6ef7; }
+
+.btn-search-caret {
+  padding: 8px 10px;
+  border-radius: 0 var(--radius) var(--radius) 0;
+  border: 1px solid var(--border);
+  border-left: 1px solid rgba(0,0,0,0.3);
+  background: #8b6ef7;
+  color: #0e0e10;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s;
+  line-height: 1;
+}
+.btn-search-caret:hover { background: #7c5ef0; }
+
+.search-mode-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 200px;
+  background: var(--card);
+  border: 1px solid var(--border-md);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+  z-index: 500;
+  overflow: hidden;
+  display: none;
+}
+.search-mode-menu.open { display: block; }
+.smm-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.smm-item:last-child { border-bottom: none; }
+.smm-item:hover { background: rgba(255,255,255,0.04); }
+.smm-item.active { background: var(--accent-glow); }
+.smm-icon { font-size: 15px; width: 20px; text-align: center; }
+.smm-label { font-size: 13px; font-weight: 500; }
+.smm-sub   { font-size: 11px; color: var(--muted); margin-top: 1px; }
 
 /* shared input style */
-.search-anchor input,
 .field input,
 .field textarea {
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
+  color: var(--text);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  padding: 8px 12px;
+  transition: border-color 0.2s;
+}
+.search-anchor input {
+  background: var(--card);
+  border: 1px solid var(--border);
   color: var(--text);
   font-family: 'DM Sans', sans-serif;
   font-size: 13px;
@@ -152,11 +233,12 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .btn-accent { background: var(--accent); color: #0e0e10; border-color: var(--accent); font-weight: 500; }
 .btn-accent:hover { background: #8b6ef7; border-color: #8b6ef7; }
 .btn-sm { padding: 5px 12px; font-size: 12px; }
+.btn:disabled { opacity: 0.5; cursor: default; pointer-events: none; }
 
 /* ── Tabs ─────────────────────────────────────── */
 .tabs { display: flex; gap: 4px; margin-left: auto; }
 .tab {
-  padding: 7px 16px;
+  padding: 7px 14px;
   border-radius: var(--radius);
   border: 1px solid transparent;
   background: none;
@@ -170,8 +252,9 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .tab[data-tab="watchlist"].active { color: var(--blue);   border-color: var(--blue-dim);   background: var(--blue-glow); }
 .tab[data-tab="watching"].active  { color: var(--green);  border-color: var(--green-dim);  background: var(--green-glow); }
 .tab[data-tab="finished"].active  { color: var(--purple); border-color: var(--purple-dim); background: var(--purple-glow); }
+.tab[data-tab="chats"].active     { color: var(--amber);  border-color: var(--amber-dim);  background: var(--amber-glow); }
 
-/* ── Search Modal ─────────────────────────────── */
+/* ── STANDARD Search Modal ────────────────────── */
 .search-modal-backdrop {
   position: fixed;
   inset: 0;
@@ -186,7 +269,7 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .search-modal-backdrop.open { display: flex; }
 
 .search-modal {
-  width: min(860px, 94vw);
+  width: min(900px, 94vw);
   max-height: calc(100vh - 120px);
   background: var(--surface);
   border: 1px solid var(--border-md);
@@ -200,7 +283,7 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .sm-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 10px;
   padding: 16px 20px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
@@ -210,8 +293,26 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   font-weight: 300;
   font-size: 1rem;
   color: var(--muted);
+  flex: 1;
 }
 .sm-title em { color: var(--text); font-style: normal; }
+
+/* Media type filter pills inside modal */
+.sm-type-filters { display: flex; gap: 6px; }
+.sm-type-pill {
+  padding: 4px 10px;
+  border-radius: 99px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--muted);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: 'DM Sans', sans-serif;
+}
+.sm-type-pill:hover { color: var(--text); border-color: var(--border-md); }
+.sm-type-pill.active { color: var(--accent); border-color: var(--accent-dim); background: var(--accent-glow); }
+
 .sm-close {
   width: 30px; height: 30px;
   border-radius: 50%;
@@ -262,7 +363,7 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   white-space: nowrap;
 }
 
-/* ── TMDB result grid ─────────────────────────── */
+/* ── TMDB / search result grid ────────────────── */
 .sm-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
@@ -304,6 +405,7 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+.sm-card-author { font-size: 10px; color: var(--muted); }
 
 .sm-chips { display: flex; flex-wrap: wrap; gap: 4px; }
 .sm-chip {
@@ -314,8 +416,11 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   color: var(--muted);
   white-space: nowrap;
 }
-.sm-chip.year { color: var(--text);   border-color: var(--border-md); }
-.sm-chip.type { color: var(--accent); border-color: var(--accent-dim); }
+.sm-chip.year   { color: var(--text);   border-color: var(--border-md); }
+.sm-chip.movie  { color: var(--blue);   border-color: var(--blue-dim); }
+.sm-chip.tv     { color: var(--green);  border-color: var(--green-dim); }
+.sm-chip.book   { color: var(--amber);  border-color: var(--amber-dim); }
+.sm-chip.manga  { color: var(--pink);   border-color: var(--pink-dim); }
 
 .sm-overview {
   font-size: 11px;
@@ -326,6 +431,18 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  flex: 1;
+}
+
+/* Vibe reason badge */
+.sm-reason {
+  font-size: 10px;
+  color: var(--accent);
+  background: var(--accent-glow);
+  border: 1px solid var(--accent-dim);
+  border-radius: 6px;
+  padding: 4px 7px;
+  line-height: 1.4;
   flex: 1;
 }
 
@@ -348,7 +465,7 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   color: var(--accent);
   background: var(--accent-glow);
   cursor: default;
-  opacity: 1; /* override browser-default faded disabled style */
+  opacity: 1;
 }
 
 /* Loading skeleton */
@@ -363,6 +480,111 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
 
 .sm-status { padding: 40px 0; text-align: center; color: var(--muted); font-size: 13px; }
+
+/* ── Vibe Search Modal ────────────────────────── */
+.vibe-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.75);
+  backdrop-filter: blur(4px);
+  z-index: 500;
+  display: none;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 60px;
+}
+.vibe-modal-backdrop.open { display: flex; }
+
+.vibe-modal {
+  width: min(900px, 94vw);
+  max-height: calc(100vh - 100px);
+  background: var(--surface);
+  border: 1px solid rgba(167,139,250,0.3);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 24px 64px rgba(0,0,0,0.7), 0 0 0 1px rgba(167,139,250,0.05);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.vm-header {
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  background: linear-gradient(135deg, rgba(167,139,250,0.06) 0%, transparent 60%);
+}
+.vm-title {
+  font-family: 'Fraunces', serif;
+  font-size: 1.1rem;
+  font-weight: 300;
+  margin-bottom: 4px;
+}
+.vm-title em { color: var(--accent); font-style: italic; }
+.vm-subtitle { font-size: 12px; color: var(--muted); }
+
+.vm-input-area {
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.vm-textarea {
+  width: 100%;
+  min-height: 70px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  padding: 10px 12px;
+  resize: none;
+  line-height: 1.5;
+  transition: border-color 0.2s;
+}
+.vm-textarea:focus { outline: none; border-color: var(--accent); }
+.vm-textarea::placeholder { color: var(--muted); }
+
+.vm-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.vm-type-toggle {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+  flex-wrap: wrap;
+}
+.vm-type-btn {
+  padding: 5px 11px;
+  border-radius: 99px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--muted);
+  font-size: 11px;
+  font-family: 'DM Sans', sans-serif;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.vm-type-btn:hover { color: var(--text); }
+.vm-type-btn.active[data-vtype="movie"] { color: var(--blue);  border-color: var(--blue-dim);  background: var(--blue-glow); }
+.vm-type-btn.active[data-vtype="tv"]    { color: var(--green); border-color: var(--green-dim); background: var(--green-glow); }
+.vm-type-btn.active[data-vtype="book"]  { color: var(--amber); border-color: var(--amber-dim); background: var(--amber-glow); }
+.vm-type-btn.active[data-vtype="manga"] { color: var(--pink);  border-color: var(--pink-dim);  background: var(--pink-glow); }
+
+.vm-body { overflow-y: auto; flex: 1; padding: 20px 24px; }
+.vm-close {
+  position: absolute; top: 16px; right: 20px;
+  width: 30px; height: 30px; border-radius: 50%;
+  border: 1px solid var(--border); background: none;
+  color: var(--muted); font-size: 18px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s;
+}
+.vm-close:hover { color: var(--text); border-color: var(--border-md); background: var(--card); }
+.vm-header { position: relative; }
 
 /* ── Detail Panel ─────────────────────────────── */
 .detail-panel {
@@ -392,7 +614,7 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .detail-body { padding: 0 18px 24px; }
 .detail-title {
   font-family: 'Fraunces', serif; font-size: 1.5rem; font-weight: 300;
-  line-height: 1.2; margin-bottom: 6px; margin-top: -12px; position: relative; z-index: 1;
+  line-height: 1.2; margin-bottom: 4px; margin-top: -12px; position: relative; z-index: 1;
 }
 .detail-meta { font-size: 12px; color: var(--muted); margin-bottom: 16px; }
 
@@ -430,16 +652,55 @@ input[type="range"]::-webkit-slider-thumb {
 .field input, .field textarea { width: 100%; padding: 8px 10px; }
 .field textarea { resize: vertical; min-height: 64px; }
 .episode-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.triple-row  { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
 
+/* Progress bar for books */
+.progress-bar-wrap { margin-bottom: 14px; }
+.progress-bar-track {
+  height: 4px; border-radius: 99px; background: var(--card); overflow: hidden; margin: 6px 0 4px;
+}
+.progress-bar-fill {
+  height: 100%; background: var(--amber); border-radius: 99px; transition: width 0.4s;
+}
+.progress-pct { font-size: 10px; color: var(--amber); }
+
+/* AI card */
 .ai-card {
   background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 12px 14px; margin-bottom: 16px; font-size: 13px; line-height: 1.6;
+  padding: 12px 14px; margin-bottom: 12px; font-size: 13px; line-height: 1.6;
 }
 .ai-card-label {
   font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
   color: var(--accent); font-weight: 500; margin-bottom: 6px; display: flex; align-items: center; gap: 5px;
 }
 .ai-card-body { color: #c8c4be; }
+
+/* Deep think button */
+.deep-think-row {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap;
+}
+.deep-think-row .open-chat-btn { flex: 1; justify-content: center; min-width: 140px; }
+.deep-btn {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--radius); border: 1px solid rgba(167,139,250,0.3);
+  background: rgba(167,139,250,0.06); color: var(--accent);
+  font-size: 12px; font-family: 'DM Sans', sans-serif; cursor: pointer;
+  transition: all 0.15s;
+}
+.deep-btn:hover { border-color: var(--accent); background: var(--accent-glow); }
+.deep-btn:disabled { opacity: 0.5; cursor: default; }
+.deep-btn-label { font-size: 10px; color: var(--muted); flex: 1; }
+
+.open-chat-btn {
+  display: flex; align-items: center; gap: 5px;
+  padding: 5px 10px;
+  border-radius: var(--radius); border: 1px solid var(--amber-dim);
+  background: var(--amber-glow); color: var(--amber);
+  font-size: 11px; font-family: 'DM Sans', sans-serif; cursor: pointer;
+  transition: all 0.15s;
+}
+.open-chat-btn:hover { border-color: var(--amber); }
 
 .qa-wrap { margin-bottom: 16px; }
 .qa-input-row { display: flex; gap: 6px; margin-bottom: 8px; }
@@ -456,6 +717,17 @@ input[type="range"]::-webkit-slider-thumb {
 }
 .qa-answer.show { display: block; }
 
+/* Continue in chat nudge */
+.chat-nudge {
+  display: none; margin-top: 6px;
+  font-size: 11px; color: var(--muted);
+  padding: 6px 8px; border-radius: var(--radius);
+  background: var(--amber-glow); border: 1px solid var(--amber-dim);
+  cursor: pointer; transition: all 0.15s;
+}
+.chat-nudge:hover { color: var(--amber); }
+.chat-nudge.show { display: block; }
+
 .divider { height: 1px; background: var(--border); margin: 16px 0; }
 
 .delete-btn {
@@ -465,6 +737,219 @@ input[type="range"]::-webkit-slider-thumb {
   cursor: pointer; transition: all 0.15s;
 }
 .delete-btn:hover { background: rgba(224,82,82,0.15); border-color: var(--red); }
+
+/* ── CHATS tab layout ─────────────────────────── */
+/* When in chats tab, the detail panel becomes the chat window
+   and grid panel becomes the chat list sidebar */
+body[data-tab="chats"] .shell {
+  grid-template-columns: minmax(380px, 42%) 1fr;
+  grid-template-areas: "topbar topbar" "grid detail";
+}
+body[data-tab="chats"] .detail-panel {
+  border-right: none;
+  border-left: 1px solid var(--border);
+}
+body[data-tab="chats"] .poster-wrap,
+body[data-tab="chats"] .detail-body { display: none !important; }
+
+/* Chat list */
+.chat-list { display: flex; flex-direction: column; gap: 0; }
+.chat-list-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 11px 40px 11px 14px; cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.12s;
+  position: relative;
+}
+.chat-list-item:hover { background: rgba(255,255,255,0.03); }
+.chat-list-item.selected { background: var(--amber-glow); }
+.cli-thumb {
+  width: 36px; height: 52px; border-radius: 6px; object-fit: cover;
+  background: var(--subtle); flex-shrink: 0; border: 1px solid var(--border);
+}
+.cli-info { flex: 1; min-width: 0; padding-right: 8px; }
+.cli-title-row {
+  font-size: 13px; line-height: 1.35;
+  display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2;
+  -webkit-box-orient: vertical; overflow: hidden;
+}
+.cli-media { font-weight: 600; color: var(--text); }
+.cli-sep { color: var(--muted); margin: 0 5px; font-weight: 400; }
+.cli-chat-title { font-weight: 400; color: var(--muted); }
+.cli-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.cli-badge {
+  font-size: 10px; padding: 2px 6px; border-radius: 99px; border: 1px solid;
+  white-space: nowrap; flex-shrink: 0;
+}
+.cli-delete {
+  position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+  width: 22px; height: 22px; border-radius: 50%;
+  border: 1px solid transparent; background: none;
+  color: var(--muted); font-size: 14px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; transition: all 0.15s;
+}
+.chat-list-item:hover .cli-delete { opacity: 1; }
+.cli-delete:hover { color: var(--red); border-color: rgba(224,82,82,0.4); background: rgba(224,82,82,0.1); }
+
+/* New chat panel toolbar */
+.chat-panel-toolbar {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 10px;
+  background: var(--surface); flex-shrink: 0;
+}
+.chat-panel-title {
+  font-family: 'Fraunces', serif;
+  font-size: 1rem; font-weight: 300; flex: 1; min-width: 0;
+}
+.chat-panel-title .cli-media { font-weight: 300; color: var(--text); }
+.chat-panel-title .cli-chat-title { font-weight: 300; color: var(--muted); font-size: 0.95rem; }
+.chat-reset-btn {
+  padding: 5px 10px; border-radius: var(--radius);
+  border: 1px solid var(--border); background: none;
+  color: var(--muted); font-size: 11px; font-family: 'DM Sans', sans-serif;
+  cursor: pointer; transition: all 0.15s; white-space: nowrap; flex-shrink: 0;
+}
+.chat-reset-btn:hover { color: var(--red); border-color: rgba(224,82,82,0.4); background: rgba(224,82,82,0.08); }
+.chat-reset-wrap { position: relative; flex-shrink: 0; }
+.reset-chat-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 268px;
+  background: var(--card);
+  border: 1px solid var(--border-md);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 36px rgba(0,0,0,0.55);
+  padding: 14px 14px 12px;
+  z-index: 300;
+  display: none;
+}
+.reset-chat-menu.open { display: block; }
+.reset-chat-menu-title { font-size: 13px; font-weight: 500; margin-bottom: 6px; }
+.reset-chat-menu-text { font-size: 12px; color: var(--muted); line-height: 1.5; margin-bottom: 14px; }
+.reset-chat-menu-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.reset-chat-confirm {
+  color: var(--red);
+  border-color: rgba(224,82,82,0.35);
+  background: rgba(224,82,82,0.08);
+}
+.reset-chat-confirm:hover {
+  color: var(--red);
+  border-color: var(--red);
+  background: rgba(224,82,82,0.15);
+}
+.chat-new-btn {
+  padding: 5px 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--amber-dim);
+  background: var(--amber-glow);
+  color: var(--amber);
+  font-size: 12px; font-family: 'DM Sans', sans-serif; cursor: pointer;
+  transition: all 0.15s;
+}
+.chat-new-btn:hover { border-color: var(--amber); }
+
+/* Chat messages */
+.chat-messages-wrap {
+  flex: 1; overflow-y: auto; padding: 16px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.chat-msg {
+  max-width: 85%;
+  padding: 10px 13px;
+  border-radius: var(--radius);
+  font-size: 13px; line-height: 1.6;
+}
+.chat-msg.user {
+  align-self: flex-end;
+  background: var(--accent-dim);
+  border: 1px solid var(--accent-dim);
+  color: var(--text);
+}
+.chat-msg.assistant {
+  align-self: flex-start;
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: #c8c4be;
+}
+.chat-msg-time {
+  font-size: 10px; color: var(--muted); margin-top: 4px; text-align: right;
+}
+.chat-msg-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 6px;
+}
+.chat-msg-footer .chat-msg-time { margin-top: 0; }
+.extended-insight-label {
+  font-size: 9px;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--purple);
+  border: 1px solid var(--purple-dim);
+  background: var(--purple-glow);
+  border-radius: 99px;
+  padding: 4px 7px;
+  white-space: nowrap;
+}
+
+/* Chat input */
+.chat-input-area {
+  flex-shrink: 0;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  display: flex; gap: 8px; align-items: flex-end;
+  background: var(--surface);
+}
+.chat-input {
+  flex: 1; min-height: 40px; max-height: 120px;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); color: var(--text);
+  font-family: 'DM Sans', sans-serif; font-size: 13px;
+  padding: 9px 12px; resize: none; line-height: 1.5;
+  transition: border-color 0.2s;
+}
+.chat-input:focus { outline: none; border-color: var(--accent); }
+.chat-input::placeholder { color: var(--muted); }
+
+.chat-send-btn {
+  padding: 9px 16px; border-radius: var(--radius);
+  border: 1px solid var(--accent); background: var(--accent);
+  color: #0e0e10; font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 500;
+  cursor: pointer; transition: all 0.15s; white-space: nowrap;
+}
+.chat-send-btn:hover { background: #8b6ef7; border-color: #8b6ef7; }
+.chat-send-btn:disabled { opacity: 0.5; cursor: default; }
+
+/* Empty chat state */
+.chat-empty {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  color: var(--muted); gap: 10px;
+}
+.chat-empty-icon { font-size: 2rem; opacity: 0.3; }
+
+/* New chat creator */
+.new-chat-form {
+  padding: 20px;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.ncf-label {
+  font-size: 11px; color: var(--muted); text-transform: uppercase;
+  letter-spacing: 0.05em; font-weight: 500; margin-bottom: 6px; display: block;
+}
+.ncf-select {
+  width: 100%; padding: 8px 10px;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); color: var(--text);
+  font-family: 'DM Sans', sans-serif; font-size: 13px;
+}
+.ncf-select:focus { outline: none; border-color: var(--accent); }
 
 /* ── Grid Panel ───────────────────────────────── */
 .grid-panel { grid-area: grid; overflow-y: auto; padding: 20px 24px; background: var(--bg); }
@@ -496,12 +981,22 @@ body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); 
 .poster-card img { width: 100%; aspect-ratio: 2/3; object-fit: cover; display: block; background: var(--subtle); }
 .poster-info { padding: 8px 9px 10px; }
 .poster-title {
-  font-size: 12px; line-height: 1.3; font-weight: 500; margin-bottom: 4px;
+  font-size: 12px; line-height: 1.3; font-weight: 500; margin-bottom: 3px;
   display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
+.poster-author { font-size: 10px; color: var(--muted); margin-bottom: 4px; }
 .poster-stars { display: flex; gap: 2px; }
 .pstar { font-size: 9px; color: var(--subtle); }
 .pstar.lit { color: var(--accent); }
+/* Media type badge on grid card */
+.poster-type-badge {
+  display: inline-block; font-size: 9px; padding: 1px 5px; border-radius: 4px;
+  border: 1px solid; margin-bottom: 4px;
+}
+.ptb-movie { color: var(--blue);  border-color: var(--blue-dim);  background: var(--blue-glow); }
+.ptb-tv    { color: var(--green); border-color: var(--green-dim); background: var(--green-glow); }
+.ptb-book  { color: var(--amber); border-color: var(--amber-dim); background: var(--amber-glow); }
+.ptb-manga { color: var(--pink);  border-color: var(--pink-dim);  background: var(--pink-glow); }
 
 .grid-empty { grid-column: 1/-1; text-align: center; padding: 80px 20px; color: var(--muted); }
 .grid-empty span { display: block; font-size: 2rem; margin-bottom: 10px; opacity: 0.3; }
@@ -510,6 +1005,24 @@ body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); 
 .stat-box { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; }
 .stat-num { font-family: 'Fraunces', serif; font-size: 1.4rem; font-weight: 300; color: var(--accent); line-height: 1; }
 .stat-lbl { font-size: 10px; color: var(--muted); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+
+/* ── Chat list in grid panel (chats tab) ─────── */
+.chat-grid-header {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; margin-bottom: 10px; flex-wrap: wrap;
+}
+.chat-grid-count { font-size: 12px; color: var(--muted); }
+.chat-movie-search {
+  width: 100%; margin-bottom: 12px;
+  padding: 8px 12px; background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); color: var(--text);
+  font-family: 'DM Sans', sans-serif; font-size: 13px;
+}
+.chat-movie-search:focus { outline: none; border-color: var(--amber); }
+.chat-movie-search::placeholder { color: var(--muted); }
+.chat-list-empty-filter {
+  padding: 32px 20px; text-align: center; color: var(--muted); font-size: 13px;
+}
 
 /* ── Toast ────────────────────────────────────── */
 .toast {
@@ -522,6 +1035,28 @@ body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); 
   pointer-events: none; z-index: 999;
 }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.toast.toast-action {
+  display: flex; align-items: center; gap: 14px;
+  pointer-events: auto;
+}
+.toast-undo-btn {
+  padding: 4px 10px; border-radius: 6px;
+  border: 1px solid var(--accent-dim); background: var(--accent-glow);
+  color: var(--accent); font-size: 12px; font-weight: 500;
+  font-family: 'DM Sans', sans-serif; cursor: pointer;
+  transition: all 0.15s; white-space: nowrap;
+}
+.toast-undo-btn:hover { border-color: var(--accent); background: var(--accent-dim); }
+
+/* Typing indicator */
+.typing-dots { display: inline-flex; gap: 4px; align-items: center; padding: 2px 0; }
+.typing-dots span {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--muted);
+  animation: bounce 1.2s infinite;
+}
+.typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+.typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes bounce { 0%,80%,100%{transform:scale(0.7);opacity:0.4} 40%{transform:scale(1);opacity:1} }
 </style>
 </head>
 <body>
@@ -533,21 +1068,35 @@ body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); 
 
     <div class="search-wrap">
       <div class="search-anchor">
-        <input type="text" id="searchInput" placeholder="Search movies & shows…"
+        <input type="text" id="searchInput" placeholder="Search movies, shows, books, manga…"
                autocomplete="off" oninput="onSearchInput()" onkeydown="onSearchKey(event)">
         <div id="searchDropdown" class="search-dropdown"></div>
       </div>
-      <button class="btn btn-accent" onclick="openModal()">Search</button>
+      <div class="search-btn-group">
+        <button class="btn-search-main" id="searchMainBtn" onclick="onSearchMainClick()">Search</button>
+        <button class="btn-search-caret" id="searchCaretBtn" onclick="toggleSearchMenu(event)" title="Search mode">▾</button>
+        <div class="search-mode-menu" id="searchModeMenu">
+          <div class="smm-item active" data-mode="standard" onclick="setSearchMode('standard')">
+            <span class="smm-icon">🔍</span>
+            <div><div class="smm-label">Standard Search</div><div class="smm-sub">Search TMDB, Books & Manga</div></div>
+          </div>
+          <div class="smm-item" data-mode="vibe" onclick="setSearchMode('vibe')">
+            <span class="smm-icon">✨</span>
+            <div><div class="smm-label">Vibe Search</div><div class="smm-sub">Describe a mood — AI finds matches</div></div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <nav class="tabs">
       <button class="tab" data-tab="watchlist" onclick="switchTab('watchlist')">Watchlist</button>
       <button class="tab" data-tab="watching"  onclick="switchTab('watching')">Watching</button>
       <button class="tab active" data-tab="finished" onclick="switchTab('finished')">Finished</button>
+      <button class="tab" data-tab="chats"     onclick="switchTab('chats')">Chats</button>
     </nav>
   </header>
 
-  <!-- DETAIL PANEL -->
+  <!-- DETAIL PANEL (left in chats tab via CSS, right otherwise) -->
   <aside class="detail-panel" id="detailPanel">
     <div class="detail-empty">
       <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
@@ -565,15 +1114,49 @@ body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); 
 
 </div>
 
-<!-- SEARCH MODAL -->
+<!-- STANDARD SEARCH MODAL -->
 <div class="search-modal-backdrop" id="searchModalBackdrop" onclick="onBackdropClick(event)">
   <div class="search-modal">
     <div class="sm-header">
       <span class="sm-title" id="smTitle">Search results</span>
+      <div class="sm-type-filters">
+        <button class="sm-type-pill active" data-stype="movie"  onclick="toggleModalType('movie')">🎬 Movies</button>
+        <button class="sm-type-pill active" data-stype="tv"     onclick="toggleModalType('tv')">📺 TV</button>
+        <button class="sm-type-pill active" data-stype="book"   onclick="toggleModalType('book')">📚 Books</button>
+        <button class="sm-type-pill active" data-stype="manga"  onclick="toggleModalType('manga')">🎌 Manga</button>
+      </div>
       <button class="sm-close" onclick="closeModal()" title="Close (Esc)">×</button>
     </div>
     <div class="sm-body" id="smBody">
       <div class="sm-status">Type something and press Search.</div>
+    </div>
+  </div>
+</div>
+
+<!-- VIBE SEARCH MODAL -->
+<div class="vibe-modal-backdrop" id="vibeModalBackdrop" onclick="onVibeBackdropClick(event)">
+  <div class="vibe-modal">
+    <div class="vm-header">
+      <div class="vm-title">✨ <em>Vibe</em> Search</div>
+      <div class="vm-subtitle">Describe a feeling, theme, or mood — AI finds your next obsession</div>
+      <button class="vm-close" onclick="closeVibeModal()">×</button>
+    </div>
+    <div class="vm-input-area">
+      <textarea class="vm-textarea" id="vibeInput"
+        placeholder="e.g. &quot;cozy mysteries set in Japan&quot;, &quot;something that makes me cry happy tears&quot;, &quot;dark academia with found family&quot;…"
+        onkeydown="onVibeKey(event)"></textarea>
+      <div class="vm-controls">
+        <div class="vm-type-toggle" id="vibeTypeToggle">
+          <button class="vm-type-btn active" data-vtype="movie" onclick="toggleVibeType(this)">🎬 Movies</button>
+          <button class="vm-type-btn active" data-vtype="tv"    onclick="toggleVibeType(this)">📺 TV</button>
+          <button class="vm-type-btn active" data-vtype="book"  onclick="toggleVibeType(this)">📚 Books</button>
+          <button class="vm-type-btn active" data-vtype="manga" onclick="toggleVibeType(this)">🎌 Manga</button>
+        </div>
+        <button class="btn btn-accent btn-sm" onclick="runVibeSearch()">Find matches</button>
+      </div>
+    </div>
+    <div class="vm-body" id="vibeBody">
+      <div class="sm-status" style="padding:30px 0">Your results will appear here.</div>
     </div>
   </div>
 </div>
@@ -585,34 +1168,50 @@ body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); 
 // ─────────────────────────────────────────────
 // State
 // ─────────────────────────────────────────────
-let allItems    = [];
-let currentTab  = 'finished';
-let selectedId  = null;
-let currentSort = 'name';
+let allItems     = [];
+let allChats     = [];
+let currentTab   = 'finished';
+let selectedId   = null;
+let currentSort  = 'name';
+let searchMode   = 'standard';   // 'standard' | 'vibe'
+let activeChatId = null;
+let chatMovieFilter = '';
+let pendingResetChatId = null;
+let chatSendPending = false;
+let qaAutoChat   = null;          // chat_id created from the quick-ask box
+let pendingSelectId = null;
 
-// Set of "mediaType_tmdbId" strings already in the library.
-// Rebuilt whenever allItems changes.
-const inLibrary = new Set();
+// Active modal type filters (standard search)
+let modalActiveTypes = new Set(['movie', 'tv', 'book', 'manga']);
 
-// Cache for TMDB result objects keyed by "mediaType_tmdbId".
-// Used by modal add handlers to retrieve title/type without embedding
-// raw strings in onclick attributes.
+const inLibrary    = new Set();
 const tmdbResultMap = {};
+const aiCache       = {};
 
-// AI insight cache keyed by a string that encodes item id + context.
-const aiCache = {};
-
-const BROKEN_POSTER_FULL  = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 300'%3E%3Crect width='200' height='300' fill='%231c1c21'/%3E%3Ctext x='50%25' y='50%25' text-anchor='middle' fill='%233a3a44' font-size='12' dy='.3em'%3ENo poster%3C/text%3E%3C/svg%3E";
+const BROKEN_POSTER_FULL  = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 300'%3E%3Crect width='200' height='300' fill='%231c1c21'/%3E%3Ctext x='50%25' y='50%25' text-anchor='middle' fill='%233a3a44' font-size='12' dy='.3em'%3ENo cover%3C/text%3E%3C/svg%3E";
 const BROKEN_POSTER_BLANK = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 300'%3E%3Crect width='200' height='300' fill='%231c1c21'/%3E%3C/svg%3E";
+
+// Type display helpers
+const TYPE_LABEL = { movie:'Movie', tv:'TV Show', book:'Book', manga:'Manga' };
+const TYPE_EMOJI = { movie:'🎬', tv:'📺', book:'📚', manga:'🎌' };
 
 // ─────────────────────────────────────────────
 // Boot
 // ─────────────────────────────────────────────
 document.body.dataset.tab = currentTab;
-loadList();
+loadList().then(() => loadChats());
 
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') { closeModal(); closeDropdown(); }
+  if (e.key === 'Escape') {
+    closeModal(); closeVibeModal(); closeDropdown();
+    closeSearchMenu(); closeResetChatMenu();
+  }
+});
+document.addEventListener('click', e => {
+  if (!e.target.closest('.search-btn-group')) closeSearchMenu();
+  if (!e.target.closest('.search-anchor') && !e.target.closest('.search-wrap'))
+    closeDropdown();
+  if (!e.target.closest('.chat-reset-wrap')) closeResetChatMenu();
 });
 
 // ─────────────────────────────────────────────
@@ -622,43 +1221,114 @@ async function loadList() {
   const res = await fetch('/api/list');
   allItems = await res.json();
   rebuildLibrarySet();
-  renderGrid();
-  autoSelectFirst();
+  if (currentTab !== 'chats') renderGrid();
+}
+
+async function loadChats(render = true) {
+  const res = await fetch('/api/chats');
+  allChats = await res.json();
+  if (!render) return;
+  if (currentTab === 'chats') renderChatsTab();
+  else if (selectedId) {
+    const item = allItems.find(i => i.id === selectedId);
+    if (item) renderMediaChatRow(item);
+  }
 }
 
 function rebuildLibrarySet() {
   inLibrary.clear();
-  allItems.forEach(i => inLibrary.add(`${i.media_type}_${i.tmdb_id}`));
+  allItems.forEach(i => {
+    const ext = i.external_id || String(i.tmdb_id || '');
+    inLibrary.add(`${i.media_type}_${ext}`);
+  });
 }
 
-async function apiPost(path, body) {
-  const res = await fetch(path, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+async function apiPost(path, body, timeoutMs = 60000) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  let res;
+  try {
+    res = await fetch(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
+}
+
+function posterUrl(item) {
+  if (item.media_type === 'book' || item.media_type === 'manga') {
+    const ext = item.external_id || '';
+    return ext ? `/api/poster/${item.media_type}/${encodeURIComponent(ext)}` : BROKEN_POSTER_FULL;
+  }
+  const id = item.tmdb_id || item.external_id || '';
+  return `/api/poster/${item.media_type}/${id}`;
+}
+
+// ─────────────────────────────────────────────
+// Search mode
+// ─────────────────────────────────────────────
+function toggleSearchMenu(e) {
+  e.stopPropagation();
+  document.getElementById('searchModeMenu').classList.toggle('open');
+}
+function closeSearchMenu() {
+  document.getElementById('searchModeMenu').classList.remove('open');
+}
+function setSearchMode(mode) {
+  searchMode = mode;
+  closeSearchMenu();
+  document.querySelectorAll('.smm-item').forEach(el =>
+    el.classList.toggle('active', el.dataset.mode === mode)
+  );
+  const btn = document.getElementById('searchMainBtn');
+  btn.textContent = mode === 'vibe' ? '✨ Vibe' : 'Search';
+}
+
+function onSearchMainClick() {
+  if (searchMode === 'vibe') {
+    const q = document.getElementById('searchInput').value.trim();
+    if (q) document.getElementById('vibeInput').value = q;
+    openVibeModal(!!q);
+  } else {
+    openModal();
+  }
 }
 
 // ─────────────────────────────────────────────
 // Tabs
 // ─────────────────────────────────────────────
-
-// pendingSelectId: if set, renderGrid will call selectItem on this id
-// after painting, then clear it. Replaces the old setTimeout hack.
-let pendingSelectId = null;
-
 function switchTab(tab, selectId = null) {
+  const prevTab = currentTab;
+  if (currentSort === 'rating' && tab !== 'finished') currentSort = 'name';
+
+  if (tab === 'chats') {
+    if (selectId != null) activeChatId = selectId;
+    prepChatsTabTransition(prevTab !== 'chats');
+    currentTab = tab;
+    selectedId = null;
+    document.body.dataset.tab = tab;
+    document.querySelectorAll('.tab').forEach(t =>
+      t.classList.toggle('active', t.dataset.tab === tab)
+    );
+    renderChatsTab();
+    return;
+  }
+
   currentTab = tab;
   selectedId = null;
-  if (currentSort === 'rating' && tab !== 'finished') currentSort = 'name';
   document.body.dataset.tab = tab;
   document.querySelectorAll('.tab').forEach(t =>
     t.classList.toggle('active', t.dataset.tab === tab)
   );
+
   pendingSelectId = selectId;
-  renderGrid(); // calls selectItem(pendingSelectId) at the end if set
+  renderGrid();
 }
 
 function tabItems() { return allItems.filter(i => i.status === currentTab); }
@@ -693,7 +1363,7 @@ function renderGrid() {
     const avg      = rated.length
       ? (rated.reduce((s, i) => s + i.rating, 0) / rated.length).toFixed(1) : '—';
     statsHtml = `<div class="stats-bar">
-      <div class="stat-box"><div class="stat-num">${finished.length}</div><div class="stat-lbl">Watched</div></div>
+      <div class="stat-box"><div class="stat-num">${finished.length}</div><div class="stat-lbl">Finished</div></div>
       <div class="stat-box"><div class="stat-num">${allItems.filter(i=>i.status==='watching').length}</div><div class="stat-lbl">Watching</div></div>
       <div class="stat-box"><div class="stat-num">${avg}</div><div class="stat-lbl">Avg rating</div></div>
     </div>`;
@@ -713,8 +1383,7 @@ function renderGrid() {
 
   if (!items.length) {
     panel.innerHTML = statsHtml + toolbar +
-      '<div class="poster-grid"><div class="grid-empty"><span>🎬</span>Nothing here — add something!</div></div>';
-    // Resolve any pending selection even when list is empty (shows empty detail)
+      '<div class="poster-grid"><div class="grid-empty"><span>🎬</span>Nothing here yet — add something!</div></div>';
     pendingSelectId = null;
     autoSelectFirst();
     return;
@@ -724,10 +1393,14 @@ function renderGrid() {
     const stars = currentTab === 'finished'
       ? `<div class="poster-stars">${[1,2,3,4,5].map(s =>
           `<span class="pstar ${(item.rating||0)/2>=s?'lit':''}">★</span>`).join('')}</div>` : '';
+    const typeBadge = `<span class="poster-type-badge ptb-${item.media_type}">${TYPE_EMOJI[item.media_type]} ${TYPE_LABEL[item.media_type]}</span>`;
+    const author = item.author ? `<div class="poster-author">${esc(item.author)}</div>` : '';
     return `<div class="poster-card" id="pc-${item.id}" onclick="selectItem(${item.id})">
-      <img src="/api/poster/${item.media_type}/${item.tmdb_id}" onerror="this.src='${BROKEN_POSTER_FULL}'">
+      <img src="${posterUrl(item)}" onerror="this.src='${BROKEN_POSTER_FULL}'" loading="lazy">
       <div class="poster-info">
+        ${typeBadge}
         <div class="poster-title">${esc(item.title)}</div>
+        ${author}
         ${stars}
       </div>
     </div>`;
@@ -735,7 +1408,6 @@ function renderGrid() {
 
   panel.innerHTML = statsHtml + toolbar + `<div class="poster-grid">${cards}</div>`;
 
-  // Resolve pending selection (from switchTab) or fall back to first item.
   if (pendingSelectId !== null) {
     const id = pendingSelectId;
     pendingSelectId = null;
@@ -743,7 +1415,6 @@ function renderGrid() {
     if (exists) selectItem(id);
     else autoSelectFirst();
   } else if (selectedId !== null && items.some(i => i.id === selectedId)) {
-    // Re-highlight previously selected card after a re-render (e.g. sort change).
     highlightCard(selectedId);
   } else {
     autoSelectFirst();
@@ -770,6 +1441,7 @@ function selectItem(id) {
 
 function renderDetail(item) {
   const panel = document.getElementById('detailPanel');
+  qaAutoChat = null; // reset per-item Q&A chat tracker
 
   const ratingHtml = item.status === 'finished' ? `
     <div class="rating-wrap">
@@ -781,37 +1453,74 @@ function renderDetail(item) {
              onchange="saveField(${item.id},'rating',parseFloat(this.value))">
     </div>` : '';
 
-  const epHtml = (item.status !== 'finished' && item.media_type === 'tv') ? `
-    <div class="field">
-      <label>Progress</label>
-      <div class="episode-row">
-        <input type="number" placeholder="Season" min="1" value="${item.last_season||''}"
-               onchange="saveEpisode(${item.id},'season',this.value)">
-        <input type="number" placeholder="Episode" min="1" value="${item.last_episode||''}"
-               onchange="saveEpisode(${item.id},'episode',this.value)">
+  // Progress fields — vary by media type
+  let progressHtml = '';
+  if (item.status !== 'finished') {
+    if (item.media_type === 'tv') {
+      progressHtml = `<div class="field">
+        <label>Progress</label>
+        <div class="episode-row">
+          <input type="number" placeholder="Season" min="1" value="${item.last_season||''}"
+                 onchange="saveEpisode(${item.id},'season',this.value)">
+          <input type="number" placeholder="Episode" min="1" value="${item.last_episode||''}"
+                 onchange="saveEpisode(${item.id},'episode',this.value)">
+        </div>
+      </div>`;
+    } else if (item.media_type === 'manga') {
+      progressHtml = `<div class="field">
+        <label>Progress</label>
+        <div class="episode-row">
+          <input type="number" placeholder="Volume" min="1" value="${item.last_volume||''}"
+                 onchange="saveMangaProgress(${item.id},'volume',this.value)">
+          <input type="number" placeholder="Chapter" min="1" step="0.1" value="${item.last_chapter||''}"
+                 onchange="saveMangaProgress(${item.id},'chapter',this.value)">
+        </div>
+      </div>`;
+    } else if (item.media_type === 'book') {
+      const pct = item.total_pages && item.current_page
+        ? Math.round(item.current_page / item.total_pages * 100) : 0;
+      const barFill = item.total_pages && item.current_page ? pct : 0;
+      progressHtml = `<div class="progress-bar-wrap">
+        <div class="rating-label">Reading progress
+          <span class="progress-pct">${pct ? pct + '%' : '—'}</span>
+        </div>
+        <div class="progress-bar-track"><div class="progress-bar-fill" id="progBar" style="width:${barFill}%"></div></div>
       </div>
-    </div>` : '';
+      <div class="field">
+        <label>Pages</label>
+        <div class="episode-row">
+          <input type="number" placeholder="Current page" min="1" value="${item.current_page||''}"
+                 onchange="saveBookProgress(${item.id},'current',this.value,${item.total_pages||0})">
+          <input type="number" placeholder="Total pages" min="1" value="${item.total_pages||''}"
+                 onchange="saveBookProgress(${item.id},'total',this.value,${item.current_page||0})">
+        </div>
+      </div>`;
+    }
+  }
 
-  const tsHtml = item.status === 'watching' ? `
+  const tsHtml = item.status === 'watching' && item.media_type === 'movie' ? `
     <div class="field">
       <label>Timestamp</label>
-      <input type="text" placeholder="e.g. 1h 23m or 01:23:45" value="${esc(item.last_timestamp||'')}"
+      <input type="text" placeholder="e.g. 1h 23m" value="${esc(item.last_timestamp||'')}"
              onblur="saveField(${item.id},'last_timestamp',this.value)">
     </div>` : '';
 
+  const authorHtml = item.author ? `<p class="detail-meta" style="margin-top:-10px;margin-bottom:10px">by ${esc(item.author)}</p>` : '';
+
   panel.innerHTML = `
     <div class="poster-wrap">
-      <img src="/api/poster/${item.media_type}/${item.tmdb_id}" onerror="this.src='${BROKEN_POSTER_BLANK}'">
+      <img src="${posterUrl(item)}" onerror="this.src='${BROKEN_POSTER_BLANK}'">
     </div>
     <div class="detail-body">
       <h2 class="detail-title">${esc(item.title)}</h2>
-      <p class="detail-meta">${item.media_type==='tv'?'TV Show':'Movie'}</p>
+      <p class="detail-meta">${TYPE_EMOJI[item.media_type]} ${TYPE_LABEL[item.media_type]}</p>
+      ${authorHtml}
       <div class="status-row">
         <button class="status-pill ${item.status==='watchlist'?'active-wl':''}" onclick="changeStatus(${item.id},'watchlist')">Watchlist</button>
         <button class="status-pill ${item.status==='watching'?'active-wa':''}"  onclick="changeStatus(${item.id},'watching')">Watching</button>
         <button class="status-pill ${item.status==='finished'?'active-fi':''}"  onclick="changeStatus(${item.id},'finished')">Finished</button>
       </div>
-      ${ratingHtml}${epHtml}${tsHtml}
+      ${ratingHtml}${progressHtml}${tsHtml}
       <div class="field">
         <label>Notes</label>
         <textarea placeholder="Your thoughts…" onblur="saveField(${item.id},'notes',this.value)">${esc(item.notes||'')}</textarea>
@@ -821,6 +1530,7 @@ function renderDetail(item) {
         <div class="ai-card-label">✦ AI insight</div>
         <div class="ai-card-body" style="color:var(--muted);font-style:italic">Loading…</div>
       </div>
+      <div class="deep-think-row" id="mediaChatRow"></div>
       <div class="qa-wrap">
         <div class="ai-card-label" style="margin-bottom:8px">✦ Ask anything
           <span style="color:var(--muted);font-weight:300;font-size:10px;text-transform:none;letter-spacing:0">(spoiler-aware)</span>
@@ -831,12 +1541,158 @@ function renderDetail(item) {
           <button class="btn btn-accent" onclick="askQuestion(${item.id})">Ask</button>
         </div>
         <div class="qa-answer" id="qaAnswer"></div>
+        <div class="chat-nudge" id="chatNudge" onclick="jumpToQAChat()">💬 Continue this conversation in Chats →</div>
       </div>
       <div class="divider"></div>
       <button class="delete-btn" onclick="deleteItem(${item.id})">Remove from library</button>
     </div>`;
 
   loadAICard(item);
+  renderMediaChatRow(item);
+}
+
+// ─────────────────────────────────────────────
+// Progress helpers
+// ─────────────────────────────────────────────
+async function saveBookProgress(id, field, rawValue, other) {
+  const val = parseInt(rawValue, 10);
+  if (!val || val < 1) return;
+
+  const item = allItems.find(i => i.id === id);
+  if (!item) return;
+
+  const oldCur   = item.current_page;
+  const oldTotal = item.total_pages;
+
+  let cur   = field === 'current' ? val : (item.current_page || other);
+  let total = field === 'total'   ? val : (item.total_pages  || other);
+
+  try {
+    await apiPost('/api/add', { id, current_page: cur, total_pages: total });
+    item.current_page = cur;
+    item.total_pages  = total;
+
+    // Update UI elements
+    const bar = document.getElementById('progBar');
+    const pct = document.querySelector('.progress-pct');
+    if (bar && total && cur) {
+      const p = Math.round(cur / total * 100);
+      bar.style.width = p + '%';
+      if (pct) pct.textContent = p + '%';
+    }
+    invalidateProgressCache(id);
+  } catch {
+    showToast('Failed to update pages');
+    // Revert inputs
+    const cInput = document.querySelector(`[placeholder="Current page"][onchange*="${id}"]`);
+    const tInput = document.querySelector(`[placeholder="Total pages"][onchange*="${id}"]`);
+    if (cInput) cInput.value = oldCur || '';
+    if (tInput) tInput.value = oldTotal || '';
+  }
+}
+
+async function saveMangaProgress(id, field, rawValue) {
+  const val = parseFloat(rawValue);
+  if (!val || val < 1) return;
+
+  const item = allItems.find(i => i.id === id);
+  if (!item) return;
+
+  const oldVol   = item.last_volume;
+  const oldChap  = item.last_chapter;
+
+  let newVol  = field === 'volume'  ? val : oldVol;
+  let newChap = field === 'chapter' ? val : oldChap;
+
+  try {
+    await apiPost('/api/add', { id, last_volume: newVol, last_chapter: newChap });
+    item.last_volume  = newVol;
+    item.last_chapter = newChap;
+    invalidateProgressCache(id);
+    // Update inputs if visible
+    const vInput = document.querySelector(`[placeholder="Volume"][onchange*="${id}"]`);
+    const cInput = document.querySelector(`[placeholder="Chapter"][onchange*="${id}"]`);
+    if (vInput) vInput.value = newVol || '';
+    if (cInput) cInput.value = newChap || '';
+  } catch {
+    showToast('Failed to update progress');
+    const vInput = document.querySelector(`[placeholder="Volume"][onchange*="${id}"]`);
+    const cInput = document.querySelector(`[placeholder="Chapter"][onchange*="${id}"]`);
+    if (vInput) vInput.value = oldVol || '';
+    if (cInput) cInput.value = oldChap || '';
+  }
+}
+
+async function editTVProgress(mediaId) {
+  const label = document.getElementById('tvProgLabel');
+  if (!label) return;
+
+  const item = allItems.find(i => i.id === mediaId);
+  if (!item) return;
+
+  const oldSeason = item.last_season || '';
+  const oldEpisode = item.last_episode || '';
+
+  // Replace label with inputs
+  label.innerHTML = `<input type="number" id="tvSeasonInp" placeholder="S" min="1" value="${oldSeason}"
+    style="width:48px;padding:2px 4px;font-size:12px;background:var(--card);border:1px solid var(--border);border-radius:4px;color:var(--text)"
+    onkeydown="if(event.key==='Enter')saveTVProgress(${mediaId})">
+    <input type="number" id="tvEpInp" placeholder="E" min="1" value="${oldEpisode}"
+    style="width:48px;padding:2px 4px;font-size:12px;background:var(--card);border:1px solid var(--border);border-radius:4px;color:var(--text)"
+    onkeydown="if(event.key==='Enter')saveTVProgress(${mediaId})">`;
+
+  // Focus first input
+  document.getElementById('tvSeasonInp')?.focus();
+}
+
+async function saveTVProgress(mediaId) {
+  const seasonInp = document.getElementById('tvSeasonInp');
+  const epInp     = document.getElementById('tvEpInp');
+  const label     = document.getElementById('tvProgLabel');
+  if (!seasonInp || !epInp || !label) return;
+
+  const newSeason = parseInt(seasonInp.value, 10);
+  const newEpisode = parseInt(epInp.value, 10);
+  if (!newSeason || !newEpisode || newSeason < 1 || newEpisode < 1) {
+    // Reset to original
+    label.innerHTML = `S${allItems.find(i => i.id === mediaId).last_season||'?'} E${allItems.find(i => i.id === mediaId).last_episode||'?'}`;
+    return;
+  }
+
+  const item = allItems.find(i => i.id === mediaId);
+  const oldSeason = item.last_season;
+  const oldEpisode = item.last_episode;
+
+  try {
+    await apiPost('/api/add', { id: mediaId, last_season: newSeason, last_episode: newEpisode });
+    // Success: update local item and UI
+    item.last_season = newSeason;
+    item.last_episode = newEpisode;
+    label.innerHTML = `S${newSeason} E${newEpisode}`;
+    invalidateProgressCache(mediaId);   // force AI card refresh if user goes back to detail
+    showToast('Progress updated');
+  } catch {
+    showToast('Failed to update progress');
+    // Revert
+    item.last_season = oldSeason;
+    item.last_episode = oldEpisode;
+    label.innerHTML = `S${oldSeason||'?'} E${oldEpisode||'?'}`;
+  }
+}
+
+function invalidateProgressCache(id) {
+  Object.keys(aiCache).forEach(k => {
+    if (k.startsWith(`${id}_watching_`)) delete aiCache[k];
+  });
+  const item = allItems.find(i => i.id === id);
+  if (item && selectedId === id) {
+    const card = document.getElementById('aiCard');
+    if (card) {
+      card.innerHTML = `<div class="ai-card-label">✦ AI insight</div>
+        <div class="ai-card-body" style="color:var(--muted);font-style:italic">Loading…</div>`;
+      loadAICard(item);
+    }
+  }
 }
 
 // ─────────────────────────────────────────────
@@ -846,13 +1702,14 @@ function aiCacheKey(item) {
   if (item.status === 'watchlist') return `${item.id}_watchlist`;
   if (item.status === 'finished')  return `${item.id}_finished`;
   if (item.media_type === 'movie') return `${item.id}_watching_movie`;
+  if (item.media_type === 'book')  return `${item.id}_watching_book_p${item.current_page||0}`;
+  if (item.media_type === 'manga') return `${item.id}_watching_manga_v${item.last_volume||0}c${item.last_chapter||0}`;
   return `${item.id}_watching_S${item.last_season||0}E${item.last_episode||0}`;
 }
 
 async function loadAICard(item) {
-  const key            = aiCacheKey(item);
-  const thisId         = item.id;
-  const thisStatus     = item.status;
+  const key      = aiCacheKey(item);
+  const thisId   = item.id;
 
   if (aiCache[key]) {
     if (selectedId === thisId) renderAICard(document.getElementById('aiCard'), aiCache[key], item.status, item.media_type);
@@ -864,19 +1721,23 @@ async function loadAICard(item) {
     const content = data.content || data.error || '—';
     aiCache[key]  = content;
     const card = document.getElementById('aiCard');
-    if (card && selectedId === thisId) renderAICard(card, content, thisStatus, item.media_type);
+    if (card && selectedId === thisId) renderAICard(card, content, item.status, item.media_type);
   } catch {
     const card = document.getElementById('aiCard');
-    if (card && selectedId === thisId) renderAICard(card, 'Unable to load.', thisStatus, item.media_type);
+    if (card && selectedId === thisId) renderAICard(card, 'Unable to load.', item.status, item.media_type);
   }
 }
 
 function renderAICard(card, content, status, mediaType) {
   let title, sub;
   if (status === 'watchlist') {
-    title = '✦ Why watch it'; sub = 'spoiler-free pitch';
+    title = '✦ Why experience it'; sub = 'spoiler-free pitch';
   } else if (status === 'finished') {
     title = '✦ You might also like'; sub = 'recommendations';
+  } else if (mediaType === 'book') {
+    title = '✦ Story so far'; sub = 'reading recap';
+  } else if (mediaType === 'manga') {
+    title = '✦ Volume recap'; sub = 'manga progress';
   } else if (mediaType === 'movie') {
     title = "✦ What's Special"; sub = 'vibe & highlights';
   } else {
@@ -889,27 +1750,140 @@ function renderAICard(card, content, status, mediaType) {
     <div class="ai-card-body">${esc(content)}</div>`;
 }
 
+// Media-linked chat (Deep Think / Open chat)
+function getChatForMedia(mediaId) {
+  const id = Number(mediaId);
+  if (!id) return null;
+  return allChats.find(c => c.media_id != null && Number(c.media_id) === id);
+}
+
+function chatDisplayParts(c) {
+  const mediaTitle = c.media_title
+    || (c.media_id ? allItems.find(i => i.id === c.media_id)?.title : '')
+    || '';
+  let chatTitle = (c.title || 'Chat').trim();
+  if (mediaTitle) {
+    const prefix = mediaTitle + ' — ';
+    if (chatTitle.startsWith(prefix)) chatTitle = chatTitle.slice(prefix.length).trim();
+    const paren = `${mediaTitle} (`;
+    if (chatTitle.startsWith(paren) && chatTitle.endsWith(')')) {
+      chatTitle = chatTitle.slice(paren.length, -1).trim();
+    }
+  }
+  return { mediaTitle, chatTitle };
+}
+
+function formatChatHeading(c, forPanel = false) {
+  const { mediaTitle, chatTitle } = chatDisplayParts(c);
+  if (!mediaTitle) return esc(chatTitle);
+  if (!chatTitle || chatTitle === mediaTitle) return `<span class="cli-media">${esc(mediaTitle)}</span>`;
+  return `<span class="cli-media">${esc(mediaTitle)}</span><span class="cli-sep">·</span><span class="cli-chat-title">${esc(chatTitle)}</span>`;
+}
+
+function chatMatchesMovieFilter(c) {
+  if (!chatMovieFilter) return true;
+  const { mediaTitle, chatTitle } = chatDisplayParts(c);
+  const hay = `${mediaTitle} ${chatTitle}`.toLowerCase();
+  return hay.includes(chatMovieFilter);
+}
+
+function renderMediaChatRow(item) {
+  const row = document.getElementById('mediaChatRow');
+  if (!row) return;
+  const existing = getChatForMedia(item.id);
+  if (existing) {
+    row.innerHTML = `
+      <button type="button" class="open-chat-btn" onclick="openMediaChat(${item.id})">💬 Open chat</button>
+      <span class="deep-btn-label">Continue your conversation</span>`;
+  } else {
+    row.innerHTML = `
+      <button type="button" class="deep-btn" id="deepBtn" onclick="doDeepThink(${item.id})">🔮 Deep Think</button>
+      <span class="deep-btn-label">Expand insight & start a chat</span>`;
+  }
+}
+
+async function doDeepThink(mediaId) {
+  if (getChatForMedia(mediaId)) {
+    openMediaChat(mediaId);
+    return;
+  }
+  const btn = document.getElementById('deepBtn');
+  if (!btn) return;
+  btn.disabled = true;
+  btn.textContent = '🔮 Thinking…';
+
+  try {
+    const data = await apiPost('/api/ai-card', { media_id: mediaId, deep: true });
+    const content = data.content || data.error || '—';
+
+    const item = allItems.find(i => i.id === mediaId);
+    if (item) {
+      const key = aiCacheKey(item);
+      aiCache[key] = content;
+      const card = document.getElementById('aiCard');
+      if (card) renderAICard(card, content, item.status, item.media_type);
+    }
+
+    if (!data.chat_id) throw new Error('Deep Think did not create a chat');
+
+    await loadChats();
+    if (item && selectedId === mediaId) renderMediaChatRow(item);
+    showToast('Deep insight ready — open chat to continue');
+  } catch (err) {
+    const timedOut = err && err.name === 'AbortError';
+    showToast(timedOut ? 'Deep Think timed out — please try again.' : 'Deep Think failed — please try again.');
+    if (btn) { btn.disabled = false; btn.textContent = '🔮 Deep Think'; }
+  }
+}
+
+function openMediaChat(mediaId) {
+  const chat = getChatForMedia(mediaId);
+  if (!chat) return;
+  switchTab('chats', chat.id);
+}
+
+// ─────────────────────────────────────────────
+// Quick Q&A
+// ─────────────────────────────────────────────
 async function askQuestion(mediaId) {
   const input  = document.getElementById('qaInput');
   const answer = document.getElementById('qaAnswer');
+  const nudge  = document.getElementById('chatNudge');
   const askBtn = input?.closest('.qa-wrap')?.querySelector('.btn-accent');
-  const q = input.value.trim();
+  const q      = input.value.trim();
   if (!q) return;
 
-  // Disable while in-flight so rapid submits don't produce out-of-order answers.
   input.value  = '';
   if (askBtn) askBtn.disabled = true;
   answer.textContent = 'Thinking…';
   answer.classList.add('show');
 
   try {
-    const data = await apiPost('/api/ask', { media_id: mediaId, question: q });
+    const data = await apiPost('/api/ask', {
+      media_id: mediaId,
+      question: q,
+      chat_id:  qaAutoChat || undefined,
+    });
     answer.textContent = data.answer || data.error || '—';
+
+    // Track the auto-created chat so follow-ups append to the same session
+    if (data.chat_id) {
+      qaAutoChat = data.chat_id;
+      await loadChats();
+      const mediaItem = allItems.find(i => i.id === mediaId);
+      if (mediaItem && selectedId === mediaId) renderMediaChatRow(mediaItem);
+      if (nudge) nudge.classList.add('show');
+    }
   } catch {
     answer.textContent = 'Failed to get an answer.';
   } finally {
     if (askBtn) askBtn.disabled = false;
   }
+}
+
+function jumpToQAChat() {
+  if (!qaAutoChat) return;
+  switchTab('chats', qaAutoChat);
 }
 
 // ─────────────────────────────────────────────
@@ -921,34 +1895,38 @@ async function saveEpisode(id, field, rawValue) {
 
   const item = allItems.find(i => i.id === id);
   if (!item) return;
+
   const oldSeason  = item.last_season;
   const oldEpisode = item.last_episode;
 
-  if (field === 'season')  item.last_season  = value;
-  if (field === 'episode') item.last_episode = value;
+  // Do NOT update item yet
+  let newSeason = oldSeason, newEpisode = oldEpisode;
+  if (field === 'season') newSeason = value;
+  if (field === 'episode') newEpisode = value;
 
-  await apiPost('/api/add', { id, last_season: item.last_season, last_episode: item.last_episode });
-
-  if (item.last_season !== oldSeason || item.last_episode !== oldEpisode) {
-    // Invalidate AI cache for the old episode position.
-    Object.keys(aiCache).forEach(k => {
-      if (k.startsWith(`${id}_watching_`) && k !== `${id}_watching_movie`) delete aiCache[k];
-    });
-    if (selectedId === id) {
-      const card = document.getElementById('aiCard');
-      if (card) {
-        card.innerHTML = `<div class="ai-card-label">✦ So far</div>
-          <div class="ai-card-body" style="color:var(--muted);font-style:italic">Loading…</div>`;
-        await loadAICard(item);
-      }
-    }
+  try {
+    await apiPost('/api/add', { id, last_season: newSeason, last_episode: newEpisode });
+    // Success — update local object
+    item.last_season  = newSeason;
+    item.last_episode = newEpisode;
+    invalidateProgressCache(id);
+    // Update the inputs if they are still in the DOM (detail panel)
+    const sInput = document.querySelector(`[placeholder="Season"][onchange*="${id}"]`);
+    const eInput = document.querySelector(`[placeholder="Episode"][onchange*="${id}"]`);
+    if (sInput) sInput.value = newSeason;
+    if (eInput) eInput.value = newEpisode;
+  } catch {
+    showToast('Failed to update progress');
+    // Revert inputs to old values
+    const sInput = document.querySelector(`[placeholder="Season"][onchange*="${id}"]`);
+    const eInput = document.querySelector(`[placeholder="Episode"][onchange*="${id}"]`);
+    if (sInput) sInput.value = oldSeason || '';
+    if (eInput) eInput.value = oldEpisode || '';
   }
 }
 
 async function saveField(id, field, value) {
   const item = allItems.find(i => i.id === id);
-  // Skip the write if nothing changed — guards against redundant onblur fires
-  // on slow networks where a previous save is still in flight.
   if (item && item[field] === value) return;
   if (item) item[field] = value;
   await apiPost('/api/add', { id, [field]: value });
@@ -959,8 +1937,6 @@ async function changeStatus(id, status) {
   const item = allItems.find(i => i.id === id);
   if (!item || item.status === status) return;
 
-  // Update local state and disable all pills immediately so rapid clicks
-  // all hit the item.status === status guard above before the request resolves.
   item.status = status;
   const suffixMap = { watchlist: 'wl', watching: 'wa', finished: 'fi' };
   document.querySelectorAll('.status-pill').forEach(p => {
@@ -980,7 +1956,6 @@ async function changeStatus(id, status) {
 }
 
 async function deleteItem(id) {
-  // Disable immediately to prevent double-delete on rapid clicks.
   const btn = document.querySelector('.delete-btn');
   if (btn) btn.disabled = true;
 
@@ -1000,44 +1975,545 @@ async function deleteItem(id) {
 }
 
 // ─────────────────────────────────────────────
+// ── CHATS TAB ─────────────────────────────────
+// ─────────────────────────────────────────────
+
+function chatEmptyDetailHtml() {
+  return `<div class="chat-empty">
+    <div class="chat-empty-icon">💬</div>
+    <p style="font-size:13px;color:var(--muted)">Select a conversation or start a new one</p>
+  </div>`;
+}
+
+function chatLoadingDetailHtml(headingHtml) {
+  return `<div style="display:flex;flex-direction:column;height:100%">
+    <div class="chat-panel-toolbar">
+      <div class="chat-panel-title">${headingHtml}</div>
+    </div>
+    <div class="chat-messages-wrap" style="display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12px">
+      Loading conversation…
+    </div>
+  </div>`;
+}
+
+function buildChatPanelHtml(chatId, headingHtml, messagesInnerHtml, tvWidget = '') {
+  return `<div style="display:flex;flex-direction:column;height:100%">
+    <div class="chat-panel-toolbar">
+      <div class="chat-panel-title">${headingHtml}</div>
+      ${tvWidget}
+      <div class="chat-reset-wrap">
+        <button type="button" class="chat-reset-btn" onclick="toggleResetChatMenu(event, ${chatId})">Reset chat</button>
+        <div class="reset-chat-menu" id="resetChatMenu">
+          <div class="reset-chat-menu-title">Reset this chat?</div>
+          <p class="reset-chat-menu-text">All messages will be cleared so you can start fresh. This cannot be undone.</p>
+          <div class="reset-chat-menu-actions">
+            <button type="button" class="btn btn-sm" onclick="closeResetChatMenu()">Cancel</button>
+            <button type="button" class="btn btn-sm reset-chat-confirm" onclick="confirmResetChat()">Clear messages</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="chat-messages-wrap" id="chatMsgsWrap">${messagesInnerHtml}</div>
+    <div class="chat-input-area">
+      <textarea class="chat-input" id="chatInput" placeholder="Ask anything…" rows="1"
+        onkeydown="onChatInputKey(event,${chatId})"
+        oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px'"></textarea>
+      <button class="chat-send-btn" id="chatSendBtn" onclick="sendChatMessage(${chatId})">Send</button>
+    </div>
+  </div>`;
+}
+
+function prepChatsTabTransition(fromOtherTab) {
+  const detail = document.getElementById('detailPanel');
+  const grid   = document.getElementById('gridPanel');
+  if (detail) {
+    if (activeChatId) {
+      const preview = allChats.find(c => c.id === activeChatId);
+      const heading = preview ? formatChatHeading(preview) : '<span style="color:var(--muted)">Loading…</span>';
+      detail.innerHTML = chatLoadingDetailHtml(heading);
+    } else {
+      detail.innerHTML = chatEmptyDetailHtml();
+    }
+  }
+  if (grid && fromOtherTab) {
+    grid.innerHTML = '<div style="padding:24px;color:var(--muted);font-size:13px">Loading chats…</div>';
+  }
+}
+
+function onChatMovieSearchInput() {
+  chatMovieFilter = (document.getElementById('chatMovieSearch')?.value || '').trim().toLowerCase();
+  const list    = document.getElementById('chatList');
+  const countEl = document.querySelector('.chat-grid-count');
+  if (!list) return;
+
+  const filtered = allChats.filter(chatMatchesMovieFilter);
+  if (filtered.length) {
+    list.innerHTML = filtered.map(c => renderChatListItem(c)).join('');
+  } else {
+    list.innerHTML = chatMovieFilter
+      ? '<div class="chat-list-empty-filter">No chats match that title.</div>'
+      : '<div class="chat-list-empty-filter">No chats yet — start from a title\'s detail panel.</div>';
+  }
+  if (countEl) {
+    const n = allChats.length;
+    countEl.textContent = chatMovieFilter
+      ? `${filtered.length} of ${n} conversation${n !== 1 ? 's' : ''}`
+      : `${n} conversation${n !== 1 ? 's' : ''}`;
+  }
+}
+
+function renderChatsTab() {
+  const grid   = document.getElementById('gridPanel');
+  const detail = document.getElementById('detailPanel');
+
+  const filtered = allChats.filter(chatMatchesMovieFilter);
+  const count    = allChats.length;
+  const countLabel = chatMovieFilter
+    ? `${filtered.length} of ${count} conversation${count !== 1 ? 's' : ''}`
+    : `${count} conversation${count !== 1 ? 's' : ''}`;
+
+  let listHtml;
+  if (filtered.length) {
+    listHtml = filtered.map(c => renderChatListItem(c)).join('');
+  } else if (chatMovieFilter) {
+    listHtml = '<div class="chat-list-empty-filter">No chats match that title.</div>';
+  } else {
+    listHtml = '<div class="chat-list-empty-filter">No chats yet — start from a title\'s detail panel.</div>';
+  }
+
+  grid.innerHTML = `
+    <div class="chat-grid-header">
+      <span class="chat-grid-count">${countLabel}</span>
+      <button class="chat-new-btn" onclick="openNewChatForm()">+ New chat</button>
+    </div>
+    <input type="text" class="chat-movie-search" id="chatMovieSearch"
+      placeholder="Search by movie or show…"
+      value="${esc(chatMovieFilter)}"
+      oninput="onChatMovieSearchInput()">
+    <div class="chat-list" id="chatList">${listHtml}</div>`;
+
+  // Show selected chat or empty state
+  if (activeChatId) {
+    const chat = allChats.find(c => c.id === activeChatId);
+    if (chat) {
+      selectChat(activeChatId);
+      return;
+    }
+  }
+  detail.innerHTML = chatEmptyDetailHtml();
+}
+
+function renderChatListItem(c) {
+  const tag     = c.context_tag || '';
+  const tagColor = tag === 'watchlist' ? 'var(--blue)' : tag === 'watching' ? 'var(--green)' : tag === 'finished' ? 'var(--purple)' : 'var(--muted)';
+  const tagBorderColor = tag === 'watchlist' ? 'var(--blue-dim)' : tag === 'watching' ? 'var(--green-dim)' : tag === 'finished' ? 'var(--purple-dim)' : 'var(--border)';
+
+  // Thumbnail
+  let thumbSrc = BROKEN_POSTER_FULL;
+  if (c.media_id) {
+    const item = allItems.find(i => Number(i.id) === Number(c.media_id));
+    if (item) thumbSrc = posterUrl(item);
+  }
+
+  const sel = activeChatId === c.id ? ' selected' : '';
+  const updatedAt = (c.updated_at || '').replace('T', ' ').slice(0, 16);
+
+  return `<div class="chat-list-item${sel}" id="cli-${c.id}" onclick="selectChat(${c.id})">
+    <img class="cli-thumb" src="${thumbSrc}" onerror="this.src='${BROKEN_POSTER_FULL}'">
+    <div class="cli-info">
+      <div class="cli-title-row">${formatChatHeading(c)}</div>
+      <div class="cli-sub">${updatedAt}</div>
+    </div>
+    ${tag ? `<span class="cli-badge" style="color:${tagColor};border-color:${tagBorderColor}">${tag}</span>` : ''}
+    <button class="cli-delete" title="Delete chat" onclick="deleteChatItem(event,${c.id})">×</button>
+  </div>`;
+}
+
+async function selectChat(chatId) {
+  activeChatId = chatId;
+  closeResetChatMenu();
+
+  document.querySelectorAll('.chat-list-item').forEach(el =>
+    el.classList.toggle('selected', el.id === 'cli-' + chatId)
+  );
+
+  const detail = document.getElementById('detailPanel');
+  const preview = allChats.find(c => c.id === chatId);
+  const heading = preview ? formatChatHeading(preview) : '<span style="color:var(--muted)">Loading…</span>';
+  if (detail) detail.innerHTML = chatLoadingDetailHtml(heading);
+
+  let data;
+  try {
+    data = await fetch(`/api/chats/${chatId}`).then(r => r.json());
+  } catch {
+    if (detail && activeChatId === chatId) detail.innerHTML = chatEmptyDetailHtml();
+    return;
+  }
+  if (activeChatId !== chatId) return;
+
+  const msgs = data.messages || [];
+  const msgsHtml = msgs.length
+    ? msgs.map((m, idx) => renderChatMsg(m, idx, data)).join('')
+    : '<div style="color:var(--muted);font-size:12px;text-align:center;padding:20px">Start the conversation below.</div>';
+
+  // ── Build TV progress widget if media is a TV show ──
+  let tvWidget = '';
+  if (preview && preview.media_id) {
+    const media = allItems.find(i => i.id === preview.media_id);
+    if (media && media.media_type === 'tv') {
+      tvWidget = tvProgressWidget(media);
+    }
+  }
+
+  if (detail && activeChatId === chatId) {
+    detail.innerHTML = buildChatPanelHtml(chatId, formatChatHeading(data), msgsHtml, tvWidget);
+    setChatSendingState(chatSendPending);
+    scrollChatBottom();
+  }
+}
+
+function renderChatMsg(m, idx = 0, chat = null) {
+  const t = (m.created_at || '').replace('T', ' ').slice(11, 16);
+  const isExtendedInsight = chat
+    && chat.title === 'Deep Dive'
+    && idx === 0
+    && m.role === 'assistant';
+  const label = isExtendedInsight ? '<span class="extended-insight-label">Extended insight</span>' : '<span></span>';
+  return `<div class="chat-msg ${m.role}" style="${m.role==='user'?'align-self:flex-end':'align-self:flex-start'}">
+    ${esc(m.content)}
+    <div class="chat-msg-footer">${label}<div class="chat-msg-time">${t}</div></div>
+  </div>`;
+}
+
+function scrollChatBottom() {
+  const wrap = document.getElementById('chatMsgsWrap');
+  if (wrap) wrap.scrollTop = wrap.scrollHeight;
+}
+
+function setChatSendingState(isSending) {
+  chatSendPending = isSending;
+  const input = document.getElementById('chatInput');
+  const sendBtn = document.getElementById('chatSendBtn');
+  if (sendBtn) sendBtn.disabled = isSending;
+  if (input) {
+    input.readOnly = isSending;
+    input.placeholder = isSending ? 'Waiting for reply…' : 'Ask anything…';
+  }
+}
+
+function onChatInputKey(e, chatId) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    if (chatSendPending) return;
+    sendChatMessage(chatId);
+  }
+}
+
+async function sendChatMessage(chatId) {
+  if (chatSendPending) return;
+  const input   = document.getElementById('chatInput');
+  const wrap    = document.getElementById('chatMsgsWrap');
+  if (!input || !wrap) return;
+
+  const content = input.value.trim();
+  if (!content) return;
+
+  input.value = '';
+  input.style.height = 'auto';
+  setChatSendingState(true);
+
+  // Optimistic user bubble
+  const userBubble = document.createElement('div');
+  userBubble.className = 'chat-msg user';
+  userBubble.style.alignSelf = 'flex-end';
+  userBubble.textContent = content;
+  wrap.appendChild(userBubble);
+  scrollChatBottom();
+
+  // Assistant bubble (will be filled streamingly)
+  const asstBubble = document.createElement('div');
+  asstBubble.className = 'chat-msg assistant';
+  asstBubble.style.alignSelf = 'flex-start';
+  asstBubble.innerHTML = '<div class="typing-dots"><span></span><span></span><span></span></div>';
+  wrap.appendChild(asstBubble);
+  scrollChatBottom();
+
+  try {
+    const response = await fetch(`/api/chats/${chatId}/message`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content }),
+    });
+
+    if (!response.ok) throw new Error('Network response was not ok');
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let fullText = '';
+
+    // Replace typing dots with empty text on first real token
+    let firstToken = true;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      // Process SSE lines
+      const lines = buffer.split('\n');
+      buffer = lines.pop(); // keep incomplete line
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const payload = line.substring(6).trim();
+        if (!payload) continue;
+
+        try {
+          const obj = JSON.parse(payload);
+          if (obj.token) {
+            if (firstToken) {
+              asstBubble.innerHTML = '';
+              firstToken = false;
+            }
+            fullText += obj.token;
+            asstBubble.textContent = fullText;
+            scrollChatBottom();
+          } else if (obj.done) {
+            // Finalise
+            if (firstToken) {
+              // No tokens received, maybe error
+              asstBubble.innerHTML = '<em>(empty response)</em>';
+            }
+          } else if (obj.error) {
+            asstBubble.innerHTML = `<span style="color:var(--red)">Error: ${esc(obj.error)}</span>`;
+          }
+        } catch (e) {
+          // ignore malformed chunks
+        }
+      }
+    }
+  } catch (err) {
+    asstBubble.innerHTML = `<span style="color:var(--red)">Failed to send — try again.</span>`;
+  } finally {
+    setChatSendingState(false);
+    if (input) input.focus();
+    // Refresh only the chat sidebar metadata; the active conversation is already current.
+    loadChats(false).then(() => {
+      onChatMovieSearchInput();
+      const selectedChatId = activeChatId;
+      document.querySelectorAll('.chat-list-item').forEach(el =>
+        el.classList.toggle('selected', el.id === 'cli-' + selectedChatId)
+      );
+    });
+  }
+}
+
+
+function toggleResetChatMenu(e, chatId) {
+  e.stopPropagation();
+  const menu = document.getElementById('resetChatMenu');
+  if (!menu) return;
+  if (menu.classList.contains('open') && pendingResetChatId === chatId) {
+    closeResetChatMenu();
+    return;
+  }
+  pendingResetChatId = chatId;
+  menu.classList.add('open');
+}
+
+function closeResetChatMenu() {
+  const menu = document.getElementById('resetChatMenu');
+  if (menu) menu.classList.remove('open');
+  pendingResetChatId = null;
+}
+
+async function confirmResetChat() {
+  const chatId = pendingResetChatId;
+  if (!chatId) return;
+  closeResetChatMenu();
+  const confirmBtn = document.querySelector('.reset-chat-confirm');
+  if (confirmBtn) confirmBtn.disabled = true;
+  try {
+    await apiPost(`/api/chats/${chatId}/reset`, {});
+    await loadChats();
+    selectChat(chatId);
+    showToast('Chat reset — start a new conversation');
+  } catch {
+    showToast('Failed to reset chat — please try again.');
+  } finally {
+    if (confirmBtn) confirmBtn.disabled = false;
+  }
+}
+
+let chatUndoState = null;
+
+async function flushPendingChatDelete() {
+  if (!chatUndoState) return;
+  clearTimeout(chatUndoState.timer);
+  dismissUndoToast();
+  const { chatId } = chatUndoState;
+  chatUndoState = null;
+  try {
+    await fetch(`/api/chats/${chatId}`, { method: 'DELETE' });
+  } catch {
+    showToast('Failed to delete chat — please try again.');
+  }
+}
+
+function undoChatDelete() {
+  if (!chatUndoState) return;
+  clearTimeout(chatUndoState.timer);
+  const { chat, chatIndex, chatId } = chatUndoState;
+  chatUndoState = null;
+  dismissUndoToast();
+  allChats.splice(Math.min(chatIndex, allChats.length), 0, chat);
+  renderChatsTab();
+  selectChat(chatId);
+  if (chat.media_id && selectedId === chat.media_id) {
+    const mediaItem = allItems.find(i => i.id === chat.media_id);
+    if (mediaItem) renderMediaChatRow(mediaItem);
+  }
+}
+
+async function deleteChatItem(e, chatId) {
+  e.stopPropagation();
+  await flushPendingChatDelete();
+
+  const chatIndex = allChats.findIndex(c => c.id === chatId);
+  const chat = allChats[chatIndex];
+  if (!chat) return;
+
+  const mediaId = chat.media_id;
+  allChats = allChats.filter(c => c.id !== chatId);
+  if (activeChatId === chatId) activeChatId = null;
+  renderChatsTab();
+  if (mediaId && selectedId === mediaId) {
+    const mediaItem = allItems.find(i => i.id === mediaId);
+    if (mediaItem) renderMediaChatRow(mediaItem);
+  }
+
+  chatUndoState = {
+    chatId,
+    chat,
+    chatIndex,
+    timer: setTimeout(() => flushPendingChatDelete(), 5000),
+  };
+  showUndoToast('Chat deleted', undoChatDelete);
+}
+
+async function openNewChatForm() {
+  const detail = document.getElementById('detailPanel');
+  const options = allItems.map(i =>
+    `<option value="${i.id}" data-status="${i.status}">${esc(i.title)} (${TYPE_EMOJI[i.media_type]} ${i.status})</option>`
+  ).join('');
+
+  detail.innerHTML = `
+    <div class="new-chat-form">
+      <div>
+        <span class="ncf-label">New Conversation</span>
+        <p style="font-size:12px;color:var(--muted)">Choose a title to discuss, or start a general chat.</p>
+      </div>
+      <div>
+        <span class="ncf-label">Title (optional)</span>
+        <select class="ncf-select" id="ncfMedia" onchange="ncfMediaChanged()">
+          <option value="">— General chat (no specific title) —</option>
+          ${options}
+        </select>
+      </div>
+      <div id="ncfStatusWrap" style="display:none">
+        <span class="ncf-label">Your status</span>
+        <select class="ncf-select" id="ncfStatus">
+          <option value="watchlist">Watchlist (no spoilers)</option>
+          <option value="watching">Watching / Reading</option>
+          <option value="finished">Finished</option>
+        </select>
+      </div>
+      <div>
+        <span class="ncf-label">Chat title</span>
+        <input type="text" class="ncf-select" id="ncfTitle" placeholder="e.g. Discussing themes…" style="border-radius:var(--radius)">
+      </div>
+      <button class="btn btn-accent" onclick="createNewChat()">Start chat</button>
+    </div>`;
+}
+
+function ncfMediaChanged() {
+  const sel    = document.getElementById('ncfMedia');
+  const wrap   = document.getElementById('ncfStatusWrap');
+  const titleEl = document.getElementById('ncfTitle');
+  if (!sel.value) {
+    wrap.style.display = 'none';
+    titleEl.placeholder = 'General chat…';
+    return;
+  }
+  wrap.style.display = 'block';
+  const opt    = sel.options[sel.selectedIndex];
+  const status = opt.dataset.status || 'watchlist';
+  const statusSel = document.getElementById('ncfStatus');
+  if (statusSel) {
+    for (let o of statusSel.options) o.selected = o.value === status;
+  }
+  const item = allItems.find(i => String(i.id) === sel.value);
+  if (item && titleEl) titleEl.value = `Discussing ${item.title}`;
+}
+
+async function createNewChat() {
+  const mediaId   = document.getElementById('ncfMedia')?.value || null;
+  const ctxTag    = document.getElementById('ncfStatus')?.value || null;
+  const titleEl   = document.getElementById('ncfTitle');
+  const title     = titleEl?.value.trim() || (mediaId ? 'New conversation' : 'General chat');
+
+  const data = await apiPost('/api/chats/new', {
+    media_id:    mediaId ? parseInt(mediaId) : null,
+    context_tag: ctxTag,
+    title,
+  });
+
+  await loadChats();
+  activeChatId = data.id;
+  renderChatsTab();
+}
+
+// ─────────────────────────────────────────────
 // Search — inline dropdown
 // ─────────────────────────────────────────────
 let searchTimer;
 
 function onSearchKey(e) {
   if (e.key === 'Escape') { closeDropdown(); return; }
-  if (e.key === 'Enter')  { openModal();     return; }
+  if (e.key === 'Enter')  { onSearchMainClick(); return; }
 }
 
 function onSearchInput() {
   clearTimeout(searchTimer);
   const q = document.getElementById('searchInput').value.trim();
   if (!q) { closeDropdown(); return; }
-  // 400ms debounce — long enough to avoid firing on every character,
-  // short enough to feel responsive once the user pauses.
   searchTimer = setTimeout(() => showDropdownSuggestions(q), 400);
 }
 
 async function showDropdownSuggestions(q) {
-  // Bail early if the input has already changed since the debounce fired.
   if (document.getElementById('searchInput').value.trim() !== q) return;
 
   const lower          = q.toLowerCase();
   const libraryMatches = allItems.filter(i => i.title.toLowerCase().includes(lower)).slice(0, 4);
   const dd             = document.getElementById('searchDropdown');
 
-  const [movieRes, tvRes] = await Promise.all([
+  // Parallel fetch for all types
+  const [movieRes, tvRes, bookRes, mangaRes] = await Promise.all([
     fetch(`/api/search?q=${encodeURIComponent(q)}&type=movie`).then(r => r.json()).catch(() => []),
     fetch(`/api/search?q=${encodeURIComponent(q)}&type=tv`).then(r => r.json()).catch(() => []),
+    fetch(`/api/search/books?q=${encodeURIComponent(q)}`).then(r => r.json()).catch(() => []),
+    fetch(`/api/search/manga?q=${encodeURIComponent(q)}`).then(r => r.json()).catch(() => []),
   ]);
 
-  // Discard stale results if the input changed while fetches were in-flight.
   if (document.getElementById('searchInput').value.trim() !== q) return;
 
-  // Store results in the lookup map so add handlers can retrieve metadata safely.
-  [...movieRes, ...tvRes].forEach(r => { tmdbResultMap[`${r.media_type}_${r.tmdb_id}`] = r; });
+  [...movieRes, ...tvRes, ...bookRes, ...mangaRes].forEach(r => {
+    const key = `${r.media_type}_${r.external_id || r.tmdb_id}`;
+    tmdbResultMap[key] = r;
+  });
 
-  const tmdbMatches = [...movieRes, ...tvRes].slice(0, 5);
+  const tmdbMatches = [...movieRes.slice(0,2), ...tvRes.slice(0,2), ...bookRes.slice(0,2), ...mangaRes.slice(0,2)];
 
   if (!libraryMatches.length && !tmdbMatches.length) { closeDropdown(); return; }
 
@@ -1050,7 +2526,7 @@ async function showDropdownSuggestions(q) {
       return `<div class="sd-row" onclick="selectLibraryItem(${i.id})">
         <div>
           <div class="sd-title">${esc(i.title)}</div>
-          <div class="sd-sub">${i.media_type==='tv'?'TV Show':'Movie'} · <span style="color:${statusColor}">${i.status}</span></div>
+          <div class="sd-sub">${TYPE_EMOJI[i.media_type]} ${TYPE_LABEL[i.media_type]} · <span style="color:${statusColor}">${i.status}</span></div>
         </div>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
       </div>`;
@@ -1059,16 +2535,16 @@ async function showDropdownSuggestions(q) {
 
   if (tmdbMatches.length) {
     const sep = libraryMatches.length
-      ? `<div style="padding:6px 12px 4px;font-size:10px;color:var(--muted);letter-spacing:0.05em;border-top:1px solid var(--border);margin-top:4px">FROM TMDB</div>`
-      : `<div style="padding:6px 12px 4px;font-size:10px;color:var(--muted);letter-spacing:0.05em">FROM TMDB</div>`;
+      ? `<div style="padding:6px 12px 4px;font-size:10px;color:var(--muted);letter-spacing:0.05em;border-top:1px solid var(--border);margin-top:4px">ADD TO LIBRARY</div>`
+      : `<div style="padding:6px 12px 4px;font-size:10px;color:var(--muted);letter-spacing:0.05em">ADD TO LIBRARY</div>`;
     html += sep;
     html += tmdbMatches.map(r => {
-      const key     = `${r.media_type}_${r.tmdb_id}`;
+      const key     = `${r.media_type}_${r.external_id || r.tmdb_id}`;
       const already = inLibrary.has(key);
       return `<div class="sd-row" onclick="addFromDropdown('${key}')">
         <div>
           <div class="sd-title">${esc(r.title)} <span style="color:var(--muted);font-size:11px">(${r.year||'?'})</span></div>
-          <div class="sd-sub">${r.media_type==='tv'?'TV Show':'Movie'}</div>
+          <div class="sd-sub">${TYPE_EMOJI[r.media_type]} ${TYPE_LABEL[r.media_type]}${r.author?' · '+esc(r.author):''}</div>
         </div>
         <span style="font-size:11px;color:${already?'var(--green)':'var(--accent)'}">${already?'✓ In library':'+ Add'}</span>
       </div>`;
@@ -1090,7 +2566,7 @@ function selectLibraryItem(id) {
   closeDropdown();
   closeModal();
   document.getElementById('searchInput').value = '';
-  if (item.status !== currentTab) {
+  if (item.status !== currentTab || currentTab === 'chats') {
     switchTab(item.status, id);
   } else {
     selectItem(id);
@@ -1101,15 +2577,22 @@ async function addFromDropdown(key) {
   const r = tmdbResultMap[key];
   if (!r) return;
   if (inLibrary.has(key)) {
-    // Already in library — just navigate to it.
-    const existing = allItems.find(i => i.media_type === r.media_type && i.tmdb_id === r.tmdb_id);
+    const existing = allItems.find(i => `${i.media_type}_${i.external_id || i.tmdb_id}` === key);
     if (existing) selectLibraryItem(existing.id);
     return;
   }
-  // Optimistic lock — prevents a second rapid click from firing a second request.
   inLibrary.add(key);
   try {
-    await apiPost('/api/add', { tmdb_id: r.tmdb_id, title: r.title, media_type: r.media_type, status: 'watchlist' });
+    await apiPost('/api/add', {
+      tmdb_id:     r.tmdb_id    || null,
+      external_id: r.external_id || String(r.tmdb_id || ''),
+      title:       r.title,
+      media_type:  r.media_type,
+      status:      'watchlist',
+      cover_url:   r.cover_url  || null,
+      author:      r.author     || null,
+      total_pages: r.total_pages || null,
+    });
     await loadList();
   } catch {
     inLibrary.delete(key);
@@ -1123,13 +2606,28 @@ async function addFromDropdown(key) {
   else renderGrid();
 }
 
-document.addEventListener('click', e => {
-  if (!e.target.closest('.search-anchor') && !e.target.closest('.search-wrap'))
-    closeDropdown();
-});
+// ─────────────────────────────────────────────
+// Standard Search Modal — type filters
+// ─────────────────────────────────────────────
+function toggleModalType(type) {
+  if (modalActiveTypes.has(type)) {
+    if (modalActiveTypes.size === 1) return; // always keep at least one
+    modalActiveTypes.delete(type);
+  } else {
+    modalActiveTypes.add(type);
+  }
+  document.querySelectorAll('.sm-type-pill').forEach(p =>
+    p.classList.toggle('active', modalActiveTypes.has(p.dataset.stype))
+  );
+  // Re-filter current results
+  document.querySelectorAll('.sm-card').forEach(card => {
+    const mt = card.dataset.mediaType;
+    if (mt) card.style.display = modalActiveTypes.has(mt) ? '' : 'none';
+  });
+}
 
 // ─────────────────────────────────────────────
-// Search modal
+// Standard Search Modal
 // ─────────────────────────────────────────────
 let lastModalQuery = '';
 
@@ -1162,16 +2660,20 @@ async function runModalSearch(q) {
   const lower      = q.toLowerCase();
   const libMatches = allItems.filter(i => i.title.toLowerCase().includes(lower));
 
-  const [movieData, tvData] = await Promise.all([
+  const [movieData, tvData, bookData, mangaData] = await Promise.all([
     fetch(`/api/search?q=${encodeURIComponent(q)}&type=movie`).then(r => r.json()).catch(() => []),
     fetch(`/api/search?q=${encodeURIComponent(q)}&type=tv`).then(r => r.json()).catch(() => []),
+    fetch(`/api/search/books?q=${encodeURIComponent(q)}`).then(r => r.json()).catch(() => []),
+    fetch(`/api/search/manga?q=${encodeURIComponent(q)}`).then(r => r.json()).catch(() => []),
   ]);
 
-  if (q !== lastModalQuery) return; // stale response
+  if (q !== lastModalQuery) return;
 
-  const allResults = [...movieData, ...tvData];
-  // Store in lookup map for safe add-by-key.
-  allResults.forEach(r => { tmdbResultMap[`${r.media_type}_${r.tmdb_id}`] = r; });
+  const allResults = [...movieData, ...tvData, ...bookData, ...mangaData];
+  allResults.forEach(r => {
+    const key = `${r.media_type}_${r.external_id || r.tmdb_id}`;
+    tmdbResultMap[key] = r;
+  });
 
   renderModalResults(libMatches, allResults, q);
 }
@@ -1190,10 +2692,11 @@ function renderModalResults(libMatches, tmdbResults, q) {
     html += libMatches.map(i => {
       const statusColor  = i.status==='watchlist'?'var(--blue)':i.status==='watching'?'var(--green)':'var(--purple)';
       const borderColor  = i.status==='watchlist'?'var(--blue-dim)':i.status==='watching'?'var(--green-dim)':'var(--purple-dim)';
+      const prog = _progressLabel(i);
       return `<div class="sm-lib-row" onclick="selectLibraryItem(${i.id})">
         <div>
           <div class="sm-lib-title">${esc(i.title)}</div>
-          <div class="sm-lib-sub">${i.last_season && i.last_episode ? `S${i.last_season} E${i.last_episode}` : ''}</div>
+          <div class="sm-lib-sub">${TYPE_EMOJI[i.media_type]} ${TYPE_LABEL[i.media_type]}${prog?' · '+prog:''}</div>
         </div>
         <span class="sm-lib-badge" style="color:${statusColor};border-color:${borderColor}">${i.status}</span>
       </div>`;
@@ -1202,8 +2705,8 @@ function renderModalResults(libMatches, tmdbResults, q) {
   }
 
   if (tmdbResults.length) {
-    html += `<div class="sm-section-label" style="margin-top:${libMatches.length?'8px':'0'}">Add from TMDB</div>
-      <div class="sm-grid">`;
+    html += `<div class="sm-section-label" style="margin-top:${libMatches.length?'8px':'0'}">Add from search</div>
+      <div class="sm-grid" id="smGrid">`;
     html += tmdbResults.map(r => renderSmCard(r)).join('');
     html += `</div>`;
   } else if (!libMatches.length) {
@@ -1211,27 +2714,56 @@ function renderModalResults(libMatches, tmdbResults, q) {
   }
 
   document.getElementById('smBody').innerHTML = html;
+
+  // Apply active type filters
+  document.querySelectorAll('.sm-card').forEach(card => {
+    const mt = card.dataset.mediaType;
+    if (mt) card.style.display = modalActiveTypes.has(mt) ? '' : 'none';
+  });
+}
+
+function _progressLabel(item) {
+  if (item.media_type === 'tv'    && item.last_season && item.last_episode) return `S${item.last_season}E${item.last_episode}`;
+  if (item.media_type === 'manga' && item.last_volume) return `Vol.${item.last_volume}`;
+  if (item.media_type === 'book'  && item.current_page) return `p.${item.current_page}`;
+  return '';
+}
+
+function tvProgressWidget(media) {
+  return `<div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);border-left:1px solid var(--border);padding-left:12px;margin-left:auto">
+    <span id="tvProgLabel">S${media.last_season||'?'} E${media.last_episode||'?'}</span>
+    <button type="button" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;padding:0 2px;"
+      onclick="editTVProgress(${media.id})" title="Edit progress">✎</button>
+  </div>`;
 }
 
 function renderSmCard(r) {
-  const key      = `${r.media_type}_${r.tmdb_id}`;
+  const key      = `${r.media_type}_${r.external_id || r.tmdb_id}`;
   const already  = inLibrary.has(key);
-  const posterSrc = r.poster_path
-    ? `https://image.tmdb.org/t/p/w500${r.poster_path}`
-    : BROKEN_POSTER_FULL;
+
+  let posterSrc = BROKEN_POSTER_FULL;
+  if (r.poster_path) {
+    posterSrc = `https://image.tmdb.org/t/p/w500${r.poster_path}`;
+  } else if (r.cover_url) {
+    posterSrc = r.cover_url;
+  }
 
   const chips = [];
   if (r.year) chips.push(`<span class="sm-chip year">${esc(r.year)}</span>`);
-  chips.push(`<span class="sm-chip type">${r.media_type==='tv'?'TV':'Movie'}</span>`);
+  chips.push(`<span class="sm-chip ${r.media_type}">${TYPE_EMOJI[r.media_type]} ${TYPE_LABEL[r.media_type]}</span>`);
 
-  return `<div class="sm-card ${already?'in-library':''}">
+  const authorHtml = r.author ? `<div class="sm-card-author">${esc(r.author)}</div>` : '';
+  const safeKey    = key.replace(/'/g, "\\'");
+
+  return `<div class="sm-card ${already?'in-library':''}" data-media-type="${r.media_type}">
     <img class="sm-poster" src="${posterSrc}" onerror="this.src='${BROKEN_POSTER_FULL}'" loading="lazy">
     <div class="sm-card-body">
       <div class="sm-card-title">${esc(r.title)}</div>
+      ${authorHtml}
       <div class="sm-chips">${chips.join('')}</div>
       ${r.overview ? `<div class="sm-overview">${esc(r.overview)}</div>` : ''}
-      <button class="sm-add-btn" id="smbtn-${r.tmdb_id}-${r.media_type}"
-        onclick="addFromModal('${key}')"
+      <button class="sm-add-btn" id="smbtn-${r.media_type}-${(r.external_id||r.tmdb_id||'').toString().replace(/[^a-z0-9]/gi,'_')}"
+        onclick="addFromModal('${safeKey}')"
         ${already?'disabled':''}>
         ${already?'✓ In library':'+ Add to Watchlist'}
       </button>
@@ -1243,9 +2775,9 @@ async function addFromModal(key) {
   const r = tmdbResultMap[key];
   if (!r || inLibrary.has(key)) return;
 
-  // Optimistically lock before any await so rapid clicks all hit the guard above.
   inLibrary.add(key);
-  const btn = document.getElementById(`smbtn-${r.tmdb_id}-${r.media_type}`);
+  const btnId = `smbtn-${r.media_type}-${((r.external_id||r.tmdb_id||'').toString().replace(/[^a-z0-9]/gi,'_'))}`;
+  const btn   = document.getElementById(btnId);
   if (btn) {
     btn.textContent = '✓ In library';
     btn.disabled    = true;
@@ -1254,10 +2786,18 @@ async function addFromModal(key) {
   }
 
   try {
-    await apiPost('/api/add', { tmdb_id: r.tmdb_id, title: r.title, media_type: r.media_type, status: 'watchlist' });
-    await loadList(); // syncs allItems and rebuilds inLibrary from server truth
-  } catch (err) {
-    // Roll back the optimistic lock so the user can retry.
+    await apiPost('/api/add', {
+      tmdb_id:     r.tmdb_id    || null,
+      external_id: r.external_id || String(r.tmdb_id || ''),
+      title:       r.title,
+      media_type:  r.media_type,
+      status:      'watchlist',
+      cover_url:   r.cover_url  || null,
+      author:      r.author     || null,
+      total_pages: r.total_pages || null,
+    });
+    await loadList();
+  } catch {
     inLibrary.delete(key);
     if (btn) {
       btn.textContent = '+ Add to Watchlist';
@@ -1269,17 +2809,174 @@ async function addFromModal(key) {
     return;
   }
 
-  // loadList has completed and allItems is up-to-date before we switchTab,
-  // so the grid never flashes a stale "Nothing here" state.
   showToast(`"${r.title}" added to Watchlist`);
   if (currentTab !== 'watchlist') switchTab('watchlist');
+}
+
+// ─────────────────────────────────────────────
+// Vibe Search Modal
+// ─────────────────────────────────────────────
+function openVibeModal(runSearch = false) {
+  document.getElementById('vibeModalBackdrop').classList.add('open');
+  document.body.style.overflow = 'hidden';
+  setTimeout(() => {
+    document.getElementById('vibeInput')?.focus();
+    if (runSearch) runVibeSearch();
+  }, 50);
+}
+
+function closeVibeModal() {
+  document.getElementById('vibeModalBackdrop').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+function onVibeBackdropClick(e) {
+  if (e.target === document.getElementById('vibeModalBackdrop')) closeVibeModal();
+}
+
+function onVibeKey(e) {
+  if (e.key !== 'Enter' || e.shiftKey) return;
+  e.preventDefault();
+  runVibeSearch();
+}
+
+function toggleVibeType(btn) {
+  btn.classList.toggle('active');
+}
+
+async function runVibeSearch() {
+  const q    = document.getElementById('vibeInput').value.trim();
+  const body = document.getElementById('vibeBody');
+  if (!q) { body.innerHTML = '<div class="sm-status">Please describe what you\'re in the mood for.</div>'; return; }
+
+  const activeBtns = document.querySelectorAll('#vibeTypeToggle .vm-type-btn.active');
+  const types      = [...activeBtns].map(b => b.dataset.vtype);
+  if (!types.length) { body.innerHTML = '<div class="sm-status">Select at least one media type.</div>'; return; }
+
+  body.innerHTML = `<div class="sm-status">
+    <div class="typing-dots" style="justify-content:center;margin-bottom:8px"><span></span><span></span><span></span></div>
+    Asking AI for vibe matches…
+  </div>`;
+
+  try {
+    const results = await apiPost('/api/vibe-search', { query: q, types });
+    renderVibeResults(results);
+  } catch (e) {
+    body.innerHTML = `<div class="sm-status">Something went wrong: ${esc(String(e))}</div>`;
+  }
+}
+
+function renderVibeResults(results) {
+  const body = document.getElementById('vibeBody');
+  if (!results.length) {
+    body.innerHTML = '<div class="sm-status">No matches found — try a different description.</div>';
+    return;
+  }
+
+  // Store in map
+  results.forEach(r => {
+    const key = `${r.media_type}_${r.external_id || r.tmdb_id || r.title}`;
+    tmdbResultMap[key] = r;
+  });
+
+  const cards = results.map(r => {
+    const key     = `${r.media_type}_${r.external_id || r.tmdb_id || r.title}`;
+    const already = inLibrary.has(key);
+
+    let posterSrc = BROKEN_POSTER_FULL;
+    if (r.poster_path) posterSrc = `https://image.tmdb.org/t/p/w500${r.poster_path}`;
+    else if (r.cover_url) posterSrc = r.cover_url;
+
+    const safeKey = key.replace(/'/g, "\\'");
+    const authorHtml = r.author ? `<div class="sm-card-author">${esc(r.author)}</div>` : '';
+    const btnId = `vbtn-${r.media_type}-${(r.external_id || r.tmdb_id || r.title).toString().replace(/[^a-z0-9]/gi,'_')}`;
+
+    return `<div class="sm-card ${already?'in-library':''}">
+      <img class="sm-poster" src="${posterSrc}" onerror="this.src='${BROKEN_POSTER_FULL}'" loading="lazy">
+      <div class="sm-card-body">
+        <div class="sm-card-title">${esc(r.title)}</div>
+        ${authorHtml}
+        <div class="sm-chips">
+          ${r.year?`<span class="sm-chip year">${esc(r.year)}</span>`:''}
+          <span class="sm-chip ${r.media_type}">${TYPE_EMOJI[r.media_type]} ${TYPE_LABEL[r.media_type]}</span>
+        </div>
+        <div class="sm-reason">${esc(r.reason)}</div>
+        <button class="sm-add-btn" id="${btnId}"
+          onclick="addVibeResult('${safeKey}')"
+          ${already?'disabled':''}>
+          ${already?'✓ In library':'+ Add to Watchlist'}
+        </button>
+      </div>
+    </div>`;
+  }).join('');
+
+  body.innerHTML = `<div class="sm-grid">${cards}</div>`;
+}
+
+async function addVibeResult(key) {
+  const r = tmdbResultMap[key];
+  if (!r || inLibrary.has(key)) return;
+
+  inLibrary.add(key);
+  const btnId = `vbtn-${r.media_type}-${(r.external_id || r.tmdb_id || r.title).toString().replace(/[^a-z0-9]/gi,'_')}`;
+  const btn   = document.getElementById(btnId);
+  if (btn) {
+    btn.textContent = '✓ In library';
+    btn.disabled    = true;
+    btn.closest('.sm-card').classList.add('in-library');
+  }
+
+  try {
+    await apiPost('/api/add', {
+      tmdb_id:     r.tmdb_id    || null,
+      external_id: r.external_id || String(r.tmdb_id || r.title || ''),
+      title:       r.title,
+      media_type:  r.media_type,
+      status:      'watchlist',
+      cover_url:   r.cover_url  || null,
+      author:      r.author     || null,
+      total_pages: r.total_pages || null,
+    });
+    await loadList();
+    showToast(`"${r.title}" added to Watchlist`);
+  } catch {
+    inLibrary.delete(key);
+    if (btn) {
+      btn.textContent = '+ Add to Watchlist';
+      btn.disabled    = false;
+      btn.closest('.sm-card').classList.remove('in-library');
+    }
+    showToast('Failed to add — please try again.');
+  }
 }
 
 // ─────────────────────────────────────────────
 // Toast
 // ─────────────────────────────────────────────
 let toastTimer;
+
+function dismissUndoToast() {
+  const el = document.getElementById('toast');
+  el.classList.remove('show', 'toast-action');
+  el.innerHTML = '';
+  el.onclick = null;
+  clearTimeout(toastTimer);
+}
+
+function showUndoToast(msg, onUndo) {
+  dismissUndoToast();
+  const el = document.getElementById('toast');
+  el.innerHTML = `<span>${esc(msg)}</span><button type="button" class="toast-undo-btn">Undo</button>`;
+  el.querySelector('.toast-undo-btn').onclick = (e) => {
+    e.stopPropagation();
+    onUndo();
+  };
+  el.classList.add('show', 'toast-action');
+}
+
 function showToast(msg) {
+  if (chatUndoState) return;
+  dismissUndoToast();
   const el = document.getElementById('toast');
   el.textContent = msg;
   el.classList.add('show');
