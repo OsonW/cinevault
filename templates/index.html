@@ -108,7 +108,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 input::-webkit-outer-spin-button,
 input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 
-/* ── Autocomplete dropdown (library-only, instant) ── */
+/* ── Autocomplete dropdown ────────────────────── */
 .search-dropdown {
   position: absolute;
   top: calc(100% + 4px);
@@ -228,7 +228,6 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 
 .sm-body { overflow-y: auto; flex: 1; padding: 20px; }
 
-/* section heading inside modal */
 .sm-section-label {
   font-size: 10px;
   letter-spacing: 0.08em;
@@ -238,7 +237,7 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   margin-bottom: 12px;
 }
 
-/* ── Library matches list (inside modal) ─────── */
+/* ── Library matches list ─────────────────────── */
 .sm-library-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 24px; }
 .sm-lib-row {
   display: flex;
@@ -284,9 +283,7 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   transform: translateY(-3px);
   box-shadow: 0 10px 28px rgba(0,0,0,0.45);
 }
-.sm-card.in-library {
-  border-color: var(--accent-dim);
-}
+.sm-card.in-library { border-color: var(--accent-dim); }
 
 .sm-poster {
   width: 100%;
@@ -294,16 +291,6 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   object-fit: cover;
   display: block;
   background: var(--subtle);
-}
-.sm-poster-placeholder {
-  width: 100%;
-  aspect-ratio: 2/3;
-  background: var(--subtle);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--muted);
-  font-size: 11px;
 }
 
 .sm-card-body { padding: 9px 10px 10px; flex: 1; display: flex; flex-direction: column; gap: 5px; }
@@ -327,8 +314,8 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   color: var(--muted);
   white-space: nowrap;
 }
-.sm-chip.year   { color: var(--text);    border-color: var(--border-md); }
-.sm-chip.type   { color: var(--accent);  border-color: var(--accent-dim); }
+.sm-chip.year { color: var(--text);   border-color: var(--border-md); }
+.sm-chip.type { color: var(--accent); border-color: var(--accent-dim); }
 
 .sm-overview {
   font-size: 11px;
@@ -355,8 +342,14 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   cursor: pointer;
   transition: all 0.15s;
 }
-.sm-add-btn:hover { border-color: var(--accent-dim); color: var(--accent); background: var(--accent-glow); }
-.sm-add-btn.added { border-color: var(--accent-dim); color: var(--accent); background: var(--accent-glow); cursor: default; }
+.sm-add-btn:hover:not(:disabled) { border-color: var(--accent-dim); color: var(--accent); background: var(--accent-glow); }
+.sm-add-btn:disabled {
+  border-color: var(--accent-dim);
+  color: var(--accent);
+  background: var(--accent-glow);
+  cursor: default;
+  opacity: 1; /* override browser-default faded disabled style */
+}
 
 /* Loading skeleton */
 .sm-skeleton {
@@ -542,7 +535,6 @@ body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); 
       <div class="search-anchor">
         <input type="text" id="searchInput" placeholder="Search movies & shows…"
                autocomplete="off" oninput="onSearchInput()" onkeydown="onSearchKey(event)">
-        <!-- instant library dropdown -->
         <div id="searchDropdown" class="search-dropdown"></div>
       </div>
       <button class="btn btn-accent" onclick="openModal()">Search</button>
@@ -573,7 +565,7 @@ body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); 
 
 </div>
 
-<!-- ── SEARCH MODAL ──────────────────────────── -->
+<!-- SEARCH MODAL -->
 <div class="search-modal-backdrop" id="searchModalBackdrop" onclick="onBackdropClick(event)">
   <div class="search-modal">
     <div class="sm-header">
@@ -598,11 +590,17 @@ let currentTab  = 'finished';
 let selectedId  = null;
 let currentSort = 'name';
 
-// Track which tmdb_ids are already in the library (for modal "Added" state)
+// Set of "mediaType_tmdbId" strings already in the library.
 // Rebuilt whenever allItems changes.
-const inLibrary = new Set(); // "movie_123" / "tv_456"
+const inLibrary = new Set();
 
-const aiCache = {}; // see caching strategy comment in loadAICard
+// Cache for TMDB result objects keyed by "mediaType_tmdbId".
+// Used by modal add handlers to retrieve title/type without embedding
+// raw strings in onclick attributes.
+const tmdbResultMap = {};
+
+// AI insight cache keyed by a string that encodes item id + context.
+const aiCache = {};
 
 const BROKEN_POSTER_FULL  = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 300'%3E%3Crect width='200' height='300' fill='%231c1c21'/%3E%3Ctext x='50%25' y='50%25' text-anchor='middle' fill='%233a3a44' font-size='12' dy='.3em'%3ENo poster%3C/text%3E%3C/svg%3E";
 const BROKEN_POSTER_BLANK = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 300'%3E%3Crect width='200' height='300' fill='%231c1c21'/%3E%3C/svg%3E";
@@ -646,27 +644,21 @@ async function apiPost(path, body) {
 // ─────────────────────────────────────────────
 // Tabs
 // ─────────────────────────────────────────────
+
+// pendingSelectId: if set, renderGrid will call selectItem on this id
+// after painting, then clear it. Replaces the old setTimeout hack.
+let pendingSelectId = null;
+
 function switchTab(tab, selectId = null) {
   currentTab = tab;
-  if (selectId === null) {
-    selectedId = null;
-  }
+  selectedId = null;
   if (currentSort === 'rating' && tab !== 'finished') currentSort = 'name';
   document.body.dataset.tab = tab;
   document.querySelectorAll('.tab').forEach(t =>
     t.classList.toggle('active', t.dataset.tab === tab)
   );
-  renderGrid();
-  if (selectId !== null) {
-    const itemExists = allItems.some(i => i.id === selectId && i.status === currentTab);
-    if (itemExists) {
-      selectItem(selectId);
-    } else {
-      autoSelectFirst();
-    }
-  } else {
-    autoSelectFirst();
-  }
+  pendingSelectId = selectId;
+  renderGrid(); // calls selectItem(pendingSelectId) at the end if set
 }
 
 function tabItems() { return allItems.filter(i => i.status === currentTab); }
@@ -684,7 +676,7 @@ function autoSelectFirst() {
   const items = sortedItems();
   if (items.length) selectItem(items[0].id);
   else document.getElementById('detailPanel').innerHTML =
-    '<div class="detail-empty"><p>Nothing here - add something!</p></div>';
+    '<div class="detail-empty"><p>Nothing here — add something!</p></div>';
 }
 
 // ─────────────────────────────────────────────
@@ -721,7 +713,10 @@ function renderGrid() {
 
   if (!items.length) {
     panel.innerHTML = statsHtml + toolbar +
-      '<div class="poster-grid"><div class="grid-empty"><span>🎬</span>Nothing here - add something!</div></div>';
+      '<div class="poster-grid"><div class="grid-empty"><span>🎬</span>Nothing here — add something!</div></div>';
+    // Resolve any pending selection even when list is empty (shows empty detail)
+    pendingSelectId = null;
+    autoSelectFirst();
     return;
   }
 
@@ -729,7 +724,7 @@ function renderGrid() {
     const stars = currentTab === 'finished'
       ? `<div class="poster-stars">${[1,2,3,4,5].map(s =>
           `<span class="pstar ${(item.rating||0)/2>=s?'lit':''}">★</span>`).join('')}</div>` : '';
-    return `<div class="poster-card ${selectedId===item.id?'selected':''}" id="pc-${item.id}" onclick="selectItem(${item.id})">
+    return `<div class="poster-card" id="pc-${item.id}" onclick="selectItem(${item.id})">
       <img src="/api/poster/${item.media_type}/${item.tmdb_id}" onerror="this.src='${BROKEN_POSTER_FULL}'">
       <div class="poster-info">
         <div class="poster-title">${esc(item.title)}</div>
@@ -739,6 +734,20 @@ function renderGrid() {
   }).join('');
 
   panel.innerHTML = statsHtml + toolbar + `<div class="poster-grid">${cards}</div>`;
+
+  // Resolve pending selection (from switchTab) or fall back to first item.
+  if (pendingSelectId !== null) {
+    const id = pendingSelectId;
+    pendingSelectId = null;
+    const exists = items.some(i => i.id === id);
+    if (exists) selectItem(id);
+    else autoSelectFirst();
+  } else if (selectedId !== null && items.some(i => i.id === selectedId)) {
+    // Re-highlight previously selected card after a re-render (e.g. sort change).
+    highlightCard(selectedId);
+  } else {
+    autoSelectFirst();
+  }
 }
 
 function setSort(s) { currentSort = s; renderGrid(); }
@@ -746,11 +755,15 @@ function setSort(s) { currentSort = s; renderGrid(); }
 // ─────────────────────────────────────────────
 // Detail panel
 // ─────────────────────────────────────────────
-function selectItem(id) {
-  selectedId = id;
+function highlightCard(id) {
   document.querySelectorAll('.poster-card').forEach(c =>
     c.classList.toggle('selected', c.id === 'pc-' + id)
   );
+}
+
+function selectItem(id) {
+  selectedId = id;
+  highlightCard(id);
   const item = allItems.find(i => i.id === id);
   if (item) renderDetail(item);
 }
@@ -833,20 +846,16 @@ function aiCacheKey(item) {
   if (item.status === 'watchlist') return `${item.id}_watchlist`;
   if (item.status === 'finished')  return `${item.id}_finished`;
   if (item.media_type === 'movie') return `${item.id}_watching_movie`;
-  return `${item.id}_watching_S${item.last_season || 0}E${item.last_episode || 0}`;
+  return `${item.id}_watching_S${item.last_season||0}E${item.last_episode||0}`;
 }
 
 async function loadAICard(item) {
-  const key  = aiCacheKey(item);
-  const thisItemId = item.id;
-  const thisItemStatus = item.status;
-  const card = document.getElementById('aiCard');
-  if (!card) return;
+  const key            = aiCacheKey(item);
+  const thisId         = item.id;
+  const thisStatus     = item.status;
 
   if (aiCache[key]) {
-    if (selectedId === thisItemId && item.status === thisItemStatus) {
-      renderAICard(card, aiCache[key], item.status, item.media_type);
-    }
+    if (selectedId === thisId) renderAICard(document.getElementById('aiCard'), aiCache[key], item.status, item.media_type);
     return;
   }
 
@@ -854,33 +863,24 @@ async function loadAICard(item) {
     const data    = await apiPost('/api/ai-card', { media_id: item.id });
     const content = data.content || data.error || '—';
     aiCache[key]  = content;
-    const live = document.getElementById('aiCard');
-    if (live && selectedId === thisItemId && item.status === thisItemStatus) renderAICard(live, content, item.status, item.media_type);
+    const card = document.getElementById('aiCard');
+    if (card && selectedId === thisId) renderAICard(card, content, thisStatus, item.media_type);
   } catch {
-    const live = document.getElementById('aiCard');
-    if (live && selectedId === thisItemId && item.status === thisItemStatus) renderAICard(live, 'Unable to load.', item.status, item.media_type);
+    const card = document.getElementById('aiCard');
+    if (card && selectedId === thisId) renderAICard(card, 'Unable to load.', thisStatus, item.media_type);
   }
 }
 
 function renderAICard(card, content, status, mediaType) {
   let title, sub;
   if (status === 'watchlist') {
-    title = '✦ Why watch it';
-    sub = 'spoiler-free pitch';
+    title = '✦ Why watch it'; sub = 'spoiler-free pitch';
   } else if (status === 'finished') {
-    title = '✦ You might also like';
-    sub = 'recommendations';
-  } else if (status === 'watching') {
-    if (mediaType === 'movie') {
-      title = '✦ What\'s Special';
-      sub = 'vibe & highlights';
-    } else {
-      title = '✦ So far';
-      sub = 'progress recap';
-    }
+    title = '✦ You might also like'; sub = 'recommendations';
+  } else if (mediaType === 'movie') {
+    title = "✦ What's Special"; sub = 'vibe & highlights';
   } else {
-    title = '✦ AI insight';
-    sub = '';
+    title = '✦ So far'; sub = 'progress recap';
   }
   card.innerHTML = `
     <div class="ai-card-label">${title}
@@ -897,8 +897,12 @@ async function askQuestion(mediaId) {
   input.value = '';
   answer.textContent = 'Thinking…';
   answer.classList.add('show');
-  const data = await apiPost('/api/ask', { media_id: mediaId, question: q });
-  answer.textContent = data.answer || data.error || '—';
+  try {
+    const data = await apiPost('/api/ask', { media_id: mediaId, question: q });
+    answer.textContent = data.answer || data.error || '—';
+  } catch {
+    answer.textContent = 'Failed to get an answer.';
+  }
 }
 
 // ─────────────────────────────────────────────
@@ -910,15 +914,16 @@ async function saveEpisode(id, field, rawValue) {
 
   const item = allItems.find(i => i.id === id);
   if (!item) return;
-  const oldSeason = item.last_season;
+  const oldSeason  = item.last_season;
   const oldEpisode = item.last_episode;
 
-  if (field === 'season')  item.last_season = value;
+  if (field === 'season')  item.last_season  = value;
   if (field === 'episode') item.last_episode = value;
 
   await apiPost('/api/add', { id, last_season: item.last_season, last_episode: item.last_episode });
 
-  if (item.last_episode !== oldEpisode || item.last_season !== oldSeason) {
+  if (item.last_season !== oldSeason || item.last_episode !== oldEpisode) {
+    // Invalidate AI cache for the old episode position.
     Object.keys(aiCache).forEach(k => {
       if (k.startsWith(`${id}_watching_`) && k !== `${id}_watching_movie`) delete aiCache[k];
     });
@@ -936,6 +941,7 @@ async function saveEpisode(id, field, rawValue) {
 async function saveField(id, field, value) {
   const item = allItems.find(i => i.id === id);
   if (item) item[field] = value;
+  // Send only the specific field that changed.
   await apiPost('/api/add', { id, [field]: value });
   if (field === 'rating') renderGrid();
 }
@@ -954,86 +960,80 @@ async function deleteItem(id) {
   Object.keys(aiCache).forEach(k => { if (k.startsWith(`${id}_`)) delete aiCache[k]; });
   rebuildLibrarySet();
   selectedId = null;
-  renderGrid();
-  autoSelectFirst();
+  renderGrid(); // autoSelectFirst runs inside renderGrid
   showToast('Removed from library');
 }
 
 // ─────────────────────────────────────────────
-// Search — inline dropdown (library + TMDB)
+// Search — inline dropdown
 // ─────────────────────────────────────────────
 let searchTimer;
 
 function onSearchKey(e) {
   if (e.key === 'Escape') { closeDropdown(); return; }
-  if (e.key === 'Enter')  { openModal(); return; }
+  if (e.key === 'Enter')  { openModal();     return; }
 }
 
 function onSearchInput() {
   clearTimeout(searchTimer);
   const q = document.getElementById('searchInput').value.trim();
   if (!q) { closeDropdown(); return; }
-
-  // Show suggestions (library + TMDB) with debounce
-  searchTimer = setTimeout(() => showDropdownSuggestions(q), 200);
+  // 400ms debounce — long enough to avoid firing on every character,
+  // short enough to feel responsive once the user pauses.
+  searchTimer = setTimeout(() => showDropdownSuggestions(q), 400);
 }
 
 async function showDropdownSuggestions(q) {
-  const lower = q.toLowerCase();
+  const lower          = q.toLowerCase();
   const libraryMatches = allItems.filter(i => i.title.toLowerCase().includes(lower)).slice(0, 4);
-  const dd = document.getElementById('searchDropdown');
-  
-  // Fetch TMDB results for dropdown (both movies and TV)
+  const dd             = document.getElementById('searchDropdown');
+
   const [movieRes, tvRes] = await Promise.all([
     fetch(`/api/search?q=${encodeURIComponent(q)}&type=movie`).then(r => r.json()).catch(() => []),
-    fetch(`/api/search?q=${encodeURIComponent(q)}&type=tv`).then(r => r.json()).catch(() => [])
+    fetch(`/api/search?q=${encodeURIComponent(q)}&type=tv`).then(r => r.json()).catch(() => []),
   ]);
-  
+
+  // Store results in the lookup map so add handlers can retrieve metadata safely.
+  [...movieRes, ...tvRes].forEach(r => { tmdbResultMap[`${r.media_type}_${r.tmdb_id}`] = r; });
+
   const tmdbMatches = [...movieRes, ...tvRes].slice(0, 5);
-  
-  if (!libraryMatches.length && !tmdbMatches.length) {
-    closeDropdown();
-    return;
-  }
-  
+
+  if (!libraryMatches.length && !tmdbMatches.length) { closeDropdown(); return; }
+
   let html = '';
-  
-  // Library section
+
   if (libraryMatches.length) {
-    html += `<div style="padding:6px 12px 4px; font-size:10px; color:var(--muted); letter-spacing:0.05em">IN YOUR LIBRARY</div>`;
+    html += `<div style="padding:6px 12px 4px;font-size:10px;color:var(--muted);letter-spacing:0.05em">IN YOUR LIBRARY</div>`;
     html += libraryMatches.map(i => {
-      const statusColor = i.status === 'watchlist' ? 'var(--blue)' : i.status === 'watching' ? 'var(--green)' : 'var(--purple)';
+      const statusColor = i.status==='watchlist'?'var(--blue)':i.status==='watching'?'var(--green)':'var(--purple)';
       return `<div class="sd-row" onclick="selectLibraryItem(${i.id})">
         <div>
           <div class="sd-title">${esc(i.title)}</div>
-          <div class="sd-sub">${i.media_type === 'tv' ? 'TV Show' : 'Movie'} · <span style="color:${statusColor}">${i.status}</span></div>
+          <div class="sd-sub">${i.media_type==='tv'?'TV Show':'Movie'} · <span style="color:${statusColor}">${i.status}</span></div>
         </div>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2">
-          <polyline points="9 18 15 12 9 6"/>
-        </svg>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
       </div>`;
     }).join('');
   }
-  
-  // TMDB section
+
   if (tmdbMatches.length) {
-    if (libraryMatches.length) {
-      html += `<div style="padding:6px 12px 4px; font-size:10px; color:var(--muted); letter-spacing:0.05em; border-top:1px solid var(--border); margin-top:4px">FROM TMDB</div>`;
-    } else {
-      html += `<div style="padding:6px 12px 4px; font-size:10px; color:var(--muted); letter-spacing:0.05em">FROM TMDB</div>`;
-    }
+    const sep = libraryMatches.length
+      ? `<div style="padding:6px 12px 4px;font-size:10px;color:var(--muted);letter-spacing:0.05em;border-top:1px solid var(--border);margin-top:4px">FROM TMDB</div>`
+      : `<div style="padding:6px 12px 4px;font-size:10px;color:var(--muted);letter-spacing:0.05em">FROM TMDB</div>`;
+    html += sep;
     html += tmdbMatches.map(r => {
-      const already = inLibrary.has(`${r.media_type}_${r.tmdb_id}`);
-      return `<div class="sd-row" onclick="addFromDropdown(${r.tmdb_id},'${esc(r.title).replace(/'/g, "\\'")}','${r.media_type}')">
+      const key     = `${r.media_type}_${r.tmdb_id}`;
+      const already = inLibrary.has(key);
+      return `<div class="sd-row" onclick="addFromDropdown('${key}')">
         <div>
-          <div class="sd-title">${esc(r.title)} <span style="color:var(--muted); font-size:11px">(${r.year || '?'})</span></div>
-          <div class="sd-sub">${r.media_type === 'tv' ? 'TV Show' : 'Movie'}</div>
+          <div class="sd-title">${esc(r.title)} <span style="color:var(--muted);font-size:11px">(${r.year||'?'})</span></div>
+          <div class="sd-sub">${r.media_type==='tv'?'TV Show':'Movie'}</div>
         </div>
-        <span style="font-size:11px; color:${already ? 'var(--green)' : 'var(--accent)'}">${already ? '✓ In library' : '+ Add'}</span>
+        <span style="font-size:11px;color:${already?'var(--green)':'var(--accent)'}">${already?'✓ In library':'+ Add'}</span>
       </div>`;
     }).join('');
   }
-  
+
   dd.innerHTML = html;
   dd.style.display = 'block';
 }
@@ -1049,23 +1049,29 @@ function selectLibraryItem(id) {
   closeDropdown();
   closeModal();
   document.getElementById('searchInput').value = '';
-  if (item.status !== currentTab) switchTab(item.status);
-  setTimeout(() => selectItem(id), 50);
+  if (item.status !== currentTab) {
+    switchTab(item.status, id);
+  } else {
+    selectItem(id);
+  }
 }
 
-async function addFromDropdown(tmdbId, title, type) {
-  await apiPost('/api/add', { tmdb_id: tmdbId, title, media_type: type, status: 'watchlist' });
-  await loadList(); // Refresh allItems + inLibrary
+async function addFromDropdown(key) {
+  const r = tmdbResultMap[key];
+  if (!r) return;
+  if (inLibrary.has(key)) {
+    // Already in library — just navigate to it.
+    const existing = allItems.find(i => i.media_type === r.media_type && i.tmdb_id === r.tmdb_id);
+    if (existing) selectLibraryItem(existing.id);
+    return;
+  }
+  await apiPost('/api/add', { tmdb_id: r.tmdb_id, title: r.title, media_type: r.media_type, status: 'watchlist' });
+  await loadList();
   closeDropdown();
   document.getElementById('searchInput').value = '';
-  showToast(`"${title}" added to Watchlist`);
-  
-  // If we're not already on watchlist tab, switch to it
-  if (currentTab !== 'watchlist') {
-    switchTab('watchlist');
-  } else {
-    renderGrid();
-  }
+  showToast(`"${r.title}" added to Watchlist`);
+  if (currentTab !== 'watchlist') switchTab('watchlist');
+  else renderGrid();
 }
 
 document.addEventListener('click', e => {
@@ -1099,27 +1105,25 @@ async function runModalSearch(q) {
   if (!q) return;
   lastModalQuery = q;
 
-  const smBody  = document.getElementById('smBody');
   const smTitle = document.getElementById('smTitle');
+  const smBody  = document.getElementById('smBody');
   smTitle.innerHTML = `Results for <em>${esc(q)}</em>`;
+  smBody.innerHTML  = renderSkeletons();
 
-  // Show skeletons immediately
-  smBody.innerHTML = renderSkeletons();
-
-  // Library matches (instant)
-  const lower   = q.toLowerCase();
+  const lower      = q.toLowerCase();
   const libMatches = allItems.filter(i => i.title.toLowerCase().includes(lower));
 
-  // Fetch both types in parallel
   const [movieData, tvData] = await Promise.all([
     fetch(`/api/search?q=${encodeURIComponent(q)}&type=movie`).then(r => r.json()).catch(() => []),
     fetch(`/api/search?q=${encodeURIComponent(q)}&type=tv`).then(r => r.json()).catch(() => []),
   ]);
 
-  // Guard: user may have typed a new query while this was in-flight
-  if (q !== lastModalQuery) return;
+  if (q !== lastModalQuery) return; // stale response
 
   const allResults = [...movieData, ...tvData];
+  // Store in lookup map for safe add-by-key.
+  allResults.forEach(r => { tmdbResultMap[`${r.media_type}_${r.tmdb_id}`] = r; });
+
   renderModalResults(libMatches, allResults, q);
 }
 
@@ -1129,16 +1133,14 @@ function renderSkeletons() {
 }
 
 function renderModalResults(libMatches, tmdbResults, q) {
-  const smBody = document.getElementById('smBody');
   let html = '';
 
-  // ── Library section ──────────────────────
   if (libMatches.length) {
     html += `<div class="sm-section-label">In your library</div>
       <div class="sm-library-list">`;
     html += libMatches.map(i => {
-      const statusColor = i.status==='watchlist'?'var(--blue)':i.status==='watching'?'var(--green)':'var(--purple)';
-      const borderColor = i.status==='watchlist'?'var(--blue-dim)':i.status==='watching'?'var(--green-dim)':'var(--purple-dim)';
+      const statusColor  = i.status==='watchlist'?'var(--blue)':i.status==='watching'?'var(--green)':'var(--purple)';
+      const borderColor  = i.status==='watchlist'?'var(--blue-dim)':i.status==='watching'?'var(--green-dim)':'var(--purple-dim)';
       return `<div class="sm-lib-row" onclick="selectLibraryItem(${i.id})">
         <div>
           <div class="sm-lib-title">${esc(i.title)}</div>
@@ -1150,7 +1152,6 @@ function renderModalResults(libMatches, tmdbResults, q) {
     html += `</div>`;
   }
 
-  // ── TMDB section ─────────────────────────
   if (tmdbResults.length) {
     html += `<div class="sm-section-label" style="margin-top:${libMatches.length?'8px':'0'}">Add from TMDB</div>
       <div class="sm-grid">`;
@@ -1170,44 +1171,57 @@ function renderSmCard(r) {
     ? `https://image.tmdb.org/t/p/w500${r.poster_path}`
     : BROKEN_POSTER_FULL;
 
-  // Chips
   const chips = [];
-  if (r.year)          chips.push(`<span class="sm-chip year">${esc(r.year)}</span>`);
-  chips.push(`<span class="sm-chip type">${r.media_type === 'tv' ? 'TV' : 'Movie'}</span>`);
+  if (r.year) chips.push(`<span class="sm-chip year">${esc(r.year)}</span>`);
+  chips.push(`<span class="sm-chip type">${r.media_type==='tv'?'TV':'Movie'}</span>`);
 
-  const safeTitle = esc(r.title).replace(/'/g, "\\'");
-
-  return `<div class="sm-card ${already ? 'in-library' : ''}">
+  return `<div class="sm-card ${already?'in-library':''}">
     <img class="sm-poster" src="${posterSrc}" onerror="this.src='${BROKEN_POSTER_FULL}'" loading="lazy">
     <div class="sm-card-body">
       <div class="sm-card-title">${esc(r.title)}</div>
       <div class="sm-chips">${chips.join('')}</div>
       ${r.overview ? `<div class="sm-overview">${esc(r.overview)}</div>` : ''}
-      <button class="sm-add-btn ${already ? 'added' : ''}" id="smbtn-${r.tmdb_id}-${r.media_type}"
-        onclick="${already ? '' : `addFromModal(${r.tmdb_id},'${safeTitle}','${r.media_type}')`}"
-        ${already ? 'disabled' : ''}>
-        ${already ? '✓ In library' : '+ Add to Watchlist'}
+      <button class="sm-add-btn" id="smbtn-${r.tmdb_id}-${r.media_type}"
+        onclick="addFromModal('${key}')"
+        ${already?'disabled':''}>
+        ${already?'✓ In library':'+ Add to Watchlist'}
       </button>
     </div>
   </div>`;
 }
 
-async function addFromModal(tmdbId, title, type) {
-  await apiPost('/api/add', { tmdb_id: tmdbId, title, media_type: type, status: 'watchlist' });
-  await loadList(); // refresh allItems + inLibrary
+async function addFromModal(key) {
+  const r = tmdbResultMap[key];
+  if (!r || inLibrary.has(key)) return;
 
-  // Update the button in-place without re-rendering the whole modal
-  const btn = document.getElementById(`smbtn-${tmdbId}-${type}`);
+  // Optimistically lock before any await so rapid clicks all hit the guard above.
+  inLibrary.add(key);
+  const btn = document.getElementById(`smbtn-${r.tmdb_id}-${r.media_type}`);
   if (btn) {
     btn.textContent = '✓ In library';
-    btn.classList.add('added');
-    btn.disabled = true;
-    btn.onclick = null;
+    btn.disabled    = true;
+    btn.onclick     = null;
     btn.closest('.sm-card').classList.add('in-library');
   }
 
+  try {
+    await apiPost('/api/add', { tmdb_id: r.tmdb_id, title: r.title, media_type: r.media_type, status: 'watchlist' });
+    await loadList(); // syncs allItems and rebuilds inLibrary from server truth
+  } catch (err) {
+    // Roll back the optimistic lock so the user can retry.
+    inLibrary.delete(key);
+    if (btn) {
+      btn.textContent = '+ Add to Watchlist';
+      btn.disabled    = false;
+      btn.onclick     = () => addFromModal(key);
+      btn.closest('.sm-card').classList.remove('in-library');
+    }
+    showToast('Failed to add — please try again.');
+    return;
+  }
+
   if (currentTab !== 'watchlist') switchTab('watchlist');
-  showToast(`"${title}" added to Watchlist`);
+  showToast(`"${r.title}" added to Watchlist`);
 }
 
 // ─────────────────────────────────────────────

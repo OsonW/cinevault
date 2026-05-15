@@ -14,19 +14,23 @@ def init_db():
         conn.execute("""
             CREATE TABLE IF NOT EXISTS media (
                 id             INTEGER PRIMARY KEY AUTOINCREMENT,
-                tmdb_id        INTEGER,
+                tmdb_id        INTEGER NOT NULL,
                 title          TEXT NOT NULL,
                 media_type     TEXT NOT NULL,
-                status         TEXT NOT NULL,
+                status         TEXT NOT NULL DEFAULT 'watchlist',
                 rating         REAL,
                 last_timestamp TEXT,
                 last_season    INTEGER,
                 last_episode   INTEGER,
                 notes          TEXT,
-                date_added     TEXT DEFAULT (date('now'))
+                date_added     TEXT DEFAULT (date('now')),
+                UNIQUE(tmdb_id, media_type)
             )
         """)
-        # Non-destructive migration for older databases
+        # Non-destructive migrations for older databases that predate the
+        # UNIQUE constraint or missing columns. The constraint itself can't
+        # be added retroactively via ALTER TABLE in SQLite, but new inserts
+        # will use INSERT OR IGNORE so duplicates are silently skipped.
         for col, defn in [
             ("date_added",   "TEXT DEFAULT (date('now'))"),
             ("last_season",  "INTEGER"),
@@ -60,27 +64,38 @@ def get_media_by_id(media_id: int):
 
 # ── Write ─────────────────────────────────────────
 
-def add_media_entry(tmdb_id, title, media_type, status="watchlist",
-                    rating=None, last_timestamp=None,
-                    last_season=None, last_episode=None,
-                    notes=None):
+def add_media_entry(tmdb_id, title, media_type, status="watchlist"):
+    """
+    Insert a new entry. Uses INSERT OR IGNORE so calling this with an already-
+    tracked (tmdb_id, media_type) pair is a safe no-op.
+    Returns the row id of the existing or newly-created row.
+    """
     with get_conn() as conn:
         conn.execute("""
-            INSERT INTO media
-                (tmdb_id, title, media_type, status, rating,
-                 last_timestamp, last_season, last_episode, notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (tmdb_id, title, media_type, status, rating,
-              last_timestamp, last_season, last_episode, notes))
+            INSERT OR IGNORE INTO media (tmdb_id, title, media_type, status)
+            VALUES (?, ?, ?, ?)
+        """, (tmdb_id, title, media_type, status))
+        row = conn.execute(
+            "SELECT id FROM media WHERE tmdb_id = ? AND media_type = ?",
+            (tmdb_id, media_type),
+        ).fetchone()
+    return row["id"] if row else None
+
+
+# Columns that callers are permitted to update.
+_UPDATABLE = frozenset({
+    "status", "rating", "last_timestamp",
+    "last_season", "last_episode", "notes",
+})
 
 
 def update_media_entry(media_id: int, **fields):
-    """Update only the fields explicitly provided (non-None)."""
-    allowed = {
-        "status", "rating", "last_timestamp",
-        "last_season", "last_episode", "notes",
-    }
-    updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
+    """
+    Update only the fields that were explicitly passed by the caller.
+    Falsy values (0, "", 0.0) are written — only keys absent from `fields`
+    are skipped.  Pass a key with value None to explicitly clear a field.
+    """
+    updates = {k: v for k, v in fields.items() if k in _UPDATABLE}
     if not updates:
         return
     clauses = ", ".join(f"{k} = ?" for k in updates)

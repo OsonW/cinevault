@@ -31,9 +31,9 @@ init_db()
 #  poster_cache : { "movie_123": (bytes, content_type) }
 #    - Populated on first request, evicted on item delete.
 #    - Grows with library size; fine for a personal app
-#      (~50KB/poster, so 200 titles ~ 10MB).
+#      (~50 KB/poster × 200 titles ≈ 10 MB).
 #
-#  search_cache : { "movie:query": [ ...results ] }
+#  search_cache : { "movie:query": [...results] }
 #    - Session-lived. Capped at 100 entries; oldest evicted first.
 #
 poster_cache: dict[str, tuple[bytes, str]] = {}
@@ -74,6 +74,7 @@ def search():
                     "year":        (r.release_date or "")[:4],
                     "media_type":  "movie",
                     "poster_path": getattr(r, "poster_path", None),
+                    "overview":    getattr(r, "overview", None),
                 }
                 for r in results if hasattr(r, "id")
             ]
@@ -86,6 +87,7 @@ def search():
                     "year":        (r.first_air_date or "")[:4],
                     "media_type":  "tv",
                     "poster_path": getattr(r, "poster_path", None),
+                    "overview":    getattr(r, "overview", None),
                 }
                 for r in results if hasattr(r, "id")
             ]
@@ -93,11 +95,12 @@ def search():
         print(f"Search error: {e}")
         items = []
 
-    search_cache[cache_key] = items[:10]
+    items = items[:10]
+    search_cache[cache_key] = items
     if len(search_cache) > 100:
         del search_cache[next(iter(search_cache))]
 
-    return jsonify(items[:10])
+    return jsonify(items)
 
 
 # ═══════════════════════════════════════════════════
@@ -117,19 +120,23 @@ def get_poster(media_type, tmdb_id):
         )
 
     endpoint = "movie" if media_type == "movie" else "tv"
-    meta_url  = f"https://api.themoviedb.org/3/{endpoint}/{tmdb_id}?api_key={tmdb.api_key}"
+    meta_url = (
+        f"https://api.themoviedb.org/3/{endpoint}/{tmdb_id}"
+        f"?api_key={tmdb.api_key}"
+    )
     try:
         meta = requests.get(meta_url, timeout=5).json()
         path = meta.get("poster_path")
         if not path:
             return "", 404
 
-        img_resp = requests.get(f"https://image.tmdb.org/t/p/w500{path}", timeout=10)
+        img_resp = requests.get(
+            f"https://image.tmdb.org/t/p/w500{path}", timeout=10
+        )
         img_resp.raise_for_status()
 
         content_type = img_resp.headers.get("Content-Type", "image/jpeg")
         img_bytes    = img_resp.content
-
         poster_cache[cache_key] = (img_bytes, content_type)
 
         return Response(
@@ -155,15 +162,13 @@ def add_media():
     data = request.json or {}
 
     if "id" in data:
-        update_media_entry(
-            data["id"],
-            status         = data.get("status"),
-            rating         = data.get("rating"),
-            last_timestamp = data.get("last_timestamp"),
-            last_season    = data.get("last_season"),
-            last_episode   = data.get("last_episode"),
-            notes          = data.get("notes"),
-        )
+        # Build kwargs only for keys the caller actually sent, so that
+        # falsy-but-valid values (rating=0, notes="") are written correctly
+        # and fields absent from the payload are never touched.
+        allowed = {"status", "rating", "last_timestamp",
+                   "last_season", "last_episode", "notes"}
+        fields  = {k: data[k] for k in allowed if k in data}
+        update_media_entry(data["id"], **fields)
     else:
         add_media_entry(
             tmdb_id    = data["tmdb_id"],
@@ -185,15 +190,11 @@ def delete_media(media_id):
 
 
 # ═══════════════════════════════════════════════════
-# AI
+# AI helpers
 # ═══════════════════════════════════════════════════
 
 def _progress_str(media: dict) -> str:
-    """
-    Build a readable progress string for AI prompts from
-    last_season (int) and last_episode (int).
-    Returns e.g. "Season 2, Episode 4" or "" if not set.
-    """
+    """Return e.g. 'Season 2, Episode 4' or '' if not set."""
     s = media.get("last_season")
     e = media.get("last_episode")
     if s and e:
@@ -202,6 +203,10 @@ def _progress_str(media: dict) -> str:
         return f"Season {s}"
     return ""
 
+
+# ═══════════════════════════════════════════════════
+# AI endpoints
+# ═══════════════════════════════════════════════════
 
 @app.route("/api/ask", methods=["POST"])
 def ask_ai():
@@ -222,23 +227,31 @@ def ask_ai():
     progress = _progress_str(media)
 
     if status == "watchlist":
-        spoiler_rule = "The user has NOT watched this yet. Give only premise/genre info — no plot, no twists, no deaths."
+        spoiler_rule = (
+            "The user has NOT watched this yet. "
+            "Give only premise/genre info — no plot, no twists, no deaths."
+        )
         progress_ctx = "not started"
     elif status == "watching":
         ep           = f"up to {progress}" if progress else "early on"
-        spoiler_rule = f"The user has only watched {ep}. Refuse to reveal ANYTHING after that point."
+        spoiler_rule = (
+            f"The user has only watched {ep}. "
+            "Refuse to reveal ANYTHING after that point."
+        )
         progress_ctx = ep
     else:
         spoiler_rule = "The user has finished this. Full discussion is fine."
         progress_ctx = "completed"
 
-    prompt = f"""You are an enthusiastic but careful movie/TV assistant.
-Title: "{title}" | Progress: {progress_ctx}
-Rule: {spoiler_rule}
-If the answer would spoil anything beyond their progress, reply ONLY: "That's past where you are — keep watching!"
-Otherwise answer in 2-4 sentences, conversationally and helpfully.
-
-Question: {question}"""
+    prompt = (
+        f'You are an enthusiastic but careful movie/TV assistant.\n'
+        f'Title: "{title}" | Progress: {progress_ctx}\n'
+        f'Rule: {spoiler_rule}\n'
+        f'If the answer would spoil anything beyond their progress, reply ONLY: '
+        f'"That\'s past where you are — keep watching!"\n'
+        f'Otherwise answer in 2-4 sentences, conversationally and helpfully.\n\n'
+        f'Question: {question}'
+    )
 
     try:
         resp = gemini.models.generate_content(model=GEMINI_MODEL, contents=prompt)
@@ -250,10 +263,10 @@ Question: {question}"""
 @app.route("/api/ai-card", methods=["POST"])
 def ai_card():
     """
-    Context-aware AI card per status:
-      watchlist -> spoiler-free pitch
-      watching  -> TV: recap up to current episode | movie: vibe/cast card
-      finished  -> 3 similar title recommendations
+    Context-aware AI insight card per status:
+      watchlist → spoiler-free pitch
+      watching  → TV: recap up to current episode | movie: vibe/cast card
+      finished  → 3 similar title recommendations
     """
     data     = request.json or {}
     media_id = data.get("media_id")
@@ -268,27 +281,34 @@ def ai_card():
     progress   = _progress_str(media)
 
     if status == "watchlist":
-        prompt = f"""Give a punchy 2-sentence spoiler-free pitch for "{title}" ({media_type}).
-Cover: genre/tone, what makes it worth watching, and 2 comparable titles.
-No plot details beyond the premise.
-Format: plain sentences, no markdown."""
-
+        prompt = (
+            f'Give a punchy 2-sentence spoiler-free pitch for "{title}" ({media_type}). '
+            f'Cover: genre/tone, what makes it worth watching, and 2 comparable titles. '
+            f'No plot details beyond the premise. '
+            f'Format: plain sentences, no markdown.'
+        )
     elif status == "watching":
         if media_type == "tv" and progress:
-            prompt = f"""The user is watching "{title}" and has reached {progress}.
-Write 2 sentences recapping story beats that happened BEFORE {progress} only.
-No spoilers for anything after that point.
-Format: plain sentences, no markdown."""
+            prompt = (
+                f'The user is watching "{title}" and has reached {progress}. '
+                f'Write 2 sentences recapping story beats that happened BEFORE {progress} only. '
+                f'No spoilers for anything after that point. '
+                f'Format: plain sentences, no markdown.'
+            )
         else:
-            prompt = f"""The user is currently watching "{title}".
-In 2 sentences, describe the overall tone, standout performances, and what makes this film special — without revealing plot details.
-Format: plain sentences, no markdown."""
-
+            prompt = (
+                f'The user is currently watching "{title}". '
+                f'In 2 sentences, describe the overall tone, standout performances, '
+                f'and what makes this film special — without revealing plot details. '
+                f'Format: plain sentences, no markdown.'
+            )
     else:  # finished
-        prompt = f"""The user just finished "{title}".
-Recommend exactly 3 similar titles they'd likely enjoy.
-Format each as: Title (Year) — one sentence why.
-No markdown, just plain text."""
+        prompt = (
+            f'The user just finished "{title}". '
+            f'Recommend exactly 3 similar titles they\'d likely enjoy. '
+            f'Format each as: Title (Year) — one sentence why. '
+            f'No markdown, just plain text.'
+        )
 
     try:
         resp = gemini.models.generate_content(model=GEMINI_MODEL, contents=prompt)
