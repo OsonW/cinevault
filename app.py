@@ -22,7 +22,7 @@ tv_api    = TV()
 
 # ── Gemini ────────────────────────────────────────
 gemini       = genai.Client()
-GEMINI_MODEL = "gemini-3.1-flash-lite"
+GEMINI_MODEL = "gemini-2.0-flash-lite"
 
 init_db()
 
@@ -183,8 +183,9 @@ def add_media():
 @app.route("/api/delete/<int:media_id>", methods=["DELETE"])
 def delete_media(media_id):
     item = get_media_by_id(media_id)
-    if item:
-        poster_cache.pop(f"{item['media_type']}_{item['tmdb_id']}", None)
+    if not item:
+        return jsonify({"status": "not_found"}), 404
+    poster_cache.pop(f"{item['media_type']}_{item['tmdb_id']}", None)
     delete_media_entry(media_id)
     return jsonify({"status": "deleted"})
 

@@ -892,16 +892,23 @@ function renderAICard(card, content, status, mediaType) {
 async function askQuestion(mediaId) {
   const input  = document.getElementById('qaInput');
   const answer = document.getElementById('qaAnswer');
+  const askBtn = input?.closest('.qa-wrap')?.querySelector('.btn-accent');
   const q = input.value.trim();
   if (!q) return;
-  input.value = '';
+
+  // Disable while in-flight so rapid submits don't produce out-of-order answers.
+  input.value  = '';
+  if (askBtn) askBtn.disabled = true;
   answer.textContent = 'Thinking…';
   answer.classList.add('show');
+
   try {
     const data = await apiPost('/api/ask', { media_id: mediaId, question: q });
     answer.textContent = data.answer || data.error || '—';
   } catch {
     answer.textContent = 'Failed to get an answer.';
+  } finally {
+    if (askBtn) askBtn.disabled = false;
   }
 }
 
@@ -940,8 +947,10 @@ async function saveEpisode(id, field, rawValue) {
 
 async function saveField(id, field, value) {
   const item = allItems.find(i => i.id === id);
+  // Skip the write if nothing changed — guards against redundant onblur fires
+  // on slow networks where a previous save is still in flight.
+  if (item && item[field] === value) return;
   if (item) item[field] = value;
-  // Send only the specific field that changed.
   await apiPost('/api/add', { id, [field]: value });
   if (field === 'rating') renderGrid();
 }
@@ -949,18 +958,44 @@ async function saveField(id, field, value) {
 async function changeStatus(id, status) {
   const item = allItems.find(i => i.id === id);
   if (!item || item.status === status) return;
+
+  // Update local state and disable all pills immediately so rapid clicks
+  // all hit the item.status === status guard above before the request resolves.
   item.status = status;
-  await apiPost('/api/add', { id, status });
+  const suffixMap = { watchlist: 'wl', watching: 'wa', finished: 'fi' };
+  document.querySelectorAll('.status-pill').forEach(p => {
+    const pillStatus = p.textContent.trim().toLowerCase();
+    p.className = 'status-pill' + (pillStatus === status ? ` active-${suffixMap[status]}` : '');
+    p.disabled  = true;
+  });
+
+  try {
+    await apiPost('/api/add', { id, status });
+  } catch {
+    showToast('Failed to update status — please try again.');
+    await loadList();
+    return;
+  }
   switchTab(status, id);
 }
 
 async function deleteItem(id) {
-  await fetch(`/api/delete/${id}`, { method: 'DELETE' });
+  // Disable immediately to prevent double-delete on rapid clicks.
+  const btn = document.querySelector('.delete-btn');
+  if (btn) btn.disabled = true;
+
+  try {
+    await fetch(`/api/delete/${id}`, { method: 'DELETE' });
+  } catch {
+    if (btn) btn.disabled = false;
+    showToast('Failed to remove — please try again.');
+    return;
+  }
   allItems = allItems.filter(i => i.id !== id);
   Object.keys(aiCache).forEach(k => { if (k.startsWith(`${id}_`)) delete aiCache[k]; });
   rebuildLibrarySet();
   selectedId = null;
-  renderGrid(); // autoSelectFirst runs inside renderGrid
+  renderGrid();
   showToast('Removed from library');
 }
 
@@ -984,6 +1019,9 @@ function onSearchInput() {
 }
 
 async function showDropdownSuggestions(q) {
+  // Bail early if the input has already changed since the debounce fired.
+  if (document.getElementById('searchInput').value.trim() !== q) return;
+
   const lower          = q.toLowerCase();
   const libraryMatches = allItems.filter(i => i.title.toLowerCase().includes(lower)).slice(0, 4);
   const dd             = document.getElementById('searchDropdown');
@@ -992,6 +1030,9 @@ async function showDropdownSuggestions(q) {
     fetch(`/api/search?q=${encodeURIComponent(q)}&type=movie`).then(r => r.json()).catch(() => []),
     fetch(`/api/search?q=${encodeURIComponent(q)}&type=tv`).then(r => r.json()).catch(() => []),
   ]);
+
+  // Discard stale results if the input changed while fetches were in-flight.
+  if (document.getElementById('searchInput').value.trim() !== q) return;
 
   // Store results in the lookup map so add handlers can retrieve metadata safely.
   [...movieRes, ...tvRes].forEach(r => { tmdbResultMap[`${r.media_type}_${r.tmdb_id}`] = r; });
@@ -1065,8 +1106,16 @@ async function addFromDropdown(key) {
     if (existing) selectLibraryItem(existing.id);
     return;
   }
-  await apiPost('/api/add', { tmdb_id: r.tmdb_id, title: r.title, media_type: r.media_type, status: 'watchlist' });
-  await loadList();
+  // Optimistic lock — prevents a second rapid click from firing a second request.
+  inLibrary.add(key);
+  try {
+    await apiPost('/api/add', { tmdb_id: r.tmdb_id, title: r.title, media_type: r.media_type, status: 'watchlist' });
+    await loadList();
+  } catch {
+    inLibrary.delete(key);
+    showToast('Failed to add — please try again.');
+    return;
+  }
   closeDropdown();
   document.getElementById('searchInput').value = '';
   showToast(`"${r.title}" added to Watchlist`);
@@ -1220,8 +1269,10 @@ async function addFromModal(key) {
     return;
   }
 
-  if (currentTab !== 'watchlist') switchTab('watchlist');
+  // loadList has completed and allItems is up-to-date before we switchTab,
+  // so the grid never flashes a stale "Nothing here" state.
   showToast(`"${r.title}" added to Watchlist`);
+  if (currentTab !== 'watchlist') switchTab('watchlist');
 }
 
 // ─────────────────────────────────────────────
