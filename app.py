@@ -22,7 +22,7 @@ tv_api    = TV()
 
 # ── Gemini ────────────────────────────────────────
 gemini       = genai.Client()
-GEMINI_MODEL = "gemini-2.0-flash-lite"
+GEMINI_MODEL = "gemini-3.1-flash-lite"
 
 init_db()
 
