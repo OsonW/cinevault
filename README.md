@@ -64,3 +64,4 @@ Navigate to http://127.0.0.1:5000/ on your browser. Enjoy!
 [ ] Add manga API  
 [ ] Gemini-powered "vibe search" for recommendations (based on mood/description)  
 [ ] UI overhaul, less 'claude slop'
+[ ] More AI integration
