@@ -2589,7 +2589,7 @@ function onSearchInput() {
   clearTimeout(searchTimer);
   const q = document.getElementById('searchInput').value.trim();
   if (!q) { closeDropdown(); return; }
-  searchTimer = setTimeout(() => showDropdownSuggestions(q), 400);
+  searchTimer = setTimeout(() => showDropdownSuggestions(q), 200);
 }
 
 async function showDropdownSuggestions(q) {
@@ -2933,7 +2933,6 @@ async function addFromModal(key) {
       (i.external_id === (r.external_id || String(r.tmdb_id || '')) || String(i.tmdb_id) === String(r.tmdb_id || ''))
     );
     showToast(`"${r.title}" added to Watchlist`);
-    closeModal();
     switchTab('watchlist', newItem ? newItem.id : null);
   } catch {
     inLibrary.delete(key);
@@ -3112,7 +3111,6 @@ async function addVibeResult(key) {
        String(i.tmdb_id) === String(r.tmdb_id || ''))
     );
     showToast(`"${r.title}" added to Watchlist`);
-    closeVibeModal();
     switchTab('watchlist', newItem ? newItem.id : null);
   } catch {
     inLibrary.delete(key);
