@@ -765,7 +765,7 @@ function renderDetail(item) {
       <div class="episode-row">
         <input type="number" placeholder="Season" min="1" value="${item.last_season||''}"
                onchange="saveEpisode(${item.id},'season',this.value)">
-        <input type="number" placeholder="Episode" min="1" value="${item.last_episode_num||''}"
+        <input type="number" placeholder="Episode" min="1" value="${item.last_episode||''}"
                onchange="saveEpisode(${item.id},'episode',this.value)">
       </div>
     </div>` : '';
@@ -824,7 +824,7 @@ function aiCacheKey(item) {
   if (item.status === 'watchlist') return `${item.id}_watchlist`;
   if (item.status === 'finished')  return `${item.id}_finished`;
   if (item.media_type === 'movie') return `${item.id}_watching_movie`;
-  return `${item.id}_watching_${item.last_episode || 'none'}`;
+  return `${item.id}_watching_S${item.last_season || 0}E${item.last_episode || 0}`;
 }
 
 async function loadAICard(item) {
@@ -902,14 +902,10 @@ async function saveEpisode(id, field, rawValue) {
   if (!item) return;
   const oldEpisode = item.last_episode;
 
-  if (field === 'season')  item.last_season      = value;
-  if (field === 'episode') item.last_episode_num = value;
+  if (field === 'season')  item.last_season = value;
+  if (field === 'episode') item.last_episode = value;
 
-  await apiPost('/api/add', { id, last_season: item.last_season, last_episode_num: item.last_episode_num });
-
-  if (item.last_season && item.last_episode_num) {
-    item.last_episode = `S${String(item.last_season).padStart(2,'0')}E${String(item.last_episode_num).padStart(2,'0')}`;
-  }
+  await apiPost('/api/add', { id, last_season: item.last_season, last_episode: item.last_episode });
 
   if (item.last_episode !== oldEpisode) {
     Object.keys(aiCache).forEach(k => {
@@ -1071,7 +1067,6 @@ document.addEventListener('click', e => {
 // Search modal
 // ─────────────────────────────────────────────
 let lastModalQuery = '';
-let modalSearchTimer;
 
 async function openModal() {
   const q = document.getElementById('searchInput').value.trim();
@@ -1137,7 +1132,7 @@ function renderModalResults(libMatches, tmdbResults, q) {
       return `<div class="sm-lib-row" onclick="selectLibraryItem(${i.id})">
         <div>
           <div class="sm-lib-title">${esc(i.title)}</div>
-          <div class="sm-lib-sub">${i.media_type==='tv'?'TV Show':'Movie'} · ${i.last_episode||''}</div>
+          <div class="sm-lib-sub">${i.last_season && i.last_episode ? `S${i.last_season} E${i.last_episode}` : ''}</div>
         </div>
         <span class="sm-lib-badge" style="color:${statusColor};border-color:${borderColor}">${i.status}</span>
       </div>`;
@@ -1208,14 +1203,6 @@ async function addFromModal(tmdbId, title, type) {
 
   if (currentTab !== 'watchlist') switchTab('watchlist');
   showToast(`"${title}" added to Watchlist`);
-}
-
-// Prime the server cache silently so the modal opens fast
-async function primeSearchCache(q) {
-  await Promise.all([
-    fetch(`/api/search?q=${encodeURIComponent(q)}&type=movie`).catch(() => {}),
-    fetch(`/api/search?q=${encodeURIComponent(q)}&type=tv`).catch(() => {}),
-  ]);
 }
 
 // ─────────────────────────────────────────────
