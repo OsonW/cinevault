@@ -58,7 +58,8 @@ python app.py
 5. 
 Navigate to http://127.0.0.1:5000/ on your browser. Enjoy!
 
-### Roadmap 
+### Roadmap
+
 [ ] Add IMDB ratings  
 [ ] Add manga API  
 [ ] Gemini-powered "vibe search" for recommendations (based on mood/description)  
