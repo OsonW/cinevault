@@ -41,6 +41,7 @@ memory_cache:   dict[str, str]                = {}
 
 MAX_CHAT_HISTORY = 12
 AI_CARD_TTL      = 600
+MANGADEX_HEADERS = {"User-Agent": "CineVault/1.0"}
 
 try:
     memory_cache = get_all_memory()
@@ -82,6 +83,29 @@ def _progress_str(media: dict) -> str:
             return f"Page {cp} of {tp}"
         if cp:
             return f"Page {cp}"
+    return ""
+
+
+def _mangadex_cover_url(manga_id: str, cover_file: str) -> str:
+    if not manga_id or not cover_file:
+        return ""
+    return f"https://uploads.mangadex.org/covers/{manga_id}/{cover_file}.512.jpg"
+
+
+def _fetch_mangadex_cover_url(manga_id: str) -> str:
+    if not manga_id:
+        return ""
+    resp = requests.get(
+        f"https://api.mangadex.org/manga/{manga_id}",
+        headers=MANGADEX_HEADERS,
+        params={"includes[]": ["cover_art"]},
+        timeout=8,
+    )
+    resp.raise_for_status()
+    for rel in resp.json().get("data", {}).get("relationships", []):
+        if rel.get("type") == "cover_art":
+            cover_file = rel.get("attributes", {}).get("fileName", "")
+            return _mangadex_cover_url(manga_id, cover_file)
     return ""
 
 
@@ -145,7 +169,7 @@ def search():
                     "tmdb_id":     r.id,
                     "external_id": str(r.id),
                     "title":       r.title,
-                    "year":        (r.release_date or "")[:4],
+                    "year":        (getattr(r, "release_date", "") or "")[:4],
                     "media_type":  "movie",
                     "poster_path": getattr(r, "poster_path", None),
                     "overview":    getattr(r, "overview", None),
@@ -160,7 +184,7 @@ def search():
                     "tmdb_id":     r.id,
                     "external_id": str(r.id),
                     "title":       r.name,
-                    "year":        (r.first_air_date or "")[:4],
+                    "year":        (getattr(r, "first_air_date", "") or "")[:4],
                     "media_type":  "tv",
                     "poster_path": getattr(r, "poster_path", None),
                     "overview":    getattr(r, "overview", None),
@@ -185,46 +209,121 @@ def search_books():
     query = request.args.get("q", "").strip()
     if not query:
         return jsonify([])
+    
+    # Trim the query if it's too short to avoid 422 errors
+    if len(query) < 2:
+        return jsonify([])
 
     cache_key = f"book:{query.lower()}"
     if cache_key in search_cache:
         return jsonify(search_cache[cache_key])
 
     try:
-        gbooks_key = os.getenv("GOOGLE_BOOKS_API_KEY", "")
-        params = {"q": query, "maxResults": 10, "printType": "books", "orderBy": "relevance"}
-        if gbooks_key:
-            params["key"] = gbooks_key
+        # Removing the 'fields' parameter to avoid 422 errors
         resp = requests.get(
-            "https://www.googleapis.com/books/v1/volumes",
-            params=params, timeout=8,
+            "https://openlibrary.org/search.json",
+            params={"q": query, "limit": 10},
+            timeout=8,
         )
         resp.raise_for_status()
-        data  = resp.json()
+        data = resp.json()
         items = []
-        for vol in data.get("items", []):
-            info  = vol.get("volumeInfo", {})
-            img   = info.get("imageLinks", {})
-            cover = (img.get("thumbnail") or img.get("smallThumbnail") or "").replace("http://", "https://")
-            items.append({
-                "external_id": vol["id"],
-                "title":       info.get("title", "Unknown"),
-                "author":      ", ".join(info.get("authors", [])),
-                "year":        (info.get("publishedDate") or "")[:4],
-                "media_type":  "book",
-                "cover_url":   cover,
-                "total_pages": info.get("pageCount"),
-                "overview":    info.get("description", ""),
-                "popularity":  0,
-            })
-    except Exception as e:
-        print(f"Books search error: {e}")
-        items = []
+        
+        for doc in data.get("docs", []):
+            cover_id = doc.get("cover_i")
+            cover_url = None
+            if cover_id:
+                cover_url = f"https://covers.openlibrary.org/b/id/{cover_id}-L.jpg"
+            
+            # Build author string safely
+            author_names = doc.get("author_name", [])
+            if isinstance(author_names, list):
+                author = ", ".join(author_names)
+            else:
+                author = str(author_names)
+            
+            year = doc.get("first_publish_year")
+            if not year:
+                # Try to get year from publish_date if first_publish_year is missing
+                pub_date = doc.get("publish_date")
+                if pub_date and len(str(pub_date)) >= 4:
+                    year = str(pub_date)[:4]
+                else:
+                    year = ""
 
-    search_cache[cache_key] = items
-    if len(search_cache) > 100:
-        del search_cache[next(iter(search_cache))]
-    return jsonify(items)
+            items.append({
+                "external_id": doc.get("key", "").replace("/works/", ""),
+                "title": doc.get("title", "Unknown"),
+                "author": author,
+                "year": str(year),
+                "media_type": "book",
+                "cover_url": cover_url,
+                "total_pages": doc.get("number_of_pages_median"),
+                "overview": "",
+                "popularity": doc.get("ratings_average", 0) or 0,
+            })
+        
+        search_cache[cache_key] = items
+        if len(search_cache) > 100:
+            del search_cache[next(iter(search_cache))]
+        return jsonify(items)
+        
+    except requests.exceptions.HTTPError as e:
+        print(f"Open Library HTTP error: {e}")
+        if e.response.status_code == 422:
+            print("   -> This is likely due to a malformed request. Try a longer search term.")
+        return jsonify([])
+    except Exception as e:
+        print(f"Open Library search error: {e}")
+        return jsonify([])
+
+
+@app.route("/api/book/isbn/<isbn>")
+def get_book_by_isbn(isbn):
+    """Get book details by ISBN"""
+    cache_key = f"isbn:{isbn}"
+    if cache_key in search_cache:
+        return jsonify(search_cache[cache_key])
+    
+    try:
+        resp = requests.get(f"https://openlibrary.org/isbn/{isbn}.json", timeout=8)
+        if resp.status_code != 200:
+            return jsonify({"error": "Not found"}), 404
+        
+        data = resp.json()
+        
+        work_key = data.get("works", [{}])[0].get("key")
+        description = ""
+        if work_key:
+            work_resp = requests.get(f"https://openlibrary.org{work_key}.json", timeout=8)
+            if work_resp.status_code == 200:
+                work_data = work_resp.json()
+                description = work_data.get("description", "")
+                if isinstance(description, dict):
+                    description = description.get("value", "")
+
+        cover_url = None
+        if data.get("covers"):
+            cover_id = data["covers"][0]
+            cover_url = f"https://covers.openlibrary.org/b/id/{cover_id}-L.jpg"
+        
+        result = {
+            "external_id": isbn,
+            "title": data.get("title", "Unknown"),
+            "author": ", ".join(data.get("authors", [])),
+            "year": str(data.get("publish_date", ""))[:4],
+            "media_type": "book",
+            "cover_url": cover_url,
+            "total_pages": data.get("number_of_pages"),
+            "overview": description[:500] if description else "",
+        }
+        
+        search_cache[cache_key] = result
+        return jsonify(result)
+        
+    except Exception as e:
+        print(f"ISBN lookup error: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/search/manga")
@@ -240,59 +339,70 @@ def search_manga():
     try:
         resp = requests.get(
             "https://api.mangadex.org/manga",
+            headers=MANGADEX_HEADERS,
             params={
-                "title":                            query,
-                "limit":                            10,
-                "includes[]":                       ["cover_art", "author"],
-                "availableTranslatedLanguage[]":    ["en"],
-                "order[followedCount]":             "desc",
+                "title": query,
+                "limit": 10,
+                "includes[]": ["cover_art", "author"],
+                "availableTranslatedLanguage[]": ["en"],
+                "order[relevance]": "desc",
             },
-            timeout=8,
+            timeout=10,
         )
-        resp.raise_for_status()
-        data  = resp.json()
+        if resp.status_code != 200:
+            return jsonify([])
+
+        data = resp.json()
         items = []
-        for m in data.get("data", []):
-            attrs = m.get("attributes", {})
-            title = (
-                attrs.get("title", {}).get("en")
-                or next(iter(attrs.get("title", {}).values()), "Unknown")
-            )
-            cover_url = ""
-            for rel in m.get("relationships", []):
+        for manga in data.get("data", []):
+            manga_id = manga["id"]
+            attrs = manga.get("attributes", {})
+
+            # Title
+            title_data = attrs.get("title", {})
+            title = title_data.get("en") or next(iter(title_data.values()), "Unknown")
+
+            # Cover file name
+            cover_file = None
+            for rel in manga.get("relationships", []):
                 if rel["type"] == "cover_art":
-                    fn = rel.get("attributes", {}).get("fileName", "")
-                    if fn:
-                        cover_url = f"https://uploads.mangadex.org/covers/{m['id']}/{fn}.256.jpg"
+                    cover_file = rel.get("attributes", {}).get("fileName", "")
                     break
+
+            cover_url = None
+            if cover_file:
+                cover_url = _mangadex_cover_url(manga_id, cover_file)
+
+            # Author
             author = ""
-            for rel in m.get("relationships", []):
+            for rel in manga.get("relationships", []):
                 if rel["type"] == "author":
                     author = rel.get("attributes", {}).get("name", "")
                     break
-            desc     = attrs.get("description", {})
+
+            # Description
+            desc = attrs.get("description", {})
             overview = desc.get("en") or next(iter(desc.values()), "")
+
             items.append({
-                "external_id":  m["id"],
-                "title":        title,
-                "author":       author,
-                "year":         str(attrs.get("year") or ""),
-                "media_type":   "manga",
-                "cover_url":    cover_url,
-                "overview":     overview[:300] if overview else "",
-                "last_volume":  attrs.get("lastVolume"),
-                "last_chapter": attrs.get("lastChapter"),
-                "popularity":   0,
+                "external_id": manga_id,
+                "title": title,
+                "author": author,
+                "year": str(attrs.get("year") or ""),
+                "media_type": "manga",
+                "cover_url": cover_url,
+                "overview": overview[:300] if overview else "",
+                "status": attrs.get("status"),
+                "popularity": 0,
             })
+
+        search_cache[cache_key] = items
+        return jsonify(items)
+
     except Exception as e:
         print(f"Manga search error: {e}")
-        items = []
-
-    search_cache[cache_key] = items
-    if len(search_cache) > 100:
-        del search_cache[next(iter(search_cache))]
-    return jsonify(items)
-
+        return jsonify([])
+    
 
 # ═══════════════════════════════════════════════════
 # Poster proxy
@@ -310,20 +420,73 @@ def get_poster(media_type, item_id):
             headers={"Cache-Control": "public, max-age=31536000, immutable"},
         )
 
-    if media_type in ("book", "manga"):
+    # Handle Books with Open Library API
+    if media_type == "book":
         with get_conn() as conn:
             row = conn.execute(
-                "SELECT cover_url FROM media WHERE external_id = ? AND media_type = ?",
+                "SELECT id, cover_url FROM media WHERE external_id = ? AND media_type = ?",
                 (item_id, media_type),
             ).fetchone()
         cover_url = row["cover_url"] if row and row["cover_url"] else ""
+        
+        if not cover_url:
+            # Try to fetch from Open Library by work ID
+            try:
+                resp = requests.get(
+                    f"https://openlibrary.org/works/{item_id}.json",
+                    timeout=5
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if data.get("covers"):
+                        cover_id = data["covers"][0]
+                        cover_url = f"https://covers.openlibrary.org/b/id/{cover_id}-L.jpg"
+            except Exception as e:
+                print(f"Open Library fetch error for {item_id}: {e}")
+        
         if not cover_url:
             return "", 404
+            
         try:
-            img_resp     = requests.get(cover_url, timeout=10)
+            img_resp = requests.get(cover_url, timeout=10)
             img_resp.raise_for_status()
             content_type = img_resp.headers.get("Content-Type", "image/jpeg")
-            img_bytes    = img_resp.content
+            img_bytes = img_resp.content
+            poster_cache[cache_key] = (img_bytes, content_type)
+            return Response(
+                img_bytes, mimetype=content_type,
+                headers={"Cache-Control": "public, max-age=86400"},
+            )
+        except Exception as e:
+            print(f"Book poster download error for {cover_url}: {e}")
+            return "", 404
+
+    # Handle Manga with MangaDex API
+    if media_type == "manga":
+        with get_conn() as conn:
+            row = conn.execute(
+                "SELECT id, cover_url FROM media WHERE external_id = ? AND media_type = ?",
+                (item_id, media_type),
+            ).fetchone()
+        cover_url = row["cover_url"] if row and row["cover_url"] else ""
+
+        # Fetch a missing cover URL from MangaDex.
+        if not cover_url:
+            try:
+                cover_url = _fetch_mangadex_cover_url(item_id)
+                if cover_url and row:
+                    update_media_entry(row["id"], cover_url=cover_url)
+            except Exception:
+                cover_url = ""
+
+        if not cover_url:
+            return "", 404
+
+        try:
+            img_resp = requests.get(cover_url, timeout=15, headers=MANGADEX_HEADERS)
+            img_resp.raise_for_status()
+            content_type = img_resp.headers.get("Content-Type", "image/jpeg")
+            img_bytes = img_resp.content
             poster_cache[cache_key] = (img_bytes, content_type)
             return Response(
                 img_bytes, mimetype=content_type,
@@ -332,6 +495,7 @@ def get_poster(media_type, item_id):
         except Exception:
             return "", 404
 
+    # Handle Movies and TV Shows with TMDB
     endpoint = "movie" if media_type == "movie" else "tv"
     meta_url = f"https://api.themoviedb.org/3/{endpoint}/{item_id}?api_key={tmdb.api_key}"
     try:
@@ -339,16 +503,17 @@ def get_poster(media_type, item_id):
         path = meta.get("poster_path")
         if not path:
             return "", 404
-        img_resp     = requests.get(f"https://image.tmdb.org/t/p/w500{path}", timeout=10)
+        img_resp = requests.get(f"https://image.tmdb.org/t/p/w500{path}", timeout=10)
         img_resp.raise_for_status()
         content_type = img_resp.headers.get("Content-Type", "image/jpeg")
-        img_bytes    = img_resp.content
+        img_bytes = img_resp.content
         poster_cache[cache_key] = (img_bytes, content_type)
         return Response(
             img_bytes, mimetype=content_type,
             headers={"Cache-Control": "public, max-age=31536000, immutable"},
         )
-    except Exception:
+    except Exception as e:
+        print(f"TMDB poster error for {media_type}/{item_id}: {e}")
         return "", 404
 
 
@@ -364,6 +529,7 @@ def list_media():
 @app.route("/api/add", methods=["POST"])
 def add_media():
     data = request.json or {}
+    
     if "id" in data:
         allowed = {
             "status", "rating", "last_timestamp",
@@ -376,16 +542,27 @@ def add_media():
         update_media_entry(data["id"], **fields)
         _invalidate_media_cache(data["id"])
     else:
+        cover_url = data.get("cover_url")
+        media_type = data.get("media_type")
+        external_id = data.get("external_id")
+        
+        if media_type == "manga" and not cover_url and external_id:
+            try:
+                cover_url = _fetch_mangadex_cover_url(external_id)
+            except Exception:
+                cover_url = None
+        
         add_media_entry(
             title       = data["title"],
-            media_type  = data["media_type"],
+            media_type  = media_type,
             status      = data.get("status", "watchlist"),
             tmdb_id     = data.get("tmdb_id"),
-            external_id = data.get("external_id"),
-            cover_url   = data.get("cover_url"),
+            external_id = external_id,
+            cover_url   = cover_url,
             author      = data.get("author"),
             total_pages = data.get("total_pages"),
         )
+    
     return jsonify({"status": "ok"})
 
 
@@ -577,50 +754,64 @@ def vibe_search():
                         if ry == year:
                             break
             elif mt == "book":
-                gbooks_key = os.getenv("GOOGLE_BOOKS_API_KEY", "")
-                params = {"q": title, "maxResults": 3}
-                if gbooks_key:
-                    params["key"] = gbooks_key
-                br = requests.get(
-                    "https://www.googleapis.com/books/v1/volumes",
-                    params=params, timeout=5,
-                ).json()
-                for vol in br.get("items", []):
-                    info        = vol.get("volumeInfo", {})
-                    img         = info.get("imageLinks", {})
-                    external_id = vol["id"]
-                    cover_url   = (img.get("thumbnail") or "").replace("http://", "https://")
-                    author      = ", ".join(info.get("authors", []))
-                    total_pages = info.get("pageCount")
-                    overview    = info.get("description", "")[:300]
-                    break
+                try:
+                    resp = requests.get(
+                        "https://openlibrary.org/search.json",
+                        params={"q": title, "limit": 1},
+                        timeout=5,
+                    )
+                    data = resp.json()
+                    for doc in data.get("docs", []):
+                        cover_id = doc.get("cover_i")
+                        if cover_id:
+                            cover_url = f"https://covers.openlibrary.org/b/id/{cover_id}-L.jpg"
+                        external_id = doc.get("key", "").replace("/works/", "")
+                        author = ", ".join(doc.get("author_name", []))
+                        total_pages = doc.get("number_of_pages_median")
+                        description = doc.get("first_sentence", [""])[0] if doc.get("first_sentence") else ""
+                        overview = description[:300] if description else ""
+                        break
+                except Exception as enrich_err:
+                    print(f"Book enrich error for {title}: {enrich_err}")
             elif mt == "manga":
-                mr = requests.get(
-                    "https://api.mangadex.org/manga",
-                    params={
-                        "title":                         title,
-                        "limit":                         3,
-                        "includes[]":                    ["cover_art", "author"],
-                        "availableTranslatedLanguage[]": ["en"],
-                    },
-                    timeout=5,
-                ).json()
-                for m in mr.get("data", []):
-                    attrs       = m.get("attributes", {})
-                    external_id = m["id"]
-                    for rel in m.get("relationships", []):
-                        if rel["type"] == "cover_art":
-                            fn = rel.get("attributes", {}).get("fileName", "")
-                            if fn:
-                                cover_url = f"https://uploads.mangadex.org/covers/{m['id']}/{fn}.256.jpg"
-                            break
-                    for rel in m.get("relationships", []):
-                        if rel["type"] == "author":
-                            author = rel.get("attributes", {}).get("name", "")
-                            break
-                    desc     = attrs.get("description", {})
-                    overview = (desc.get("en") or next(iter(desc.values()), ""))[:300]
-                    break
+                try:
+                    headers = {"User-Agent": "CineVault/1.0"}
+                    resp = requests.get(
+                        "https://api.mangadex.org/manga",
+                        headers=headers,
+                        params={
+                            "title": title,
+                            "limit": 1,
+                            "includes[]": ["cover_art", "author"],
+                            "availableTranslatedLanguage[]": ["en"],
+                        },
+                        timeout=5,
+                    )
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        if data.get("data"):
+                            m = data["data"][0]
+                            attrs = m.get("attributes", {})
+                            
+                            # Get cover URL
+                            for rel in m.get("relationships", []):
+                                if rel["type"] == "cover_art":
+                                    fn = rel.get("attributes", {}).get("fileName", "")
+                                    if fn:
+                                        cover_url = _mangadex_cover_url(m["id"], fn)
+                                    break
+                            
+                            external_id = m["id"]
+                            
+                            # Get author
+                            for rel in m.get("relationships", []):
+                                if rel["type"] == "author":
+                                    author = rel.get("attributes", {}).get("name", "")
+                                    break
+                            
+                            overview = attrs.get("description", {}).get("en", "")[:300]
+                except Exception as enrich_err:
+                    print(f"Manga enrich error for {title}: {enrich_err}")
         except Exception as enrich_err:
             print(f"Enrich error for {title}: {enrich_err}")
 
@@ -914,4 +1105,4 @@ def ask_ai():
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=True, use_reloader=True)

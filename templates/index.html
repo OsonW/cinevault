@@ -1306,12 +1306,30 @@ async function apiPost(path, body, timeoutMs = 60000) {
 }
 
 function posterUrl(item) {
-  if (item.media_type === 'book' || item.media_type === 'manga') {
-    const ext = item.external_id || '';
-    return ext ? `/api/poster/${item.media_type}/${encodeURIComponent(ext)}` : BROKEN_POSTER_FULL;
-  }
-  const id = item.tmdb_id || item.external_id || '';
-  return `/api/poster/${item.media_type}/${id}`;
+    if (item.media_type === 'book') {
+        if (item.cover_url) {
+            return item.cover_url;
+        }
+        const ext = item.external_id || '';
+        if (ext) {
+            return `/api/poster/${item.media_type}/${encodeURIComponent(ext)}`;
+        }
+        return BROKEN_POSTER_FULL;
+    }
+    
+    if (item.media_type === 'manga') {
+        const ext = item.external_id || '';
+        if (ext) {
+            return `/api/poster/${item.media_type}/${encodeURIComponent(ext)}`;
+        }
+        if (item.cover_url) {
+            return item.cover_url;
+        }
+        return BROKEN_POSTER_FULL;
+    }
+    
+    const id = item.tmdb_id || item.external_id || '';
+    return `/api/poster/${item.media_type}/${id}`;
 }
 
 // ─────────────────────────────────────────────
@@ -2740,7 +2758,9 @@ function renderSmCard(r) {
   const key      = `${r.media_type}_${r.external_id || r.tmdb_id}`;
   const already  = inLibrary.has(key);
   let posterSrc = BROKEN_POSTER_FULL;
-  if (r.poster_path) {
+  if (r.media_type === 'manga' && r.external_id) {
+    posterSrc = `/api/poster/manga/${encodeURIComponent(r.external_id)}`;
+  } else if (r.poster_path) {
     posterSrc = `https://image.tmdb.org/t/p/w500${r.poster_path}`;
   } else if (r.cover_url) {
     posterSrc = r.cover_url;
@@ -2916,7 +2936,8 @@ function renderVibeResults(results) {
     const key     = `${r.media_type}_${r.external_id || r.tmdb_id || r.title}`;
     const already = inLibrary.has(key);
     let posterSrc = BROKEN_POSTER_FULL;
-    if (r.poster_path) posterSrc = `https://image.tmdb.org/t/p/w500${r.poster_path}`;
+    if (r.media_type === 'manga' && r.external_id) posterSrc = `/api/poster/manga/${encodeURIComponent(r.external_id)}`;
+    else if (r.poster_path) posterSrc = `https://image.tmdb.org/t/p/w500${r.poster_path}`;
     else if (r.cover_url) posterSrc = r.cover_url;
     const safeKey = key.replace(/'/g, "\\'");
     const authorHtml = r.author ? `<div class="sm-card-author">${esc(r.author)}</div>` : '';
