@@ -1306,30 +1306,12 @@ async function apiPost(path, body, timeoutMs = 60000) {
 }
 
 function posterUrl(item) {
-    if (item.media_type === 'book') {
-        if (item.cover_url) {
-            return item.cover_url;
-        }
-        const ext = item.external_id || '';
-        if (ext) {
-            return `/api/poster/${item.media_type}/${encodeURIComponent(ext)}`;
-        }
-        return BROKEN_POSTER_FULL;
-    }
-    
-    if (item.media_type === 'manga') {
-        const ext = item.external_id || '';
-        if (ext) {
-            return `/api/poster/${item.media_type}/${encodeURIComponent(ext)}`;
-        }
-        if (item.cover_url) {
-            return item.cover_url;
-        }
-        return BROKEN_POSTER_FULL;
-    }
-    
-    const id = item.tmdb_id || item.external_id || '';
-    return `/api/poster/${item.media_type}/${id}`;
+  if (item.media_type === 'book' || item.media_type === 'manga') {
+    const ext = item.external_id || '';
+    return ext ? `/api/poster/${item.media_type}/${encodeURIComponent(ext)}` : BROKEN_POSTER_FULL;
+  }
+  const id = item.tmdb_id || item.external_id || '';
+  return `/api/poster/${item.media_type}/${id}`;
 }
 
 // ─────────────────────────────────────────────
