@@ -13,7 +13,6 @@ def get_conn():
 
 def init_db():
     with get_conn() as conn:
-        # ── Core media table ──────────────────────────────────────────────
         conn.execute("""
             CREATE TABLE IF NOT EXISTS media (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -38,7 +37,6 @@ def init_db():
             )
         """)
 
-        # ── Chat sessions with CASCADE delete ────────────────────────────
         conn.execute("""
             CREATE TABLE IF NOT EXISTS chats (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -50,7 +48,6 @@ def init_db():
             )
         """)
 
-        # ── Chat messages ─────────────────────────────────────────────────
         conn.execute("""
             CREATE TABLE IF NOT EXISTS chat_messages (
                 id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -61,7 +58,6 @@ def init_db():
             )
         """)
 
-        # ── User memory ───────────────────────────────────────────────────
         conn.execute("""
             CREATE TABLE IF NOT EXISTS user_memory (
                 id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -137,9 +133,7 @@ def update_media_entry(media_id: int, **fields):
 
 def delete_media_entry(media_id: int):
     with get_conn() as conn:
-        # First delete all chats linked to this media
         conn.execute("DELETE FROM chats WHERE media_id = ?", (media_id,))
-        # Then delete the media entry
         conn.execute("DELETE FROM media WHERE id = ?", (media_id,))
 
 
@@ -151,9 +145,9 @@ def get_all_chats():
     with get_conn() as conn:
         rows = conn.execute("""
             SELECT c.*,
-                   m.title      AS media_title,
-                   m.media_type AS media_media_type,
-                   m.cover_url  AS media_cover_url,
+                   m.title       AS media_title,
+                   m.media_type  AS media_media_type,
+                   m.cover_url   AS media_cover_url,
                    m.external_id AS media_external_id
             FROM chats c
             LEFT JOIN media m ON m.id = c.media_id

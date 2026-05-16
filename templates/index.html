@@ -87,7 +87,6 @@ body {
 .logo em { color: var(--accent); font-style: italic; }
 
 /* ── Search area ──────────────────────────────── */
-/* FIX #1: type buttons now live AFTER the caret, outside search-wrap */
 .search-wrap { display: flex; gap: 0; flex: 1; max-width: 640px; position: relative; }
 .search-anchor { position: relative; flex: 1; display: flex; }
 .search-anchor input {
@@ -128,7 +127,6 @@ body {
 }
 .btn-search-caret:hover { background: #7c5ef0; }
 
-/* FIX #1: Type buttons now sit to the right of the caret, outside search-wrap */
 .search-type-btns {
   display: flex;
   gap: 4px;
@@ -722,22 +720,6 @@ input[type="range"]::-webkit-slider-thumb {
 }
 .ai-card-body { color: #c8c4be; }
 
-/* Deep think button */
-.deep-think-row {
-  display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap;
-}
-.deep-think-row .open-chat-btn { flex: 1; justify-content: center; min-width: 140px; }
-.deep-btn {
-  display: flex; align-items: center; gap: 6px;
-  padding: 6px 12px;
-  border-radius: var(--radius); border: 1px solid rgba(167,139,250,0.3);
-  background: rgba(167,139,250,0.06); color: var(--accent);
-  font-size: 12px; font-family: 'DM Sans', sans-serif; cursor: pointer;
-  transition: all 0.15s;
-}
-.deep-btn:hover { border-color: var(--accent); background: var(--accent-glow); }
-.deep-btn:disabled { opacity: 0.5; cursor: default; }
-.deep-btn-label { font-size: 10px; color: var(--muted); flex: 1; }
 
 .open-chat-btn {
   display: flex; align-items: center; gap: 5px;
@@ -932,18 +914,6 @@ body[data-tab="chats"] .detail-body { display: none !important; }
   margin-top: 6px;
 }
 .chat-msg-footer .chat-msg-time { margin-top: 0; }
-.extended-insight-label {
-  font-size: 9px;
-  line-height: 1;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--purple);
-  border: 1px solid var(--purple-dim);
-  background: var(--purple-glow);
-  border-radius: 99px;
-  padding: 4px 7px;
-  white-space: nowrap;
-}
 
 /* Chat input */
 .chat-input-area {
@@ -1156,7 +1126,6 @@ body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); 
       </div>
     </div>
 
-    <!-- FIX #1: Type buttons moved here, outside search-wrap, movie active by default -->
     <div class="search-type-btns" id="searchTypeBtns">
       <button class="search-type-btn active" data-stype="movie" onclick="toggleSearchType('movie')">🎬</button>
       <button class="search-type-btn" data-stype="tv"    onclick="toggleSearchType('tv')">📺</button>
@@ -1260,12 +1229,7 @@ let chatSendPending = false;
 let mediaUndoState = null;
 let qaAutoChat   = null;
 let pendingSelectId = null;
-let pendingDeepThinkMedia = new Set();
-
-// FIX #1: Movie is active by default (single selection)
 let searchTypeActive = new Set(['movie']); // tracks which type buttons are active
-
-// FIX #4: Track AI-suggested types for modal (all active, multi-selectable)
 let modalActiveTypes = new Set(['movie', 'tv', 'book', 'manga']);
 let aiSuggestedTypes = null; // null = no AI suggestion yet
 
@@ -1313,10 +1277,6 @@ async function loadChats(render = true) {
   allChats = await res.json();
   if (!render) return;
   if (currentTab === 'chats') renderChatsTab();
-  else if (selectedId) {
-    const item = allItems.find(i => i.id === selectedId);
-    if (item) renderMediaChatRow(item);
-  }
 }
 
 function rebuildLibrarySet() {
@@ -1380,8 +1340,6 @@ function setSearchMode(mode) {
     typeBtns.classList.remove('hidden');
   }
 }
-
-// FIX #1: Toggle individual type buttons (each toggles on/off independently)
 // Active set represents which types to search
 function toggleSearchType(type) {
   const btn = document.querySelector(`.search-type-btn[data-stype="${type}"]`);
@@ -1630,7 +1588,6 @@ function renderDetail(item) {
         <div class="ai-card-label">✦ AI insight</div>
         <div class="ai-card-body" style="color:var(--muted);font-style:italic">Loading…</div>
       </div>
-      <div class="deep-think-row" id="mediaChatRow"></div>
       <div class="qa-wrap">
         <div class="ai-card-label" style="margin-bottom:8px">✦ Ask anything
           <span style="color:var(--muted);font-weight:300;font-size:10px;text-transform:none;letter-spacing:0">(spoiler-aware)</span>
@@ -1648,7 +1605,6 @@ function renderDetail(item) {
     </div>`;
 
   loadAICard(item);
-  renderMediaChatRow(item);
 }
 
 // ─────────────────────────────────────────────
@@ -1801,13 +1757,6 @@ function renderAICard(card, content, status, mediaType) {
     <div class="ai-card-body">${formatAI(esc(content))}</div>`;
 }
 
-// Media-linked chat
-function getChatForMedia(mediaId) {
-  const id = Number(mediaId);
-  if (!id) return null;
-  return allChats.find(c => c.media_id != null && Number(c.media_id) === id);
-}
-
 function chatDisplayParts(c) {
   const mediaTitle = c.media_title
     || (c.media_id ? allItems.find(i => i.id === c.media_id)?.title : '')
@@ -1840,74 +1789,6 @@ function chatMatchesMovieFilter(c) {
   return hay.includes(chatMovieFilter);
 }
 
-function renderMediaChatRow(item) {
-  const row = document.getElementById('mediaChatRow');
-  if (!row) return;
-  const existing = getChatForMedia(item.id);
-  const isPending = pendingDeepThinkMedia.has(item.id);
-
-  if (existing) {
-    row.innerHTML = `
-      <button type="button" class="open-chat-btn" onclick="openMediaChat(${item.id})">💬 Open chat</button>
-      <span class="deep-btn-label">Continue your conversation</span>`;
-  } else if (isPending) {
-    row.innerHTML = `
-      <button type="button" class="deep-btn" disabled style="opacity:0.6;cursor:default">🔮 Thinking…</button>
-      <span class="deep-btn-label">Creating chat…</span>`;
-  } else {
-    row.innerHTML = `
-      <button type="button" class="deep-btn" id="deepBtn" onclick="doDeepThink(${item.id})">🔮 Deep Think</button>
-      <span class="deep-btn-label">Expand insight & start a chat</span>`;
-  }
-}
-
-async function doDeepThink(mediaId) {
-  // If chat already exists, just open it
-  if (getChatForMedia(mediaId)) {
-    openMediaChat(mediaId);
-    return;
-  }
-  // If a deep think is already in progress for this media, do nothing
-  if (pendingDeepThinkMedia.has(mediaId)) return;
-
-  const btn = document.getElementById('deepBtn');
-  if (!btn) return;
-  btn.disabled = true;
-  btn.textContent = '🔮 Thinking…';
-  pendingDeepThinkMedia.add(mediaId);
-
-  try {
-    const data = await apiPost('/api/ai-card', { media_id: mediaId, deep: true });
-    const content = data.content || data.error || '—';
-    const item = allItems.find(i => i.id === mediaId);
-    if (item) {
-      const key = aiCacheKey(item);
-      aiCache[key] = content;
-      const card = document.getElementById('aiCard');
-      if (card) renderAICard(card, content, item.status, item.media_type);
-    }
-    if (!data.chat_id) throw new Error('Deep Think did not create a chat');
-    await loadChats();
-    // Re-render the media chat row if this media is still selected
-    if (item && selectedId === mediaId) renderMediaChatRow(item);
-    showToast('Deep insight ready — open chat to continue');
-  } catch (err) {
-    const timedOut = err && err.name === 'AbortError';
-    showToast(timedOut ? 'Deep Think timed out — please try again.' : 'Deep Think failed — please try again.');
-    // Re-render to restore the button (chat doesn't exist)
-    const item = allItems.find(i => i.id === mediaId);
-    if (item && selectedId === mediaId) renderMediaChatRow(item);
-  } finally {
-    pendingDeepThinkMedia.delete(mediaId);
-  }
-}
-
-function openMediaChat(mediaId) {
-  const chat = getChatForMedia(mediaId);
-  if (!chat) return;
-  switchTab('chats', chat.id);
-}
-
 // ─────────────────────────────────────────────
 // Quick Q&A
 // ─────────────────────────────────────────────
@@ -1932,8 +1813,6 @@ async function askQuestion(mediaId) {
     if (data.chat_id) {
       qaAutoChat = data.chat_id;
       await loadChats();
-      const mediaItem = allItems.find(i => i.id === mediaId);
-      if (mediaItem && selectedId === mediaId) renderMediaChatRow(mediaItem);
       if (nudge) nudge.classList.add('show');
     }
   } catch {
@@ -2217,8 +2096,6 @@ function renderChatListItem(c) {
   const tag     = c.context_tag || '';
   const tagColor = tag === 'watchlist' ? 'var(--blue)' : tag === 'watching' ? 'var(--green)' : tag === 'finished' ? 'var(--purple)' : 'var(--muted)';
   const tagBorderColor = tag === 'watchlist' ? 'var(--blue-dim)' : tag === 'watching' ? 'var(--green-dim)' : tag === 'finished' ? 'var(--purple-dim)' : 'var(--border)';
-
-  // FIX #2: Only show S/E progress in chat list for "watching" TV, not "finished"
   let progressStr = '';
   if (c.media_id) {
     const media = allItems.find(i => Number(i.id) === Number(c.media_id));
@@ -2270,10 +2147,8 @@ async function selectChat(chatId) {
   if (activeChatId !== chatId) return;
   const msgs = data.messages || [];
   const msgsHtml = msgs.length
-    ? msgs.map((m, idx) => renderChatMsg(m, idx, data)).join('')
+    ? msgs.map(m => renderChatMsg(m)).join('')
     : '<div style="color:var(--muted);font-size:12px;text-align:center;padding:20px">Start the conversation below.</div>';
-
-  // FIX #2: Only show TV progress widget for "watching" status
   let tvWidget = '';
   if (preview && preview.media_id) {
     const media = allItems.find(i => i.id === preview.media_id);
@@ -2289,16 +2164,11 @@ async function selectChat(chatId) {
   }
 }
 
-function renderChatMsg(m, idx = 0, chat = null) {
+function renderChatMsg(m) {
   const t = (m.created_at || '').replace('T', ' ').slice(11, 16);
-  const isExtendedInsight = chat
-    && chat.title === 'Deep Dive'
-    && idx === 0
-    && m.role === 'assistant';
-  const label = isExtendedInsight ? '<span class="extended-insight-label">Extended insight</span>' : '<span></span>';
   return `<div class="chat-msg ${m.role}" style="${m.role==='user'?'align-self:flex-end':'align-self:flex-start'}">
     ${formatAI(esc(m.content))}
-    <div class="chat-msg-footer">${label}<div class="chat-msg-time">${t}</div></div>
+    <div class="chat-msg-footer"><div class="chat-msg-time">${t}</div></div>
   </div>`;
 }
 
@@ -2465,10 +2335,6 @@ function undoChatDelete() {
   allChats.splice(Math.min(chatIndex, allChats.length), 0, chat);
   renderChatsTab();
   selectChat(chatId);
-  if (chat.media_id && selectedId === chat.media_id) {
-    const mediaItem = allItems.find(i => i.id === chat.media_id);
-    if (mediaItem) renderMediaChatRow(mediaItem);
-  }
 }
 
 async function deleteChatItem(e, chatId) {
@@ -2481,10 +2347,6 @@ async function deleteChatItem(e, chatId) {
   allChats = allChats.filter(c => c.id !== chatId);
   if (activeChatId === chatId) activeChatId = null;
   renderChatsTab();
-  if (mediaId && selectedId === mediaId) {
-    const mediaItem = allItems.find(i => i.id === mediaId);
-    if (mediaItem) renderMediaChatRow(mediaItem);
-  }
   chatUndoState = {
     chatId,
     chat,
@@ -2668,8 +2530,6 @@ function selectLibraryItem(id) {
     selectItem(id);
   }
 }
-
-// FIX #3: After adding from dropdown, navigate to watchlist and select the new item
 async function addFromDropdown(key) {
   const r = tmdbResultMap[key];
   if (!r) return;
@@ -2691,7 +2551,6 @@ async function addFromDropdown(key) {
       total_pages: r.total_pages || null,
     });
     await loadList();
-    // FIX #3: Find the new item by external_id and select it
     const newItem = allItems.find(i =>
       i.media_type === r.media_type &&
       (i.external_id === (r.external_id || String(r.tmdb_id || '')) || String(i.tmdb_id) === String(r.tmdb_id || ''))
@@ -2708,7 +2567,6 @@ async function addFromDropdown(key) {
 }
 
 // ─────────────────────────────────────────────
-// Standard Search Modal — type filters (FIX #4)
 // ─────────────────────────────────────────────
 
 // User can always toggle modal type pills (no locking)
@@ -2907,8 +2765,6 @@ function renderSmCard(r) {
     </div>
   </div>`;
 }
-
-// FIX #3: After adding from modal, navigate to watchlist and select new item
 async function addFromModal(key) {
   const r = tmdbResultMap[key];
   if (!r || inLibrary.has(key)) return;
@@ -2933,7 +2789,6 @@ async function addFromModal(key) {
       total_pages: r.total_pages || null,
     });
     await loadList();
-    // FIX #3: Find and select the newly added item
     const newItem = allItems.find(i =>
       i.media_type === r.media_type &&
       (i.external_id === (r.external_id || String(r.tmdb_id || '')) || String(i.tmdb_id) === String(r.tmdb_id || ''))
@@ -3086,8 +2941,6 @@ function renderVibeResults(results) {
   }).join('');
   body.innerHTML = `<div class="sm-grid">${cards}</div>`;
 }
-
-// FIX #3: Vibe add also selects new item
 async function addVibeResult(key) {
   const r = tmdbResultMap[key];
   if (!r || inLibrary.has(key)) return;

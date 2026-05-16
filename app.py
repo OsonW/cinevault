@@ -22,22 +22,22 @@ load_dotenv()
 
 app = Flask(__name__)
 
-tmdb       = TMDb()
-tmdb.api_key = os.getenv("TMDB_API_KEY")
-movie_api  = Movie()
-tv_api     = TV()
+tmdb          = TMDb()
+tmdb.api_key  = os.getenv("TMDB_API_KEY")
+movie_api     = Movie()
+tv_api        = TV()
 
-gemini       = genai.Client()
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
+gemini        = genai.Client()
+GEMINI_MODEL  = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
 
 init_db()
 
-# ── In‑memory caches ────────────────────────────────
-poster_cache: dict[str, tuple[bytes, str]] = {}
-search_cache: dict[str, list]              = {}
-media_cache:  dict[int, dict]             = {}
-memory_cache: dict[str, str]              = {}
-ai_card_cache: dict[str, tuple[str, float]] = {}  # (content, expiry)
+# ── In-memory caches ─────────────────────────────
+poster_cache:   dict[str, tuple[bytes, str]]  = {}
+search_cache:   dict[str, list]               = {}
+media_cache:    dict[int, dict]               = {}
+ai_card_cache:  dict[str, tuple[str, float]]  = {}  # (content, expiry)
+memory_cache:   dict[str, str]                = {}
 
 MAX_CHAT_HISTORY = 12
 AI_CARD_TTL      = 600
@@ -50,8 +50,7 @@ except Exception:
 
 def _invalidate_media_cache(media_id: int):
     media_cache.pop(media_id, None)
-    to_delete = [k for k in ai_card_cache if k.startswith(f"{media_id}_")]
-    for k in to_delete:
+    for k in [k for k in ai_card_cache if k.startswith(f"{media_id}_")]:
         del ai_card_cache[k]
 
 
@@ -113,6 +112,11 @@ def _iter_gemini_response_tokens(contents):
         yield text
 
 
+def _generate_ai_content(prompt: str) -> str:
+    resp = gemini.models.generate_content(model=GEMINI_MODEL, contents=prompt)
+    return resp.text.strip()
+
+
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -138,34 +142,33 @@ def search():
             results = movie_api.search(query)
             items = [
                 {
-                    "tmdb_id":      r.id,
-                    "external_id":  str(r.id),
-                    "title":        r.title,
-                    "year":         (r.release_date or "")[:4],
-                    "media_type":   "movie",
-                    "poster_path":  getattr(r, "poster_path", None),
-                    "overview":     getattr(r, "overview", None),
-                    "popularity":   getattr(r, "popularity", 0) or 0,
+                    "tmdb_id":     r.id,
+                    "external_id": str(r.id),
+                    "title":       r.title,
+                    "year":        (r.release_date or "")[:4],
+                    "media_type":  "movie",
+                    "poster_path": getattr(r, "poster_path", None),
+                    "overview":    getattr(r, "overview", None),
+                    "popularity":  getattr(r, "popularity", 0) or 0,
                 }
                 for r in results if hasattr(r, "id")
             ]
-            items.sort(key=lambda x: x.get("popularity", 0), reverse=True)
         else:
             results = tv_api.search(query)
             items = [
                 {
-                    "tmdb_id":      r.id,
-                    "external_id":  str(r.id),
-                    "title":        r.name,
-                    "year":         (r.first_air_date or "")[:4],
-                    "media_type":   "tv",
-                    "poster_path":  getattr(r, "poster_path", None),
-                    "overview":     getattr(r, "overview", None),
-                    "popularity":   getattr(r, "popularity", 0) or 0,
+                    "tmdb_id":     r.id,
+                    "external_id": str(r.id),
+                    "title":       r.name,
+                    "year":        (r.first_air_date or "")[:4],
+                    "media_type":  "tv",
+                    "poster_path": getattr(r, "poster_path", None),
+                    "overview":    getattr(r, "overview", None),
+                    "popularity":  getattr(r, "popularity", 0) or 0,
                 }
                 for r in results if hasattr(r, "id")
             ]
-            items.sort(key=lambda x: x.get("popularity", 0), reverse=True)
+        items.sort(key=lambda x: x.get("popularity", 0), reverse=True)
     except Exception as e:
         print(f"Search error: {e}")
         items = []
@@ -174,7 +177,6 @@ def search():
     search_cache[cache_key] = items
     if len(search_cache) > 100:
         del search_cache[next(iter(search_cache))]
-
     return jsonify(items)
 
 
@@ -195,17 +197,15 @@ def search_books():
             params["key"] = gbooks_key
         resp = requests.get(
             "https://www.googleapis.com/books/v1/volumes",
-            params=params, timeout=8
+            params=params, timeout=8,
         )
         resp.raise_for_status()
         data  = resp.json()
         items = []
         for vol in data.get("items", []):
-            info = vol.get("volumeInfo", {})
-            img  = info.get("imageLinks", {})
-            cover = (
-                img.get("thumbnail") or img.get("smallThumbnail") or ""
-            ).replace("http://", "https://")
+            info  = vol.get("volumeInfo", {})
+            img   = info.get("imageLinks", {})
+            cover = (img.get("thumbnail") or img.get("smallThumbnail") or "").replace("http://", "https://")
             items.append({
                 "external_id": vol["id"],
                 "title":       info.get("title", "Unknown"),
@@ -241,11 +241,11 @@ def search_manga():
         resp = requests.get(
             "https://api.mangadex.org/manga",
             params={
-                "title":                query,
-                "limit":                10,
-                "includes[]":           ["cover_art", "author"],
-                "availableTranslatedLanguage[]": ["en"],
-                "order[followedCount]": "desc",
+                "title":                            query,
+                "limit":                            10,
+                "includes[]":                       ["cover_art", "author"],
+                "availableTranslatedLanguage[]":    ["en"],
+                "order[followedCount]":             "desc",
             },
             timeout=8,
         )
@@ -270,20 +270,19 @@ def search_manga():
                 if rel["type"] == "author":
                     author = rel.get("attributes", {}).get("name", "")
                     break
-            desc = attrs.get("description", {})
+            desc     = attrs.get("description", {})
             overview = desc.get("en") or next(iter(desc.values()), "")
-
             items.append({
-                "external_id": m["id"],
-                "title":       title,
-                "author":      author,
-                "year":        str(attrs.get("year") or ""),
-                "media_type":  "manga",
-                "cover_url":   cover_url,
-                "overview":    overview[:300] if overview else "",
-                "last_volume": attrs.get("lastVolume"),
+                "external_id":  m["id"],
+                "title":        title,
+                "author":       author,
+                "year":         str(attrs.get("year") or ""),
+                "media_type":   "manga",
+                "cover_url":    cover_url,
+                "overview":     overview[:300] if overview else "",
+                "last_volume":  attrs.get("lastVolume"),
                 "last_chapter": attrs.get("lastChapter"),
-                "popularity":  0,
+                "popularity":   0,
             })
     except Exception as e:
         print(f"Manga search error: {e}")
@@ -312,7 +311,6 @@ def get_poster(media_type, item_id):
         )
 
     if media_type in ("book", "manga"):
-        row = None
         with get_conn() as conn:
             row = conn.execute(
                 "SELECT cover_url FROM media WHERE external_id = ? AND media_type = ?",
@@ -322,7 +320,7 @@ def get_poster(media_type, item_id):
         if not cover_url:
             return "", 404
         try:
-            img_resp = requests.get(cover_url, timeout=10)
+            img_resp     = requests.get(cover_url, timeout=10)
             img_resp.raise_for_status()
             content_type = img_resp.headers.get("Content-Type", "image/jpeg")
             img_bytes    = img_resp.content
@@ -335,25 +333,17 @@ def get_poster(media_type, item_id):
             return "", 404
 
     endpoint = "movie" if media_type == "movie" else "tv"
-    meta_url = (
-        f"https://api.themoviedb.org/3/{endpoint}/{item_id}"
-        f"?api_key={tmdb.api_key}"
-    )
+    meta_url = f"https://api.themoviedb.org/3/{endpoint}/{item_id}?api_key={tmdb.api_key}"
     try:
         meta = requests.get(meta_url, timeout=5).json()
         path = meta.get("poster_path")
         if not path:
             return "", 404
-
-        img_resp = requests.get(
-            f"https://image.tmdb.org/t/p/w500{path}", timeout=10
-        )
+        img_resp     = requests.get(f"https://image.tmdb.org/t/p/w500{path}", timeout=10)
         img_resp.raise_for_status()
-
         content_type = img_resp.headers.get("Content-Type", "image/jpeg")
         img_bytes    = img_resp.content
         poster_cache[cache_key] = (img_bytes, content_type)
-
         return Response(
             img_bytes, mimetype=content_type,
             headers={"Cache-Control": "public, max-age=31536000, immutable"},
@@ -363,7 +353,7 @@ def get_poster(media_type, item_id):
 
 
 # ═══════════════════════════════════════════════════
-# Library CRUD + undo support
+# Library CRUD
 # ═══════════════════════════════════════════════════
 
 @app.route("/api/list")
@@ -415,7 +405,7 @@ def delete_media(media_id):
 
 @app.route("/api/media-with-chats/<int:media_id>")
 def media_with_chats(media_id):
-    """Return media item and its associated chats (full data) for undo."""
+    """Return media item and its chats for undo support."""
     media = cached_get_media(media_id)
     if not media:
         return jsonify({"error": "Media not found"}), 404
@@ -432,33 +422,37 @@ def media_with_chats(media_id):
 
 @app.route("/api/restore-media-chats", methods=["POST"])
 def restore_media_chats():
-    data = request.json or {}
+    data       = request.json or {}
     media_data = data.get("media")
     chats_data = data.get("chats", [])
     if not media_data:
         return jsonify({"error": "Missing media data"}), 400
 
     new_media_id = add_media_entry(
-        title=media_data["title"],
-        media_type=media_data["media_type"],
-        status=media_data["status"],
-        tmdb_id=media_data.get("tmdb_id"),
-        external_id=media_data.get("external_id"),
-        cover_url=media_data.get("cover_url"),
-        author=media_data.get("author"),
-        total_pages=media_data.get("total_pages"),
+        title       = media_data["title"],
+        media_type  = media_data["media_type"],
+        status      = media_data["status"],
+        tmdb_id     = media_data.get("tmdb_id"),
+        external_id = media_data.get("external_id"),
+        cover_url   = media_data.get("cover_url"),
+        author      = media_data.get("author"),
+        total_pages = media_data.get("total_pages"),
     )
-    update_fields = {k: media_data[k] for k in ["rating", "notes", "last_timestamp", "last_season",
-                                                 "last_episode", "last_volume", "last_chapter",
-                                                 "current_page", "total_pages"] if k in media_data}
+    update_fields = {
+        k: media_data[k]
+        for k in ("rating", "notes", "last_timestamp", "last_season",
+                  "last_episode", "last_volume", "last_chapter",
+                  "current_page", "total_pages")
+        if k in media_data
+    }
     if update_fields:
         update_media_entry(new_media_id, **update_fields)
 
     for chat in chats_data:
         chat_id = create_chat(
-            media_id=new_media_id,
-            title=chat["title"],
-            context_tag=chat.get("context_tag")
+            media_id    = new_media_id,
+            title       = chat["title"],
+            context_tag = chat.get("context_tag"),
         )
         for msg in chat.get("messages", []):
             append_message(chat_id, msg["role"], msg["content"])
@@ -467,7 +461,7 @@ def restore_media_chats():
 
 
 # ═══════════════════════════════════════════════════
-# Vibe Search (two-step)
+# Vibe Search
 # ═══════════════════════════════════════════════════
 
 @app.route("/api/vibe-search/types", methods=["POST"])
@@ -497,9 +491,8 @@ def vibe_search_types():
     )
     suggested_types = ["movie", "tv"]
     try:
-        resp = gemini.models.generate_content(model=GEMINI_MODEL, contents=type_prompt)
-        raw  = resp.text.strip()
-        raw  = re.sub(r"^```[a-z]*\n?", "", raw).rstrip("` \n")
+        resp   = gemini.models.generate_content(model=GEMINI_MODEL, contents=type_prompt)
+        raw    = re.sub(r"^```[a-z]*\n?", "", resp.text.strip()).rstrip("` \n")
         parsed = json.loads(raw)
         valid  = [t for t in parsed if t in ("movie", "tv", "book", "manga")]
         if valid:
@@ -514,7 +507,6 @@ def vibe_search():
     data  = request.json or {}
     query = data.get("query", "").strip()
     types = data.get("types", ["movie", "tv"])
-
     if not query:
         return jsonify({"error": "No query provided"}), 400
 
@@ -538,26 +530,24 @@ def vibe_search():
 
     try:
         resp = gemini.models.generate_content(model=GEMINI_MODEL, contents=prompt)
-        raw  = resp.text.strip()
-        raw  = re.sub(r"^```[a-z]*\n?", "", raw).rstrip("` \n")
+        raw  = re.sub(r"^```[a-z]*\n?", "", resp.text.strip()).rstrip("` \n")
         recs = json.loads(raw)
     except Exception as e:
         return jsonify({"error": f"AI error: {e}"}), 500
 
     enriched = []
     for rec in recs[:8]:
-        mt    = rec.get("media_type", "movie")
-        title = rec.get("title", "")
-        year  = rec.get("year", "")
-        reason = rec.get("reason", "")
-
-        poster_path  = None
-        overview     = ""
-        tmdb_id      = None
-        external_id  = None
-        cover_url    = ""
-        author       = ""
-        total_pages  = None
+        mt          = rec.get("media_type", "movie")
+        title       = rec.get("title", "")
+        year        = rec.get("year", "")
+        reason      = rec.get("reason", "")
+        poster_path = None
+        overview    = ""
+        tmdb_id     = None
+        external_id = None
+        cover_url   = ""
+        author      = ""
+        total_pages = None
 
         try:
             if mt == "movie":
@@ -596,8 +586,8 @@ def vibe_search():
                     params=params, timeout=5,
                 ).json()
                 for vol in br.get("items", []):
-                    info = vol.get("volumeInfo", {})
-                    img  = info.get("imageLinks", {})
+                    info        = vol.get("volumeInfo", {})
+                    img         = info.get("imageLinks", {})
                     external_id = vol["id"]
                     cover_url   = (img.get("thumbnail") or "").replace("http://", "https://")
                     author      = ", ".join(info.get("authors", []))
@@ -607,13 +597,16 @@ def vibe_search():
             elif mt == "manga":
                 mr = requests.get(
                     "https://api.mangadex.org/manga",
-                    params={"title": title, "limit": 3,
-                            "includes[]": ["cover_art", "author"],
-                            "availableTranslatedLanguage[]": ["en"]},
+                    params={
+                        "title":                         title,
+                        "limit":                         3,
+                        "includes[]":                    ["cover_art", "author"],
+                        "availableTranslatedLanguage[]": ["en"],
+                    },
                     timeout=5,
                 ).json()
                 for m in mr.get("data", []):
-                    attrs = m.get("attributes", {})
+                    attrs       = m.get("attributes", {})
                     external_id = m["id"]
                     for rel in m.get("relationships", []):
                         if rel["type"] == "cover_art":
@@ -625,7 +618,7 @@ def vibe_search():
                         if rel["type"] == "author":
                             author = rel.get("attributes", {}).get("name", "")
                             break
-                    desc = attrs.get("description", {})
+                    desc     = attrs.get("description", {})
                     overview = (desc.get("en") or next(iter(desc.values()), ""))[:300]
                     break
         except Exception as enrich_err:
@@ -649,7 +642,7 @@ def vibe_search():
 
 
 # ═══════════════════════════════════════════════════
-# Chats (streaming, caching, trimmed history)
+# Chats
 # ═══════════════════════════════════════════════════
 
 @app.route("/api/chats")
@@ -696,8 +689,7 @@ def chat_message(chat_id):
         return jsonify({"error": "Chat not found"}), 404
 
     media      = cached_get_media(chat["media_id"]) if chat.get("media_id") else None
-    memory     = memory_cache
-    memory_str = "\n".join(f"- {k}: {v}" for k, v in memory.items()) if memory else "None"
+    memory_str = "\n".join(f"- {k}: {v}" for k, v in memory_cache.items()) if memory_cache else "None"
 
     effective_status = chat.get("context_tag") or (media["status"] if media else "finished")
 
@@ -706,9 +698,9 @@ def chat_message(chat_id):
         if effective_status == "finished":
             spoiler_rules = "The user has finished this title. Full discussion of all plot, characters, endings, and themes is allowed."
         elif effective_status == "watchlist":
-            spoiler_rules = "watchlist → no spoilers, premise only"
+            spoiler_rules = "The user has not started this yet. Discuss only premise, genre, and tone — no plot details or spoilers."
         else:
-            spoiler_rules = f"watching → only discuss up to {progress or 'current point'}"
+            spoiler_rules = f"The user has only reached {progress or 'their current point'}. Do not reveal anything beyond that."
 
         system = (
             f"You are CineVault AI, an enthusiastic media companion.\n"
@@ -731,16 +723,15 @@ def chat_message(chat_id):
     history = get_chat_messages(chat_id)
     if len(history) > MAX_CHAT_HISTORY:
         trimmed = history[-MAX_CHAT_HISTORY:]
-        note = "[Earlier conversation trimmed]"
+        note    = "[Earlier conversation trimmed]"
     else:
         trimmed = history
-        note = None
+        note    = None
 
     gemini_contents = []
     _append_gemini_content(gemini_contents, "user", system)
     if note:
         _append_gemini_content(gemini_contents, "user", note)
-
     for msg in trimmed:
         role = "user" if msg["role"] == "user" else "model"
         _append_gemini_content(gemini_contents, role, msg["content"])
@@ -754,14 +745,13 @@ def chat_message(chat_id):
             for token in _iter_gemini_response_tokens(gemini_contents):
                 full_answer.append(token)
                 yield f"data: {json.dumps({'token': token})}\n\n"
-
             answer = "".join(full_answer).strip()
             if answer:
                 append_message(chat_id, "assistant", answer)
             yield f"data: {json.dumps({'done': True})}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
-            return
+
     return Response(
         generate(),
         mimetype="text/event-stream",
@@ -784,7 +774,7 @@ def reset_chat(chat_id):
 
 
 # ═══════════════════════════════════════════════════
-# AI helpers (card + ask)
+# AI card + quick Q&A
 # ═══════════════════════════════════════════════════
 
 def _ai_card_cache_key(media: dict) -> str:
@@ -801,68 +791,21 @@ def _ai_card_cache_key(media: dict) -> str:
     return f"{media['id']}_watching_S{media.get('last_season', 0)}E{media.get('last_episode', 0)}"
 
 
-def _extended_ai_card_prompt(media: dict) -> str:
-    title = media["title"]
-    media_type = media["media_type"]
-    status = media["status"]
-    progress = _progress_str(media)
-
-    if status == "watchlist":
-        spoiler_rule = "Keep this spoiler-free and discuss only premise, tone, style, themes, and comparable titles."
-        focus = "why it may be worth starting, what kind of mood it suits, and what to notice going in"
-    elif status == "watching":
-        spoiler_rule = f"Discuss only up to {progress or 'the user current progress'} and do not reveal anything later."
-        focus = "what has been established so far, important character or theme threads, and what makes the current stretch interesting"
-    else:
-        spoiler_rule = "The user has finished it, so full-work reflection is allowed including endings, twists, and resolution."
-        focus = "what makes it memorable, how its themes or craft land, and several thoughtful follow-up recommendations"
-
-    return (
-        f'Write an extended insight for a media chat about "{title}" ({media_type}). '
-        f'{spoiler_rule} Focus on {focus}. '
-        f'Use 4-6 substantial sentences. Be conversational, specific, and useful. '
-        f'Do not mention that this is an extended insight; the UI will label it.'
-    )
-
-
-def _generate_ai_content(prompt: str) -> str:
-    resp = gemini.models.generate_content(model=GEMINI_MODEL, contents=prompt)
-    return resp.text.strip()
-
-
-def _create_deep_chat(media_id: int, status: str, content: str) -> int:
-    chat_id = create_chat(
-        media_id    = media_id,
-        title       = "Deep Dive",
-        context_tag = status,
-    )
-    append_message(chat_id, "assistant", content)
-    return chat_id
-
-
 @app.route("/api/ai-card", methods=["POST"])
 def ai_card():
     data     = request.json or {}
     media_id = data.get("media_id")
-    deep     = data.get("deep", False)
 
     media = cached_get_media(media_id)
     if not media:
         return jsonify({"error": "Media not found"}), 404
 
     cache_key = _ai_card_cache_key(media)
-    now = time.time()
+    now       = time.time()
     if cache_key in ai_card_cache:
         content, expiry = ai_card_cache[cache_key]
         if now < expiry:
-            result = {"content": content}
-            if deep:
-                try:
-                    extended = _generate_ai_content(_extended_ai_card_prompt(media))
-                except Exception as e:
-                    return jsonify({"error": str(e)}), 500
-                result["chat_id"] = _create_deep_chat(media_id, media["status"], extended)
-            return jsonify(result)
+            return jsonify({"content": content})
 
     title      = media["title"]
     media_type = media["media_type"]
@@ -872,7 +815,7 @@ def ai_card():
 
     if status == "watchlist":
         prompt = (
-            f'Give a punchy spoiler‑free pitch for "{title}" ({media_type}). '
+            f'Give a punchy spoiler-free pitch for "{title}" ({media_type}). '
             f'Cover: genre/tone, what makes it worth watching/reading, and 2 comparable titles. '
             f'No plot details beyond the premise. Length: {depth}.'
         )
@@ -887,18 +830,11 @@ def ai_card():
                 f'The user is reading "{title}" and has reached {progress}. '
                 f'Write {depth} recapping story beats before {progress} only. No spoilers beyond that.'
             )
-        elif media_type == "book":
-            if progress:
-                prompt = (
-                    f'The user is reading "{title}" and is at {progress}. '
-                    f'Write {depth} summarising what has happened so far without spoiling anything beyond that point.'
-                )
-            else:
-                prompt = (
-                    f'The user is currently reading "{title}". '
-                    f'In {depth}, describe the overall tone, standout elements, '
-                    f'and what makes it special — without revealing plot details.'
-                )
+        elif media_type == "book" and progress:
+            prompt = (
+                f'The user is reading "{title}" and is at {progress}. '
+                f'Write {depth} summarising what has happened so far without spoiling anything beyond that point.'
+            )
         else:
             prompt = (
                 f'The user is currently experiencing "{title}" ({media_type}). '
@@ -906,10 +842,9 @@ def ai_card():
                 f'and what makes it special — without revealing plot details.'
             )
     else:
-        count = "3"
         prompt = (
             f'The user just finished "{title}" ({media_type}). '
-            f'Recommend exactly {count} similar titles they\'d likely enjoy. '
+            f'Recommend exactly 3 similar titles they\'d likely enjoy. '
             f'Format each as: Title (Year) — one sentence why. '
             f'No markdown, just plain text.'
         )
@@ -920,16 +855,7 @@ def ai_card():
         return jsonify({"error": str(e)}), 500
 
     ai_card_cache[cache_key] = (content, now + AI_CARD_TTL)
-
-    result = {"content": content}
-    if deep:
-        try:
-            extended = _generate_ai_content(_extended_ai_card_prompt(media))
-        except Exception as e:
-            return jsonify({"error": str(e)}), 500
-        result["chat_id"] = _create_deep_chat(media_id, status, extended)
-
-    return jsonify(result)
+    return jsonify({"content": content})
 
 
 @app.route("/api/ask", methods=["POST"])
