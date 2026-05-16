@@ -60,9 +60,7 @@ Navigate to http://127.0.0.1:5000/ on your browser. Enjoy!
 
 ### Roadmap
 
-[ ] Add IMDB ratings  
-[0.5x] Add manga and book API's
-[x] Gemini-powered "vibe search" for recommendations (based on mood/description). Drop down search menu to choose between standard and Gemini search
-[ ] UI overhaul, less 'claude slop'
-[x] "Deep think" option for AI insights, expanding more, and able to chat afterwards. Fourth "Chatbox" section to save conversations with Gemini
-[x] More intuitive searching
+[x] Add manga and book API's  
+[x] Construct Gemini-powered "Vibe Search" with front-end toggle selection
+[x] Complete seamless query logic for intuitive searching
+[ ] Better AI recapping with current progress (remove recap for books, only recaps for manga and tv shows)
