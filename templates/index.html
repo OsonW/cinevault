@@ -474,17 +474,6 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   flex: 1;
 }
 
-/* Vibe reason badge */
-.sm-reason {
-  font-size: 10px;
-  color: var(--accent);
-  background: var(--accent-glow);
-  border: 1px solid var(--accent-dim);
-  border-radius: 6px;
-  padding: 4px 7px;
-  line-height: 1.4;
-  flex: 1;
-}
 
 .sm-add-btn {
   margin-top: 6px;
@@ -1221,7 +1210,7 @@ let allChats     = [];
 let currentTab   = 'finished';
 let selectedId   = null;
 let currentSort  = 'name';
-let searchMode   = 'standard';   // 'standard' | 'vibe'
+let searchMode   = 'standard';
 let activeChatId = null;
 let chatMovieFilter = '';
 let pendingResetChatId = null;
@@ -1229,9 +1218,9 @@ let chatSendPending = false;
 let mediaUndoState = null;
 let qaAutoChat   = null;
 let pendingSelectId = null;
-let searchTypeActive = new Set(['movie']); // tracks which type buttons are active
+let searchTypeActive = new Set(['movie']);
 let modalActiveTypes = new Set(['movie', 'tv', 'book', 'manga']);
-let aiSuggestedTypes = null; // null = no AI suggestion yet
+let modalSearchPending = false;
 
 const inLibrary    = new Set();
 const tmdbResultMap = {};
@@ -1340,7 +1329,6 @@ function setSearchMode(mode) {
     typeBtns.classList.remove('hidden');
   }
 }
-// Active set represents which types to search
 function toggleSearchType(type) {
   const btn = document.querySelector(`.search-type-btn[data-stype="${type}"]`);
   if (!btn) return;
@@ -1359,7 +1347,6 @@ function toggleSearchType(type) {
   }
 }
 
-// Set the active search type buttons to match a given set (used by AI suggestions)
 function setSearchTypeButtons(types) {
   searchTypeActive = new Set(types);
   document.querySelectorAll('.search-type-btn').forEach(b => {
@@ -1586,7 +1573,9 @@ function renderDetail(item) {
       <div class="divider"></div>
       <div class="ai-card" id="aiCard">
         <div class="ai-card-label">✦ AI insight</div>
-        <div class="ai-card-body" style="color:var(--muted);font-style:italic">Loading…</div>
+        <div class="ai-card-body">
+          <div class="typing-dots" style="display:inline-flex"><span></span><span></span><span></span></div>
+        </div>
       </div>
       <div class="qa-wrap">
         <div class="ai-card-label" style="margin-bottom:8px">✦ Ask anything
@@ -1696,17 +1685,19 @@ function invalidateProgressCache(id) {
   const item = allItems.find(i => i.id === id);
   if (item && selectedId === id) {
     const card = document.getElementById('aiCard');
-    if (card) {
-      card.innerHTML = `<div class="ai-card-label">✦ AI insight</div>
-        <div class="ai-card-body" style="color:var(--muted);font-style:italic">Loading…</div>`;
-      loadAICard(item);
-    }
+    if (card) loadAICard(item);
   }
 }
 
 // ─────────────────────────────────────────────
 // AI card
 // ─────────────────────────────────────────────
+
+// Monotonic counter: each selectItem call gets its own generation. Any
+// in-flight stream from a previous generation will abort itself before
+// touching the DOM, eliminating the tab-switch race condition.
+let aiCardGeneration = 0;
+
 function aiCacheKey(item) {
   if (item.status === 'watchlist') return `${item.id}_watchlist`;
   if (item.status === 'finished')  return `${item.id}_finished`;
@@ -1717,39 +1708,91 @@ function aiCacheKey(item) {
 }
 
 async function loadAICard(item) {
-  const key      = aiCacheKey(item);
-  const thisId   = item.id;
+  const key        = aiCacheKey(item);
+  const myGen      = ++aiCardGeneration;
+
+  // Serve from cache immediately — no network needed.
   if (aiCache[key]) {
-    if (selectedId === thisId) renderAICard(document.getElementById('aiCard'), aiCache[key], item.status, item.media_type);
+    if (aiCardGeneration === myGen) {
+      renderAICard(document.getElementById('aiCard'), aiCache[key], item.status, item.media_type);
+    }
     return;
   }
+
+  const card = document.getElementById('aiCard');
+  if (!card || aiCardGeneration !== myGen) return;
+
+  // Prep the card for streaming output.
+  renderAICardShell(card, item.status, item.media_type);
+  const bodyEl = card.querySelector('.ai-card-body');
+
   try {
-    const data    = await apiPost('/api/ai-card', { media_id: item.id });
-    const content = data.content || data.error || '—';
-    aiCache[key]  = content;
-    const card = document.getElementById('aiCard');
-    if (card && selectedId === thisId) renderAICard(card, content, item.status, item.media_type);
+    const response = await fetch('/api/ai-card/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ media_id: item.id }),
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+    const reader  = response.body.getReader();
+    const decoder = new TextDecoder();
+    let   buffer  = '';
+    let   full    = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const payload = line.slice(6).trim();
+        if (!payload) continue;
+        try {
+          const obj = JSON.parse(payload);
+          // Abort if a newer generation has taken over.
+          if (aiCardGeneration !== myGen) { reader.cancel(); return; }
+          if (obj.token) {
+            full += obj.token;
+            if (bodyEl) bodyEl.innerHTML = formatAI(esc(full));
+          } else if (obj.done) {
+            aiCache[key] = full;
+          } else if (obj.error) {
+            if (bodyEl) bodyEl.textContent = 'Unable to load.';
+          }
+        } catch (_) {}
+      }
+    }
   } catch {
-    const card = document.getElementById('aiCard');
-    if (card && selectedId === thisId) renderAICard(card, 'Unable to load.', item.status, item.media_type);
+    if (aiCardGeneration === myGen) {
+      if (bodyEl) bodyEl.textContent = 'Unable to load.';
+    }
   }
 }
 
+function renderAICardShell(card, status, mediaType) {
+  const { title, sub } = aiCardMeta(status, mediaType);
+  card.innerHTML = `
+    <div class="ai-card-label">${title}
+      <span style="color:var(--muted);font-weight:300;font-size:10px;text-transform:none;letter-spacing:0">${sub}</span>
+    </div>
+    <div class="ai-card-body">
+      <div class="typing-dots" style="display:inline-flex"><span></span><span></span><span></span></div>
+    </div>`;
+}
+
+function aiCardMeta(status, mediaType) {
+  if (status === 'watchlist') return { title: '✦ Why watch it', sub: 'spoiler-free pitch' };
+  if (status === 'finished')  return { title: '✦ You might also like', sub: 'recommendations' };
+  if (mediaType === 'book')   return { title: '✦ Story so far', sub: 'reading recap' };
+  if (mediaType === 'manga')  return { title: '✦ Volume recap', sub: 'manga progress' };
+  if (mediaType === 'movie')  return { title: "✦ What's Special", sub: 'vibe & highlights' };
+  return { title: '✦ So far', sub: 'progress recap' };
+}
+
 function renderAICard(card, content, status, mediaType) {
-  let title, sub;
-  if (status === 'watchlist') {
-    title = '✦ Why watch it'; sub = 'spoiler-free pitch';
-  } else if (status === 'finished') {
-    title = '✦ You might also like'; sub = 'recommendations';
-  } else if (mediaType === 'book') {
-    title = '✦ Story so far'; sub = 'reading recap';
-  } else if (mediaType === 'manga') {
-    title = '✦ Volume recap'; sub = 'manga progress';
-  } else if (mediaType === 'movie') {
-    title = "✦ What's Special"; sub = 'vibe & highlights';
-  } else {
-    title = '✦ So far'; sub = 'progress recap';
-  }
+  const { title, sub } = aiCardMeta(status, mediaType);
   card.innerHTML = `
     <div class="ai-card-label">${title}
       <span style="color:var(--muted);font-weight:300;font-size:10px;text-transform:none;letter-spacing:0">${sub}</span>
@@ -1792,13 +1835,17 @@ function chatMatchesMovieFilter(c) {
 // ─────────────────────────────────────────────
 // Quick Q&A
 // ─────────────────────────────────────────────
+let askQuestionPending = false;
+
 async function askQuestion(mediaId) {
+  if (askQuestionPending) return;
   const input  = document.getElementById('qaInput');
   const answer = document.getElementById('qaAnswer');
   const nudge  = document.getElementById('chatNudge');
   const askBtn = input?.closest('.qa-wrap')?.querySelector('.btn-accent');
   const q      = input.value.trim();
   if (!q) return;
+  askQuestionPending = true;
   input.value  = '';
   if (askBtn) askBtn.disabled = true;
   answer.textContent = 'Thinking…';
@@ -1818,6 +1865,7 @@ async function askQuestion(mediaId) {
   } catch {
     answer.textContent = 'Failed to get an answer.';
   } finally {
+    askQuestionPending = false;
     if (askBtn) askBtn.disabled = false;
   }
 }
@@ -1866,9 +1914,14 @@ async function saveField(id, field, value) {
   if (field === 'rating') renderGrid();
 }
 
+let statusChangePending = false;
+
 async function changeStatus(id, status) {
+  if (statusChangePending) return;
   const item = allItems.find(i => i.id === id);
   if (!item || item.status === status) return;
+  statusChangePending = true;
+  const prevStatus = item.status;
   item.status = status;
   const suffixMap = { watchlist: 'wl', watching: 'wa', finished: 'fi' };
   document.querySelectorAll('.status-pill').forEach(p => {
@@ -1880,13 +1933,28 @@ async function changeStatus(id, status) {
     await apiPost('/api/add', { id, status });
   } catch {
     showToast('Failed to update status — please try again.');
+    item.status = prevStatus;
     await loadList();
+    statusChangePending = false;
     return;
   }
+  statusChangePending = false;
   switchTab(status, id);
 }
 
+let deleteItemPending = false;
+
 async function deleteItem(id) {
+    if (deleteItemPending) return;
+    deleteItemPending = true;
+    try {
+        await _deleteItemImpl(id);
+    } finally {
+        deleteItemPending = false;
+    }
+}
+
+async function _deleteItemImpl(id) {
     if (mediaUndoState) {
         await flushPendingMediaDelete();
     }
@@ -2248,7 +2316,7 @@ async function sendChatMessage(chatId) {
               firstToken = false;
             }
             fullText += obj.token;
-            asstBubble.textContent = formatAI(esc(fullText));
+            asstBubble.innerHTML = formatAI(esc(fullText));
             scrollChatBottom();
           } else if (obj.done) {
             if (firstToken) {
@@ -2566,13 +2634,10 @@ async function addFromDropdown(key) {
   }
 }
 
-// ─────────────────────────────────────────────
-// ─────────────────────────────────────────────
-
-// User can always toggle modal type pills (no locking)
 function toggleModalType(type) {
+    if (modalSearchPending) return;
     if (modalActiveTypes.has(type)) {
-        if (modalActiveTypes.size === 1) return; // keep at least one
+        if (modalActiveTypes.size === 1) return;
         modalActiveTypes.delete(type);
     } else {
         modalActiveTypes.add(type);
@@ -2580,12 +2645,10 @@ function toggleModalType(type) {
     document.querySelectorAll('.sm-type-pill').forEach(p =>
         p.classList.toggle('active', modalActiveTypes.has(p.dataset.stype))
     );
-    // If modal is open, re‑run search with new types
     const backdrop = document.getElementById('searchModalBackdrop');
     if (backdrop && backdrop.classList.contains('open') && lastModalQuery) {
         runModalSearch(lastModalQuery);
     } else {
-        // just filter existing cards
         document.querySelectorAll('.sm-card').forEach(card => {
             const mt = card.dataset.mediaType;
             if (mt) card.style.display = modalActiveTypes.has(mt) ? '' : 'none';
@@ -2593,19 +2656,6 @@ function toggleModalType(type) {
     }
 }
 
-// Apply AI-suggested types to modal pills (user can still toggle after)
-function applyAISuggestedTypes(types) {
-  aiSuggestedTypes = types;
-  modalActiveTypes = new Set(types);
-  document.querySelectorAll('.sm-type-pill').forEach(p =>
-    p.classList.toggle('active', modalActiveTypes.has(p.dataset.stype))
-  );
-  const hint = document.getElementById('smAiHint');
-  if (hint) hint.classList.toggle('show', types.length < 4);
-}
-
-// ─────────────────────────────────────────────
-// Standard Search Modal — open/close/run
 // ─────────────────────────────────────────────
 let lastModalQuery = '';
 
@@ -2613,7 +2663,6 @@ async function openModal() {
     const q = document.getElementById('searchInput').value.trim();
     closeDropdown();
 
-    // sync modal types with top‑bar type buttons
     modalActiveTypes = new Set(searchTypeActive);
     document.querySelectorAll('.sm-type-pill').forEach(p =>
         p.classList.toggle('active', modalActiveTypes.has(p.dataset.stype))
@@ -2636,47 +2685,44 @@ function onBackdropClick(e) {
   if (e.target === document.getElementById('searchModalBackdrop')) closeModal();
 }
 
-// Standard search — user-selected types only (no AI type selection)
 async function runModalSearch(q) {
     if (!q) return;
+    if (modalSearchPending) return;
+    modalSearchPending = true;
     lastModalQuery = q;
     const smTitle = document.getElementById('smTitle');
     const smBody  = document.getElementById('smBody');
     smTitle.innerHTML = `Results for <em>${esc(q)}</em>`;
     smBody.innerHTML  = renderSkeletons();
 
-    // Use current modal types (user may have changed them)
     const typesToSearch = [...modalActiveTypes];
     if (typesToSearch.length === 0) {
         smBody.innerHTML = '<div class="sm-status">Select at least one media type.</div>';
+        modalSearchPending = false;
         return;
     }
 
-    let movieData=[], tvData=[], bookData=[], mangaData=[];
-    const fetches = [];
-    fetches.push(typesToSearch.includes('movie') ? fetch(`/api/search?q=${encodeURIComponent(q)}&type=movie`).then(r=>r.json()).catch(()=>[]) : Promise.resolve([]));
-    fetches.push(typesToSearch.includes('tv')    ? fetch(`/api/search?q=${encodeURIComponent(q)}&type=tv`).then(r=>r.json()).catch(()=>[]) : Promise.resolve([]));
-    fetches.push(typesToSearch.includes('book')  ? fetch(`/api/search/books?q=${encodeURIComponent(q)}`).then(r=>r.json()).catch(()=>[]) : Promise.resolve([]));
-    fetches.push(typesToSearch.includes('manga') ? fetch(`/api/search/manga?q=${encodeURIComponent(q)}`).then(r=>r.json()).catch(()=>[]) : Promise.resolve([]));
+    const fetches = [
+      typesToSearch.includes('movie') ? fetch(`/api/search?q=${encodeURIComponent(q)}&type=movie`).then(r=>r.json()).catch(()=>[]) : Promise.resolve([]),
+      typesToSearch.includes('tv')    ? fetch(`/api/search?q=${encodeURIComponent(q)}&type=tv`).then(r=>r.json()).catch(()=>[])    : Promise.resolve([]),
+      typesToSearch.includes('book')  ? fetch(`/api/search/books?q=${encodeURIComponent(q)}`).then(r=>r.json()).catch(()=>[])      : Promise.resolve([]),
+      typesToSearch.includes('manga') ? fetch(`/api/search/manga?q=${encodeURIComponent(q)}`).then(r=>r.json()).catch(()=>[])      : Promise.resolve([]),
+    ];
 
-    [movieData, tvData, bookData, mangaData] = await Promise.all(fetches);
+    const [movieData, tvData, bookData, mangaData] = await Promise.all(fetches);
 
+    modalSearchPending = false;
     if (q !== lastModalQuery) return;
-    const allResults = [...movieData, ...tvData, ...bookData, ...mangaData];
-    // assign popularity (books/manga default 0)
-    allResults.forEach(r => {
-        if (!r.popularity) r.popularity = 0;
-        r.popularity = Number(r.popularity);
-    });
-    allResults.sort((a,b) => (b.popularity || 0) - (a.popularity || 0));
 
+    const allResults = [...movieData, ...tvData, ...bookData, ...mangaData];
     allResults.forEach(r => {
+        r.popularity = Number(r.popularity) || 0;
         const key = `${r.media_type}_${r.external_id || r.tmdb_id}`;
         tmdbResultMap[key] = r;
     });
+    allResults.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
 
-    // Library matches from memory
-    const lower = q.toLowerCase();
+    const lower     = q.toLowerCase();
     const libMatches = allItems.filter(i => i.title.toLowerCase().includes(lower));
     renderModalResults(libMatches, allResults, q);
 }
@@ -2714,7 +2760,6 @@ function renderModalResults(libMatches, tmdbResults, q) {
     html = `<div class="sm-status">No results found for "<em>${esc(q)}</em>".</div>`;
   }
   document.getElementById('smBody').innerHTML = html;
-  // Apply current modal active types to filter visibility
   document.querySelectorAll('.sm-card').forEach(card => {
     const mt = card.dataset.mediaType;
     if (mt) card.style.display = modalActiveTypes.has(mt) ? '' : 'none';
@@ -2813,7 +2858,14 @@ async function addFromModal(key) {
 // ─────────────────────────────────────────────
 // Vibe Search Modal
 // ─────────────────────────────────────────────
-let lastVibeQuery = '';
+const VIBE_MAX = 3;   // max "Show more" loads (3 × 5 = 15 total extra)
+
+let lastVibeQuery    = '';
+let lastVibeTypes    = [];
+let vibeShownResults = [];   // all results rendered so far (for exclusion list)
+let vibeLoadCount    = 0;    // how many "load more" calls have been made
+let vibeSearching    = false;
+let vibeLoadingMore  = false;
 
 function openVibeModal(runSearch = false) {
   document.getElementById('vibeModalBackdrop').classList.add('open');
@@ -2827,7 +2879,10 @@ function openVibeModal(runSearch = false) {
 function closeVibeModal() {
   document.getElementById('vibeModalBackdrop').classList.remove('open');
   document.body.style.overflow = '';
-  lastVibeQuery = '';
+  lastVibeQuery    = '';
+  lastVibeTypes    = [];
+  vibeShownResults = [];
+  vibeLoadCount    = 0;
 }
 
 function onVibeBackdropClick(e) {
@@ -2840,7 +2895,6 @@ function onVibeKey(e) {
   startVibeSearch();
 }
 
-// Set vibe type pills from AI suggestion
 function setVibeTypePills(types) {
   document.querySelectorAll('#vibeTypeToggle .vm-type-btn').forEach(b => {
     b.classList.toggle('active', types.includes(b.dataset.vtype));
@@ -2849,100 +2903,198 @@ function setVibeTypePills(types) {
   if (hint) hint.style.display = types.length < 4 ? 'inline' : 'none';
 }
 
-// Toggle a vibe type pill and immediately re-run the search with new types
+function setVibePillsLocked(locked) {
+  document.querySelectorAll('#vibeTypeToggle .vm-type-btn').forEach(b => {
+    b.disabled      = locked;
+    b.style.opacity = locked ? '0.45' : '';
+    b.style.cursor  = locked ? 'not-allowed' : '';
+  });
+}
+
 function toggleVibeType(btn) {
+  if (vibeSearching || vibeLoadingMore) return;
   const activeBtns = document.querySelectorAll('#vibeTypeToggle .vm-type-btn.active');
-  if (btn.classList.contains('active') && activeBtns.length === 1) return; // keep at least one
+  if (btn.classList.contains('active') && activeBtns.length === 1) return;
   btn.classList.toggle('active');
   const hint = document.getElementById('vibeAiHint');
-  if (hint) hint.style.display = 'none'; // user took over
+  if (hint) hint.style.display = 'none';
   if (lastVibeQuery) runVibeSearch();
 }
 
-// Entry point: AI detects types first, then runs the search
+
 async function startVibeSearch() {
-  const q = document.getElementById('vibeInput').value.trim();
+  if (vibeSearching) return;
+  const q    = document.getElementById('vibeInput').value.trim();
   const body = document.getElementById('vibeBody');
   if (!q) {
     body.innerHTML = '<div class="sm-status">Please describe what you\'re in the mood for.</div>';
     return;
   }
-  lastVibeQuery = q;
-  body.innerHTML = `<div class="sm-status">
-    <div class="typing-dots" style="justify-content:center;margin-bottom:8px"><span></span><span></span><span></span></div>
-    Thinking about your vibe…
-  </div>`;
-  // Step 1: AI picks types
-  let aiTypes = ['movie', 'tv'];
-  try {
-    const td = await apiPost('/api/vibe-search/types', { query: q }, 10000);
-    if (td.types && td.types.length) aiTypes = td.types;
-  } catch (e) {
-    console.warn('Vibe type detection failed, using defaults', e);
-  }
-  setVibeTypePills(aiTypes);
-  // Step 2: Run the actual search with those types
-  await runVibeSearch();
-}
-
-async function runVibeSearch() {
-  const q    = lastVibeQuery || document.getElementById('vibeInput').value.trim();
-  const body = document.getElementById('vibeBody');
-  if (!q) return;
-  const activeBtns = document.querySelectorAll('#vibeTypeToggle .vm-type-btn.active');
-  const types      = [...activeBtns].map(b => b.dataset.vtype);
-  if (!types.length) { body.innerHTML = '<div class="sm-status">Select at least one media type.</div>'; return; }
+  lastVibeQuery    = q;
+  vibeShownResults = [];
+  vibeLoadCount    = 0;
+  vibeSearching    = true;
+  setVibePillsLocked(true);
   body.innerHTML = `<div class="sm-status">
     <div class="typing-dots" style="justify-content:center;margin-bottom:8px"><span></span><span></span><span></span></div>
     Finding matches…
   </div>`;
+
+  let types;
   try {
-    const results = await apiPost('/api/vibe-search', { query: q, types });
-    renderVibeResults(results);
+    const td = await apiPost('/api/vibe-search/types', { query: q }, 10000).catch(() => ({}));
+    types = (td.types && td.types.length) ? td.types : _activeVibeTypes();
+    setVibeTypePills(types);
+  } catch (e) {
+    types = _activeVibeTypes();
+  }
+
+  await _runVibeSearch(q, types);
+}
+
+async function runVibeSearch() {
+  if (vibeSearching || vibeLoadingMore) return;
+  const q     = lastVibeQuery;
+  const types = _activeVibeTypes();
+  if (!q || !types.length) return;
+  vibeSearching = true;
+  setVibePillsLocked(true);
+  document.getElementById('vibeBody').innerHTML = `<div class="sm-status">
+    <div class="typing-dots" style="justify-content:center;margin-bottom:8px"><span></span><span></span><span></span></div>
+    Finding matches…
+  </div>`;
+  vibeShownResults = [];
+  vibeLoadCount    = 0;
+  await _runVibeSearch(q, types);
+}
+
+function _activeVibeTypes() {
+  return [...document.querySelectorAll('#vibeTypeToggle .vm-type-btn.active')]
+    .map(b => b.dataset.vtype);
+}
+
+async function _runVibeSearch(q, types) {
+  const body = document.getElementById('vibeBody');
+  if (!types.length) {
+    body.innerHTML = '<div class="sm-status">Select at least one media type.</div>';
+    vibeSearching  = false;
+    setVibePillsLocked(false);
+    return;
+  }
+  lastVibeTypes = types;
+  try {
+    const results = await apiPost('/api/vibe-search', { query: q, types, exclude_titles: [] });
+    vibeShownResults = results;
+    results.forEach(r => {
+      const key = `${r.media_type}_${r.external_id || r.tmdb_id || r.title}`;
+      tmdbResultMap[key] = r;
+    });
+    renderVibeResults(false);
   } catch (e) {
     body.innerHTML = `<div class="sm-status">Something went wrong: ${esc(String(e))}</div>`;
+  } finally {
+    vibeSearching = false;
+    setVibePillsLocked(false);
   }
 }
 
-function renderVibeResults(results) {
+async function showMoreVibeResults() {
+  if (vibeLoadingMore || vibeSearching) return;
+  if (vibeLoadCount >= VIBE_MAX) return;
+
+  vibeLoadingMore = true;
+  setVibePillsLocked(true);
+
+  const grid    = document.querySelector('#vibeBody .sm-grid');
+  const moreBtn = grid?.querySelector('.vibe-more-btn-wrap');
+  if (moreBtn) moreBtn.innerHTML = `
+    <div class="typing-dots" style="justify-content:center"><span></span><span></span><span></span></div>`;
+
+  const excludeTitles = vibeShownResults.map(r => r.title);
+
+  try {
+    const results = await apiPost('/api/vibe-search', {
+      query:          lastVibeQuery,
+      types:          lastVibeTypes,
+      exclude_titles: excludeTitles,
+    });
+    results.forEach(r => {
+      const key = `${r.media_type}_${r.external_id || r.tmdb_id || r.title}`;
+      tmdbResultMap[key] = r;
+    });
+    vibeShownResults = [...vibeShownResults, ...results];
+    vibeLoadCount++;
+    renderVibeResults(true);
+  } catch (e) {
+    if (moreBtn) moreBtn.innerHTML = `<span style="color:var(--muted);font-size:12px">Failed to load more.</span>`;
+  } finally {
+    vibeLoadingMore = false;
+    setVibePillsLocked(false);
+  }
+}
+
+function renderVibeResults(append) {
   const body = document.getElementById('vibeBody');
-  if (!results.length) {
+
+  if (!vibeShownResults.length) {
     body.innerHTML = '<div class="sm-status">No matches found — try a different description.</div>';
     return;
   }
-  results.forEach(r => {
-    const key = `${r.media_type}_${r.external_id || r.tmdb_id || r.title}`;
-    tmdbResultMap[key] = r;
-  });
-  const cards = results.map(r => {
+
+  // Which results to render — on append, only the newly added ones get built as cards.
+  const toRender   = append ? vibeShownResults.slice(-5) : vibeShownResults;
+  const canLoadMore = vibeLoadCount < VIBE_MAX;
+
+  const buildCards = (items) => items.map(r => {
     const key     = `${r.media_type}_${r.external_id || r.tmdb_id || r.title}`;
     const already = inLibrary.has(key);
     let posterSrc = BROKEN_POSTER_FULL;
-    if (r.media_type === 'manga' && r.external_id) posterSrc = `/api/poster/manga/${encodeURIComponent(r.external_id)}`;
-    else if (r.poster_path) posterSrc = `https://image.tmdb.org/t/p/w500${r.poster_path}`;
-    else if (r.cover_url) posterSrc = r.cover_url;
-    const safeKey = key.replace(/'/g, "\\'");
+    if (r.media_type === 'manga' && r.external_id) {
+      posterSrc = `/api/poster/manga/${encodeURIComponent(r.external_id)}`;
+    } else if (r.media_type === 'book' && r.external_id) {
+      posterSrc = `/api/poster/book/${encodeURIComponent(r.external_id)}`;
+    } else if (r.poster_path) {
+      posterSrc = `https://image.tmdb.org/t/p/w500${r.poster_path}`;
+    } else if (r.cover_url) {
+      posterSrc = r.cover_url;
+    }
+    const safeKey    = key.replace(/'/g, "\\'");
     const authorHtml = r.author ? `<div class="sm-card-author">${esc(r.author)}</div>` : '';
-    const btnId = `vbtn-${r.media_type}-${(r.external_id || r.tmdb_id || r.title).toString().replace(/[^a-z0-9]/gi,'_')}`;
-    return `<div class="sm-card ${already?'in-library':''}">
+    const btnId      = `vbtn-${r.media_type}-${(r.external_id || r.tmdb_id || r.title).toString().replace(/[^a-z0-9]/gi,'_')}`;
+    return `<div class="sm-card ${already ? 'in-library' : ''}">
       <img class="sm-poster" src="${posterSrc}" onerror="this.src='${BROKEN_POSTER_FULL}'" loading="lazy">
       <div class="sm-card-body">
         <div class="sm-card-title">${esc(r.title)}</div>
         ${authorHtml}
         <div class="sm-chips">
-          ${r.year?`<span class="sm-chip year">${esc(r.year)}</span>`:''}
+          ${r.year ? `<span class="sm-chip year">${esc(r.year)}</span>` : ''}
           <span class="sm-chip ${r.media_type}">${TYPE_EMOJI[r.media_type]} ${TYPE_LABEL[r.media_type]}</span>
         </div>
-        <div class="sm-reason">${formatAI(esc(r.reason))}</div>
-        <button class="sm-add-btn" id="${btnId}"
-          onclick="addVibeResult('${safeKey}')"
-          ${already?'disabled':''}>
-          ${already?'✓ In library':'+ Add to Watchlist'}
+        ${r.overview ? `<div class="sm-overview">${esc(r.overview)}</div>` : ''}
+        <button class="sm-add-btn" id="${btnId}" onclick="addVibeResult('${safeKey}')" ${already ? 'disabled' : ''}>
+          ${already ? '✓ In library' : '+ Add to Watchlist'}
         </button>
       </div>
     </div>`;
   }).join('');
-  body.innerHTML = `<div class="sm-grid">${cards}</div>`;
+
+  const moreWrap = canLoadMore
+    ? `<div class="vibe-more-btn-wrap" style="grid-column:1/-1;text-align:center;margin-top:4px">
+        <button class="btn btn-sm" onclick="showMoreVibeResults()">Show more</button>
+       </div>`
+    : '';
+
+  if (append) {
+    // Inject new cards before the existing "Show more" button.
+    const grid    = body.querySelector('.sm-grid');
+    const oldWrap = grid?.querySelector('.vibe-more-btn-wrap');
+    if (oldWrap) oldWrap.remove();
+    if (grid) {
+      grid.insertAdjacentHTML('beforeend', buildCards(toRender) + moreWrap);
+    }
+  } else {
+    body.innerHTML = `<div class="sm-grid">${buildCards(toRender)}${moreWrap}</div>`;
+  }
 }
 async function addVibeResult(key) {
   const r = tmdbResultMap[key];

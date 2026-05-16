@@ -82,6 +82,15 @@ def get_all_media():
     return [row_to_dict(r) for r in rows]
 
 
+def get_media_by_external_id(external_id: str, media_type: str):
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM media WHERE external_id = ? AND media_type = ?",
+            (external_id, media_type),
+        ).fetchone()
+    return row_to_dict(row)
+
+
 def get_media_by_id(media_id: int):
     with get_conn() as conn:
         row = conn.execute(
@@ -140,6 +149,15 @@ def delete_media_entry(media_id: int):
 # ══════════════════════════════════════════════════
 # CHATS
 # ══════════════════════════════════════════════════
+
+def get_chats_by_media_id(media_id: int):
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM chats WHERE media_id = ? ORDER BY updated_at DESC",
+            (media_id,),
+        ).fetchall()
+    return [row_to_dict(r) for r in rows]
+
 
 def get_all_chats():
     with get_conn() as conn:
@@ -212,15 +230,6 @@ def clear_chat_messages(chat_id: int):
 # ══════════════════════════════════════════════════
 # USER MEMORY
 # ══════════════════════════════════════════════════
-
-def upsert_memory(key: str, value: str):
-    now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
-    with get_conn() as conn:
-        conn.execute("""
-            INSERT INTO user_memory (key, value, updated_at) VALUES (?,?,?)
-            ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at
-        """, (key, value, now))
-
 
 def get_all_memory() -> dict:
     with get_conn() as conn:

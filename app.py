@@ -3,6 +3,7 @@ import re
 import json
 import time
 import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import Flask, jsonify, Response, request, render_template
 from dotenv import load_dotenv
 from tmdbv3api import TMDb, Movie, TV
@@ -10,10 +11,9 @@ from google import genai
 
 from db import (
     init_db,
-    get_conn,
-    get_all_media, get_media_by_id,
+    get_all_media, get_media_by_id, get_media_by_external_id,
     add_media_entry, update_media_entry, delete_media_entry,
-    get_all_chats, get_chat_by_id, get_chat_messages,
+    get_all_chats, get_chats_by_media_id, get_chat_by_id, get_chat_messages,
     create_chat, append_message, delete_chat, clear_chat_messages,
     get_all_memory,
 )
@@ -42,6 +42,13 @@ memory_cache:   dict[str, str]                = {}
 MAX_CHAT_HISTORY = 12
 AI_CARD_TTL      = 600
 MANGADEX_HEADERS = {"User-Agent": "CineVault/1.0"}
+SEARCH_CACHE_MAX = 100
+
+
+def _cache_search(key: str, items: list) -> None:
+    search_cache[key] = items
+    if len(search_cache) > SEARCH_CACHE_MAX:
+        del search_cache[next(iter(search_cache))]
 
 try:
     memory_cache = get_all_memory()
@@ -198,9 +205,7 @@ def search():
         items = []
 
     items = items[:10]
-    search_cache[cache_key] = items
-    if len(search_cache) > 100:
-        del search_cache[next(iter(search_cache))]
+    _cache_search(cache_key, items)
     return jsonify(items)
 
 
@@ -210,7 +215,6 @@ def search_books():
     if not query:
         return jsonify([])
     
-    # Trim the query if it's too short to avoid 422 errors
     if len(query) < 2:
         return jsonify([])
 
@@ -219,7 +223,6 @@ def search_books():
         return jsonify(search_cache[cache_key])
 
     try:
-        # Removing the 'fields' parameter to avoid 422 errors
         resp = requests.get(
             "https://openlibrary.org/search.json",
             params={"q": query, "limit": 10},
@@ -235,16 +238,14 @@ def search_books():
             if cover_id:
                 cover_url = f"https://covers.openlibrary.org/b/id/{cover_id}-L.jpg"
             
-            # Build author string safely
             author_names = doc.get("author_name", [])
             if isinstance(author_names, list):
                 author = ", ".join(author_names)
             else:
                 author = str(author_names)
-            
+
             year = doc.get("first_publish_year")
             if not year:
-                # Try to get year from publish_date if first_publish_year is missing
                 pub_date = doc.get("publish_date")
                 if pub_date and len(str(pub_date)) >= 4:
                     year = str(pub_date)[:4]
@@ -263,15 +264,11 @@ def search_books():
                 "popularity": doc.get("ratings_average", 0) or 0,
             })
         
-        search_cache[cache_key] = items
-        if len(search_cache) > 100:
-            del search_cache[next(iter(search_cache))]
+        _cache_search(cache_key, items)
         return jsonify(items)
         
     except requests.exceptions.HTTPError as e:
         print(f"Open Library HTTP error: {e}")
-        if e.response.status_code == 422:
-            print("   -> This is likely due to a malformed request. Try a longer search term.")
         return jsonify([])
     except Exception as e:
         print(f"Open Library search error: {e}")
@@ -280,7 +277,6 @@ def search_books():
 
 @app.route("/api/book/isbn/<isbn>")
 def get_book_by_isbn(isbn):
-    """Get book details by ISBN"""
     cache_key = f"isbn:{isbn}"
     if cache_key in search_cache:
         return jsonify(search_cache[cache_key])
@@ -358,11 +354,9 @@ def search_manga():
             manga_id = manga["id"]
             attrs = manga.get("attributes", {})
 
-            # Title
             title_data = attrs.get("title", {})
             title = title_data.get("en") or next(iter(title_data.values()), "Unknown")
 
-            # Cover file name
             cover_file = None
             for rel in manga.get("relationships", []):
                 if rel["type"] == "cover_art":
@@ -373,14 +367,12 @@ def search_manga():
             if cover_file:
                 cover_url = _mangadex_cover_url(manga_id, cover_file)
 
-            # Author
             author = ""
             for rel in manga.get("relationships", []):
                 if rel["type"] == "author":
                     author = rel.get("attributes", {}).get("name", "")
                     break
 
-            # Description
             desc = attrs.get("description", {})
             overview = desc.get("en") or next(iter(desc.values()), "")
 
@@ -396,7 +388,7 @@ def search_manga():
                 "popularity": 0,
             })
 
-        search_cache[cache_key] = items
+        _cache_search(cache_key, items)
         return jsonify(items)
 
     except Exception as e:
@@ -420,17 +412,11 @@ def get_poster(media_type, item_id):
             headers={"Cache-Control": "public, max-age=31536000, immutable"},
         )
 
-    # Handle Books with Open Library API
     if media_type == "book":
-        with get_conn() as conn:
-            row = conn.execute(
-                "SELECT id, cover_url FROM media WHERE external_id = ? AND media_type = ?",
-                (item_id, media_type),
-            ).fetchone()
-        cover_url = row["cover_url"] if row and row["cover_url"] else ""
-        
+        row = get_media_by_external_id(item_id, media_type)
+        cover_url = (row or {}).get("cover_url", "")
+
         if not cover_url:
-            # Try to fetch from Open Library by work ID
             try:
                 resp = requests.get(
                     f"https://openlibrary.org/works/{item_id}.json",
@@ -461,16 +447,10 @@ def get_poster(media_type, item_id):
             print(f"Book poster download error for {cover_url}: {e}")
             return "", 404
 
-    # Handle Manga with MangaDex API
     if media_type == "manga":
-        with get_conn() as conn:
-            row = conn.execute(
-                "SELECT id, cover_url FROM media WHERE external_id = ? AND media_type = ?",
-                (item_id, media_type),
-            ).fetchone()
-        cover_url = row["cover_url"] if row and row["cover_url"] else ""
+        row = get_media_by_external_id(item_id, media_type)
+        cover_url = (row or {}).get("cover_url", "")
 
-        # Fetch a missing cover URL from MangaDex.
         if not cover_url:
             try:
                 cover_url = _fetch_mangadex_cover_url(item_id)
@@ -495,7 +475,6 @@ def get_poster(media_type, item_id):
         except Exception:
             return "", 404
 
-    # Handle Movies and TV Shows with TMDB
     endpoint = "movie" if media_type == "movie" else "tv"
     meta_url = f"https://api.themoviedb.org/3/{endpoint}/{item_id}?api_key={tmdb.api_key}"
     try:
@@ -582,18 +561,13 @@ def delete_media(media_id):
 
 @app.route("/api/media-with-chats/<int:media_id>")
 def media_with_chats(media_id):
-    """Return media item and its chats for undo support."""
     media = cached_get_media(media_id)
     if not media:
         return jsonify({"error": "Media not found"}), 404
-    with get_conn() as conn:
-        chats_rows = conn.execute(
-            "SELECT * FROM chats WHERE media_id = ?", (media_id,)
-        ).fetchall()
-    chats = []
-    for chat_row in chats_rows:
-        msgs = get_chat_messages(chat_row["id"])
-        chats.append({**dict(chat_row), "messages": msgs})
+    chats = [
+        {**chat, "messages": get_chat_messages(chat["id"])}
+        for chat in get_chats_by_media_id(media_id)
+    ]
     return jsonify({"media": media, "chats": chats})
 
 
@@ -653,12 +627,15 @@ def vibe_search_types():
         f'Available media types: movie, tv, book, manga\n'
         f'Decide which media types are most relevant.\n'
         f'Rules:\n'
-        f'- If the query looks like a specific title (e.g. "breaking bad", "one piece", "dune"), '
-        f'include the type(s) that title belongs to.\n'
+        f'- If the query explicitly names a media type word (e.g. "manga", "anime", "book", "movie", "show"), '
+        f'that type MUST be in the list. "anime" maps to tv.\n'
+        f'- If the query names a specific title, include only the type(s) that title belongs to.\n'
         f'- If the query is a mood/vibe (e.g. "cozy mysteries", "dark thriller"), pick the types '
         f'where those vibes are most common.\n'
         f'- Return ONLY a JSON array from: ["movie","tv","book","manga"]. No other text.\n'
         f'Examples:\n'
+        f'  "manga like one piece" -> ["manga"]\n'
+        f'  "similar to naruto manga" -> ["manga","tv"]\n'
         f'  "breaking bad" -> ["tv"]\n'
         f'  "one piece" -> ["manga","tv"]\n'
         f'  "dune" -> ["movie","book"]\n'
@@ -679,31 +656,200 @@ def vibe_search_types():
     return jsonify({"types": suggested_types})
 
 
+# Patterns that signal "give me things SIMILAR to X", not X itself.
+_SIMILAR_RE = re.compile(
+    r'\b(like|similar\s+to|in\s+the\s+style\s+of|reminds?\s+me\s+of|along\s+the\s+lines\s+of)\b',
+    re.IGNORECASE,
+)
+
+
+def _vibe_prompt(query: str, types: list, exclude_titles: list, is_first: bool) -> str:
+    type_list    = ", ".join(types)
+    exclude_note = (
+        f'\nDo NOT include any of these already-shown titles: {json.dumps(exclude_titles)}.'
+        if exclude_titles else ""
+    )
+
+    # Decide whether the query names a specific title the user wants included.
+    similarity_phrasing = bool(_SIMILAR_RE.search(query))
+    include_seed = (
+        not similarity_phrasing   # "breaking bad" → include it
+        and is_first              # only on the first call
+    )
+
+    if include_seed:
+        seed_rule = (
+            'If the input names a specific title, include that title as the first result '
+            'and fill the remaining slots with closely related titles.'
+        )
+    else:
+        seed_rule = (
+            'Do NOT include the title the user mentioned as a seed — '
+            'return only titles similar to it or matching the described vibe.'
+        )
+
+    # Build a sharp type constraint based on what the user literally said.
+    type_constraint = (
+        f'ALLOWED types for this search: [{type_list}]. '
+        f'Every result MUST have a media_type from that list — no exceptions. '
+        f'Weight your picks toward the type(s) the user\'s wording implies most strongly '
+        f'(e.g. if they said "manga", prefer manga over tv even if both are allowed). '
+        f'Never substitute: do not return a tv show when manga was asked for, or a movie when a book was asked for.'
+    )
+
+    return (
+        f'You are a media recommendation engine.\n'
+        f'User input: "{query}"\n'
+        f'{type_constraint}\n'
+        f'\n'
+        f'{seed_rule}\n'
+        f'If the input describes a mood or vibe rather than a specific title, recommend media that fits it.\n'
+        f'{exclude_note}\n'
+        f'Return ONLY a JSON array of exactly 5 objects with EXACTLY these keys:\n'
+        f'  "title"      : exact, well-known title string\n'
+        f'  "year"       : release year as a string (e.g. "2019") or ""\n'
+        f'  "media_type" : must be one of [{type_list}] — no other values allowed\n'
+        f'No markdown, no extra keys, no explanation.'
+    )
+
+
+def _enrich_one(rec: dict) -> dict:
+    """Fetch poster/metadata for a single vibe search recommendation."""
+    mt          = rec.get("media_type", "movie")
+    title       = rec.get("title", "")
+    year        = rec.get("year", "")
+    poster_path = None
+    tmdb_id     = None
+    external_id = None
+    cover_url   = ""
+    author      = ""
+    total_pages = None
+    overview    = ""
+
+    if mt == "movie":
+        try:
+            results = movie_api.search(title)
+            for r in results:
+                if not hasattr(r, "id"):
+                    continue
+                ry = (r.release_date or "")[:4]
+                if year and ry and ry != year and tmdb_id:
+                    continue
+                tmdb_id     = r.id
+                external_id = str(r.id)
+                poster_path = getattr(r, "poster_path", None)
+                overview    = getattr(r, "overview", None) or ""
+                if ry == year:
+                    break
+        except Exception as e:
+            print(f"TMDB movie enrich skipped for '{title}': {e}")
+
+    elif mt == "tv":
+        try:
+            results = tv_api.search(title)
+            for r in results:
+                if not hasattr(r, "id"):
+                    continue
+                ry = (r.first_air_date or "")[:4]
+                if year and ry and ry != year and tmdb_id:
+                    continue
+                tmdb_id     = r.id
+                external_id = str(r.id)
+                poster_path = getattr(r, "poster_path", None)
+                overview    = getattr(r, "overview", None) or ""
+                if ry == year:
+                    break
+        except Exception as e:
+            print(f"TMDB tv enrich skipped for '{title}': {e}")
+
+    elif mt == "book":
+        try:
+            resp = requests.get(
+                "https://openlibrary.org/search.json",
+                params={"q": title, "limit": 1},
+                timeout=5,
+            )
+            for doc in resp.json().get("docs", []):
+                cover_id    = doc.get("cover_i")
+                cover_url   = f"https://covers.openlibrary.org/b/id/{cover_id}-L.jpg" if cover_id else ""
+                external_id = doc.get("key", "").replace("/works/", "")
+                author      = ", ".join(doc.get("author_name", []))
+                total_pages = doc.get("number_of_pages_median")
+                break
+        except Exception as e:
+            print(f"Book enrich skipped for '{title}': {e}")
+
+    elif mt == "manga":
+        try:
+            resp = requests.get(
+                "https://api.mangadex.org/manga",
+                headers=MANGADEX_HEADERS,
+                params={
+                    "title": title,
+                    "limit": 1,
+                    "includes[]": ["cover_art", "author"],
+                    "availableTranslatedLanguage[]": ["en"],
+                },
+                timeout=5,
+            )
+            if resp.status_code == 200:
+                data = resp.json().get("data", [])
+                if data:
+                    m           = data[0]
+                    external_id = m["id"]
+                    attrs       = m.get("attributes", {})
+                    desc        = attrs.get("description", {})
+                    raw_desc    = desc.get("en") or next(iter(desc.values()), "")
+                    if raw_desc:
+                        overview = raw_desc[:300]
+                    for rel in m.get("relationships", []):
+                        if rel["type"] == "cover_art":
+                            fn = rel.get("attributes", {}).get("fileName", "")
+                            if fn:
+                                cover_url = _mangadex_cover_url(external_id, fn)
+                            break
+                    for rel in m.get("relationships", []):
+                        if rel["type"] == "author":
+                            author = rel.get("attributes", {}).get("name", "")
+                            break
+        except Exception as e:
+            print(f"Manga enrich skipped for '{title}': {e}")
+
+    return {
+        "title":       title,
+        "year":        year,
+        "media_type":  mt,
+        "overview":    overview,
+        "tmdb_id":     tmdb_id,
+        "external_id": external_id,
+        "poster_path": poster_path,
+        "cover_url":   cover_url,
+        "author":      author,
+        "total_pages": total_pages,
+    }
+
+
+def _enrich_results(recs: list) -> list:
+    """Enrich vibe search results in parallel — one thread per result."""
+    with ThreadPoolExecutor(max_workers=5) as pool:
+        futures = {pool.submit(_enrich_one, rec): i for i, rec in enumerate(recs)}
+        ordered = [None] * len(recs)
+        for future in as_completed(futures):
+            ordered[futures[future]] = future.result()
+    return [r for r in ordered if r is not None]
+
+
 @app.route("/api/vibe-search", methods=["POST"])
 def vibe_search():
-    data  = request.json or {}
-    query = data.get("query", "").strip()
-    types = data.get("types", ["movie", "tv"])
+    data           = request.json or {}
+    query          = data.get("query", "").strip()
+    types          = data.get("types", ["movie", "tv"])
+    exclude_titles = data.get("exclude_titles", [])
     if not query:
         return jsonify({"error": "No query provided"}), 400
 
-    type_list = ", ".join(types)
-    prompt = (
-        f'You are a media recommendation engine.\n'
-        f'User input: "{query}"\n'
-        f'Media types to search: {type_list}.\n'
-        f'\n'
-        f'IMPORTANT: If the input looks like a specific title (e.g. "breaking bad", "one piece"),'
-        f' include that title as the first result and add similar titles after it.\n'
-        f'If the input is a mood or vibe description, recommend media that fits it.\n'
-        f'\n'
-        f'Return ONLY a JSON array of up to 8 objects with EXACTLY these keys:\n'
-        f'  "title"      : exact, well-known title string\n'
-        f'  "year"       : release year as a string (e.g. "2019") or ""\n'
-        f'  "media_type" : one of {type_list}\n'
-        f'  "reason"     : one sentence why it fits\n'
-        f'No markdown, no extra keys, no explanation.'
-    )
+    is_first = not exclude_titles
+    prompt   = _vibe_prompt(query, types, exclude_titles, is_first)
 
     try:
         resp = gemini.models.generate_content(model=GEMINI_MODEL, contents=prompt)
@@ -712,124 +858,7 @@ def vibe_search():
     except Exception as e:
         return jsonify({"error": f"AI error: {e}"}), 500
 
-    enriched = []
-    for rec in recs[:8]:
-        mt          = rec.get("media_type", "movie")
-        title       = rec.get("title", "")
-        year        = rec.get("year", "")
-        reason      = rec.get("reason", "")
-        poster_path = None
-        overview    = ""
-        tmdb_id     = None
-        external_id = None
-        cover_url   = ""
-        author      = ""
-        total_pages = None
-
-        try:
-            if mt == "movie":
-                results = movie_api.search(title)
-                for r in results:
-                    if hasattr(r, "id"):
-                        ry = (r.release_date or "")[:4]
-                        if year and ry and ry != year and tmdb_id:
-                            continue
-                        tmdb_id     = r.id
-                        external_id = str(r.id)
-                        poster_path = getattr(r, "poster_path", None)
-                        overview    = getattr(r, "overview", "") or ""
-                        if ry == year:
-                            break
-            elif mt == "tv":
-                results = tv_api.search(title)
-                for r in results:
-                    if hasattr(r, "id"):
-                        ry = (r.first_air_date or "")[:4]
-                        if year and ry and ry != year and tmdb_id:
-                            continue
-                        tmdb_id     = r.id
-                        external_id = str(r.id)
-                        poster_path = getattr(r, "poster_path", None)
-                        overview    = getattr(r, "overview", "") or ""
-                        if ry == year:
-                            break
-            elif mt == "book":
-                try:
-                    resp = requests.get(
-                        "https://openlibrary.org/search.json",
-                        params={"q": title, "limit": 1},
-                        timeout=5,
-                    )
-                    data = resp.json()
-                    for doc in data.get("docs", []):
-                        cover_id = doc.get("cover_i")
-                        if cover_id:
-                            cover_url = f"https://covers.openlibrary.org/b/id/{cover_id}-L.jpg"
-                        external_id = doc.get("key", "").replace("/works/", "")
-                        author = ", ".join(doc.get("author_name", []))
-                        total_pages = doc.get("number_of_pages_median")
-                        description = doc.get("first_sentence", [""])[0] if doc.get("first_sentence") else ""
-                        overview = description[:300] if description else ""
-                        break
-                except Exception as enrich_err:
-                    print(f"Book enrich error for {title}: {enrich_err}")
-            elif mt == "manga":
-                try:
-                    headers = {"User-Agent": "CineVault/1.0"}
-                    resp = requests.get(
-                        "https://api.mangadex.org/manga",
-                        headers=headers,
-                        params={
-                            "title": title,
-                            "limit": 1,
-                            "includes[]": ["cover_art", "author"],
-                            "availableTranslatedLanguage[]": ["en"],
-                        },
-                        timeout=5,
-                    )
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        if data.get("data"):
-                            m = data["data"][0]
-                            attrs = m.get("attributes", {})
-                            
-                            # Get cover URL
-                            for rel in m.get("relationships", []):
-                                if rel["type"] == "cover_art":
-                                    fn = rel.get("attributes", {}).get("fileName", "")
-                                    if fn:
-                                        cover_url = _mangadex_cover_url(m["id"], fn)
-                                    break
-                            
-                            external_id = m["id"]
-                            
-                            # Get author
-                            for rel in m.get("relationships", []):
-                                if rel["type"] == "author":
-                                    author = rel.get("attributes", {}).get("name", "")
-                                    break
-                            
-                            overview = attrs.get("description", {}).get("en", "")[:300]
-                except Exception as enrich_err:
-                    print(f"Manga enrich error for {title}: {enrich_err}")
-        except Exception as enrich_err:
-            print(f"Enrich error for {title}: {enrich_err}")
-
-        enriched.append({
-            "title":       title,
-            "year":        year,
-            "media_type":  mt,
-            "reason":      reason,
-            "overview":    overview,
-            "tmdb_id":     tmdb_id,
-            "external_id": external_id,
-            "poster_path": poster_path,
-            "cover_url":   cover_url,
-            "author":      author,
-            "total_pages": total_pages,
-        })
-
-    return jsonify(enriched)
+    return jsonify(_enrich_results(recs[:5]))
 
 
 # ═══════════════════════════════════════════════════
@@ -982,6 +1011,48 @@ def _ai_card_cache_key(media: dict) -> str:
     return f"{media['id']}_watching_S{media.get('last_season', 0)}E{media.get('last_episode', 0)}"
 
 
+def _ai_card_prompt(media: dict) -> str:
+    title      = media["title"]
+    media_type = media["media_type"]
+    status     = media["status"]
+    progress   = _progress_str(media)
+    depth      = "2 sentences"
+
+    if status == "watchlist":
+        return (
+            f'Give a punchy spoiler-free pitch for "{title}" ({media_type}). '
+            f'Cover: genre/tone, what makes it worth watching/reading, and 2 comparable titles. '
+            f'No plot details beyond the premise. Length: {depth}.'
+        )
+    if status == "watching":
+        if media_type == "tv" and progress:
+            return (
+                f'The user is watching "{title}" and has reached {progress}. '
+                f'Write {depth} recapping story beats BEFORE {progress} only. No spoilers beyond that.'
+            )
+        if media_type == "manga" and progress:
+            return (
+                f'The user is reading "{title}" and has reached {progress}. '
+                f'Write {depth} recapping story beats before {progress} only. No spoilers beyond that.'
+            )
+        if media_type == "book" and progress:
+            return (
+                f'The user is reading "{title}" and is at {progress}. '
+                f'Write {depth} summarising what has happened so far without spoiling anything beyond that point.'
+            )
+        return (
+            f'The user is currently experiencing "{title}" ({media_type}). '
+            f'In {depth}, describe the overall tone, standout elements, '
+            f'and what makes it special — without revealing plot details.'
+        )
+    return (
+        f'The user just finished "{title}" ({media_type}). '
+        f'Recommend exactly 3 similar titles they\'d likely enjoy. '
+        f'Format each as: Title (Year) — one sentence why. '
+        f'No markdown, just plain text.'
+    )
+
+
 @app.route("/api/ai-card", methods=["POST"])
 def ai_card():
     data     = request.json or {}
@@ -998,48 +1069,7 @@ def ai_card():
         if now < expiry:
             return jsonify({"content": content})
 
-    title      = media["title"]
-    media_type = media["media_type"]
-    status     = media["status"]
-    progress   = _progress_str(media)
-    depth      = "2 sentences"
-
-    if status == "watchlist":
-        prompt = (
-            f'Give a punchy spoiler-free pitch for "{title}" ({media_type}). '
-            f'Cover: genre/tone, what makes it worth watching/reading, and 2 comparable titles. '
-            f'No plot details beyond the premise. Length: {depth}.'
-        )
-    elif status == "watching":
-        if media_type == "tv" and progress:
-            prompt = (
-                f'The user is watching "{title}" and has reached {progress}. '
-                f'Write {depth} recapping story beats BEFORE {progress} only. No spoilers beyond that.'
-            )
-        elif media_type == "manga" and progress:
-            prompt = (
-                f'The user is reading "{title}" and has reached {progress}. '
-                f'Write {depth} recapping story beats before {progress} only. No spoilers beyond that.'
-            )
-        elif media_type == "book" and progress:
-            prompt = (
-                f'The user is reading "{title}" and is at {progress}. '
-                f'Write {depth} summarising what has happened so far without spoiling anything beyond that point.'
-            )
-        else:
-            prompt = (
-                f'The user is currently experiencing "{title}" ({media_type}). '
-                f'In {depth}, describe the overall tone, standout elements, '
-                f'and what makes it special — without revealing plot details.'
-            )
-    else:
-        prompt = (
-            f'The user just finished "{title}" ({media_type}). '
-            f'Recommend exactly 3 similar titles they\'d likely enjoy. '
-            f'Format each as: Title (Year) — one sentence why. '
-            f'No markdown, just plain text.'
-        )
-
+    prompt = _ai_card_prompt(media)
     try:
         content = _generate_ai_content(prompt)
     except Exception as e:
@@ -1047,6 +1077,44 @@ def ai_card():
 
     ai_card_cache[cache_key] = (content, now + AI_CARD_TTL)
     return jsonify({"content": content})
+
+
+@app.route("/api/ai-card/stream", methods=["POST"])
+def ai_card_stream():
+    data     = request.json or {}
+    media_id = data.get("media_id")
+
+    media = cached_get_media(media_id)
+    if not media:
+        return jsonify({"error": "Media not found"}), 404
+
+    cache_key = _ai_card_cache_key(media)
+    now       = time.time()
+    if cache_key in ai_card_cache:
+        content, expiry = ai_card_cache[cache_key]
+        if now < expiry:
+            def cached_stream():
+                yield f"data: {json.dumps({'token': content})}\n\n"
+                yield f"data: {json.dumps({'done': True})}\n\n"
+            return Response(cached_stream(), mimetype="text/event-stream",
+                            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+    prompt = _ai_card_prompt(media)
+
+    def generate():
+        full = []
+        try:
+            for token in _iter_gemini_response_tokens([{"role": "user", "parts": [{"text": prompt}]}]):
+                full.append(token)
+                yield f"data: {json.dumps({'token': token})}\n\n"
+            content = "".join(full).strip()
+            ai_card_cache[cache_key] = (content, time.time() + AI_CARD_TTL)
+            yield f"data: {json.dumps({'done': True})}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+    return Response(generate(), mimetype="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @app.route("/api/ask", methods=["POST"])
