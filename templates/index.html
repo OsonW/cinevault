@@ -7,7 +7,6 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,300;0,600;1,300&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
-/* ── Reset & Base ─────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
@@ -17,6 +16,7 @@
   --border:      rgba(255,255,255,0.07);
   --border-md:   rgba(255,255,255,0.12);
   --accent:      #a78bfa;
+  --accent-hover: #8b6ef7;
   --accent-dim:  rgba(167,139,250,0.18);
   --accent-glow: rgba(167,139,250,0.07);
   --blue:        #6ea8d4;
@@ -35,6 +35,7 @@
   --pink-dim:    rgba(224,122,171,0.15);
   --pink-glow:   rgba(224,122,171,0.07);
   --text:        #f0ede8;
+  --text-dim:    #c8c4be;
   --muted:       #7a7885;
   --subtle:      #3a3a44;
   --red:         #e05252;
@@ -59,7 +60,7 @@ body {
 .shell {
   display: grid;
   grid-template-rows: auto 1fr;
-  grid-template-columns: 300px 1fr;
+  grid-template-columns: 340px 1fr;
   grid-template-areas: "topbar topbar" "detail grid";
   height: 100vh;
 }
@@ -70,19 +71,23 @@ body {
   display: flex;
   align-items: center;
   gap: 24px;
-  padding: 14px 24px;
+  padding: 12px 24px;
+  flex-shrink: 0;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
   position: relative;
   z-index: 200;
+  overflow: visible;
 }
 
+/* ── Top Bar logo ─────────────────────────────── */
 .logo {
   font-family: 'Fraunces', serif;
   font-size: 1.35rem;
   font-weight: 300;
   letter-spacing: 0.02em;
   white-space: nowrap;
+  position: relative;
 }
 .logo em { color: var(--accent); font-style: italic; }
 
@@ -98,34 +103,35 @@ body {
 .search-btn-group { display: flex; position: relative; }
 
 .btn-search-main {
-  padding: 8px 14px;
+  padding: 8px 16px;
   border-radius: 0;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-md);
   border-left: none;
   background: var(--accent);
-  color: #0e0e10;
+  color: var(--bg);
   font-family: 'DM Sans', sans-serif;
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s;
   white-space: nowrap;
+  letter-spacing: 0.01em;
 }
-.btn-search-main:hover { background: #8b6ef7; }
+.btn-search-main:hover { background: var(--accent-hover); }
 
 .btn-search-caret {
   padding: 8px 10px;
   border-radius: 0 var(--radius) var(--radius) 0;
-  border: 1px solid var(--border);
-  border-left: 1px solid rgba(0,0,0,0.3);
-  background: #8b6ef7;
-  color: #0e0e10;
+  border: 1px solid var(--border-md);
+  border-left: 1px solid rgba(0,0,0,0.25);
+  background: var(--accent-hover);
+  color: var(--bg);
   font-size: 11px;
   cursor: pointer;
   transition: all 0.15s;
   line-height: 1;
 }
-.btn-search-caret:hover { background: #7c5ef0; }
+.btn-search-caret:hover { background: var(--accent-hover); }
 
 .search-type-btns {
   display: flex;
@@ -134,28 +140,26 @@ body {
   align-items: center;
 }
 .search-type-btn {
-  padding: 5px 8px;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  background: none;
+  padding: 6px 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-md);
+  background: var(--card);
   color: var(--muted);
   font-size: 13px;
   cursor: pointer;
   transition: all 0.15s;
   font-family: 'DM Sans', sans-serif;
   line-height: 1;
+  display: flex;
+  align-items: center;
+  gap: 5px;
 }
-.search-type-btn:hover { color: var(--text); border-color: var(--border-md); }
-.search-type-btn.active { color: var(--accent); border-color: var(--accent-dim); background: var(--accent-glow); }
+.search-type-btn:hover { color: var(--text); border-color: rgba(255,255,255,0.2); background: var(--subtle); }
+.search-type-btn.active[data-stype="movie"] { color: var(--blue);  border-color: var(--blue-dim);  background: var(--blue-glow); }
+.search-type-btn.active[data-stype="tv"]    { color: var(--green); border-color: var(--green-dim); background: var(--green-glow); }
+.search-type-btn.active[data-stype="book"]  { color: var(--amber); border-color: var(--amber-dim); background: var(--amber-glow); }
+.search-type-btn.active[data-stype="manga"] { color: var(--pink);  border-color: var(--pink-dim);  background: var(--pink-glow); }
 .search-type-btns.hidden { display: none; }
-
-/* AI-suggested badge on type buttons */
-.search-type-btn.ai-suggested {
-  border-color: var(--accent-dim);
-  color: var(--accent);
-  background: var(--accent-glow);
-  position: relative;
-}
 
 .search-mode-menu {
   position: absolute;
@@ -187,7 +191,6 @@ body {
 .smm-label { font-size: 13px; font-weight: 500; }
 .smm-sub   { font-size: 11px; color: var(--muted); margin-top: 1px; }
 
-/* shared input style */
 .field input,
 .field textarea {
   background: var(--card);
@@ -201,7 +204,7 @@ body {
 }
 .search-anchor input {
   background: var(--card);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-md);
   color: var(--text);
   font-family: 'DM Sans', sans-serif;
   font-size: 13px;
@@ -250,23 +253,25 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .btn {
   padding: 8px 16px;
   border-radius: var(--radius);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-md);
   background: var(--card);
   color: var(--text);
   font-family: 'DM Sans', sans-serif;
   font-size: 13px;
+  font-weight: 400;
   cursor: pointer;
   transition: all 0.15s;
   white-space: nowrap;
+  letter-spacing: 0.01em;
 }
-.btn:hover { border-color: var(--border-md); background: var(--subtle); }
-.btn-accent { background: var(--accent); color: #0e0e10; border-color: var(--accent); font-weight: 500; }
-.btn-accent:hover { background: #8b6ef7; border-color: #8b6ef7; }
+.btn:hover { border-color: rgba(255,255,255,0.2); background: var(--subtle); }
+.btn-accent { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: 500; }
+.btn-accent:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 .btn-sm { padding: 5px 12px; font-size: 12px; }
-.btn:disabled { opacity: 0.5; cursor: default; pointer-events: none; }
+.btn:disabled { opacity: 0.4; cursor: default; pointer-events: none; }
 
 /* ── Tabs ─────────────────────────────────────── */
-.tabs { display: flex; gap: 4px; margin-left: auto; }
+.tabs { display: flex; gap: 2px; margin-left: auto; }
 .tab {
   padding: 7px 14px;
   border-radius: var(--radius);
@@ -275,16 +280,69 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   color: var(--muted);
   font-family: 'DM Sans', sans-serif;
   font-size: 13px;
+  font-weight: 400;
   cursor: pointer;
   transition: all 0.15s;
+  letter-spacing: 0.01em;
 }
-.tab:hover { color: var(--text); }
+.tab:hover { color: var(--text); background: rgba(255,255,255,0.04); }
 .tab[data-tab="watchlist"].active { color: var(--blue);   border-color: var(--blue-dim);   background: var(--blue-glow); }
 .tab[data-tab="watching"].active  { color: var(--green);  border-color: var(--green-dim);  background: var(--green-glow); }
 .tab[data-tab="finished"].active  { color: var(--purple); border-color: var(--purple-dim); background: var(--purple-glow); }
 .tab[data-tab="chats"].active     { color: var(--amber);  border-color: var(--amber-dim);  background: var(--amber-glow); }
 
-/* ── STANDARD Search Modal ────────────────────── */
+/* ── Creative enhancements ────────────────────── */
+.topbar::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(167,139,250,0.3) 30%, rgba(110,168,212,0.2) 70%, transparent);
+  pointer-events: none;
+}
+
+/* Stat boxes with subtle left accent */
+.stat-box {
+  position: relative;
+  overflow: hidden;
+}
+.stat-box::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 20%; bottom: 20%;
+  width: 2px;
+  background: var(--accent);
+  border-radius: 0 2px 2px 0;
+  opacity: 0.5;
+}
+
+/* AI card subtle left shimmer */
+.ai-card {
+  position: relative;
+  overflow: hidden;
+}
+.ai-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; bottom: 0;
+  width: 2px;
+  background: var(--accent);
+  opacity: 0.4;
+  border-radius: 0 0 0 var(--radius);
+}
+
+.chat-list-item.selected {
+  background: var(--amber-glow);
+  border-left: 2px solid var(--amber);
+}
+
+.logo::after {
+  content: '';
+  position: absolute;
+  right: -14px; top: 15%; bottom: 15%;
+  width: 1px;
+  background: var(--border-md);
+}
 .search-modal-backdrop {
   position: fixed;
   inset: 0;
@@ -327,31 +385,26 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 }
 .sm-title em { color: var(--text); font-style: normal; }
 
-/* Media type filter pills inside modal */
-.sm-type-filters { display: flex; gap: 6px; align-items: center; }
+.sm-type-filters { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .sm-type-pill {
-  padding: 4px 10px;
-  border-radius: 99px;
-  border: 1px solid var(--border);
-  background: none;
+  padding: 5px 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-md);
+  background: var(--card);
   color: var(--muted);
   font-size: 11px;
   cursor: pointer;
   transition: all 0.15s;
   font-family: 'DM Sans', sans-serif;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
-.sm-type-pill:hover { color: var(--text); border-color: var(--border-md); }
-.sm-type-pill.active { color: var(--accent); border-color: var(--accent-dim); background: var(--accent-glow); }
-
-/* AI hint label in modal header */
-.sm-ai-hint {
-  font-size: 10px;
-  color: var(--accent);
-  opacity: 0.7;
-  white-space: nowrap;
-  display: none;
-}
-.sm-ai-hint.show { display: inline; }
+.sm-type-pill:hover { color: var(--text); border-color: rgba(255,255,255,0.2); background: var(--subtle); }
+.sm-type-pill.active[data-stype="movie"] { color: var(--blue);  border-color: var(--blue-dim);  background: var(--blue-glow); }
+.sm-type-pill.active[data-stype="tv"]    { color: var(--green); border-color: var(--green-dim); background: var(--green-glow); }
+.sm-type-pill.active[data-stype="book"]  { color: var(--amber); border-color: var(--amber-dim); background: var(--amber-glow); }
+.sm-type-pill.active[data-stype="manga"] { color: var(--pink);  border-color: var(--pink-dim);  background: var(--pink-glow); }
 
 .sm-close {
   width: 30px; height: 30px;
@@ -445,7 +498,7 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.sm-card-author { font-size: 10px; color: var(--muted); }
+.sm-card-author { font-size: 11px; color: var(--muted); }
 
 .sm-chips { display: flex; flex-wrap: wrap; gap: 4px; }
 .sm-chip {
@@ -455,6 +508,9 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   border: 1px solid var(--border);
   color: var(--muted);
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
 }
 .sm-chip.year   { color: var(--text);   border-color: var(--border-md); }
 .sm-chip.movie  { color: var(--blue);   border-color: var(--blue-dim); }
@@ -497,7 +553,6 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   opacity: 1;
 }
 
-/* Loading skeleton */
 .sm-skeleton {
   width: 100%;
   aspect-ratio: 2/3;
@@ -541,6 +596,7 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   background: linear-gradient(135deg, rgba(167,139,250,0.06) 0%, transparent 60%);
+  position: relative;
 }
 .vm-title {
   font-family: 'Fraunces', serif;
@@ -587,17 +643,20 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   flex-wrap: wrap;
 }
 .vm-type-btn {
-  padding: 5px 11px;
-  border-radius: 99px;
-  border: 1px solid var(--border);
-  background: none;
+  padding: 5px 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-md);
+  background: var(--card);
   color: var(--muted);
   font-size: 11px;
   font-family: 'DM Sans', sans-serif;
   cursor: pointer;
   transition: all 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
-.vm-type-btn:hover { color: var(--text); }
+.vm-type-btn:hover { color: var(--text); border-color: rgba(255,255,255,0.2); background: var(--subtle); }
 .vm-type-btn.active[data-vtype="movie"] { color: var(--blue);  border-color: var(--blue-dim);  background: var(--blue-glow); }
 .vm-type-btn.active[data-vtype="tv"]    { color: var(--green); border-color: var(--green-dim); background: var(--green-glow); }
 .vm-type-btn.active[data-vtype="book"]  { color: var(--amber); border-color: var(--amber-dim); background: var(--amber-glow); }
@@ -618,7 +677,6 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   transition: all 0.15s;
 }
 .vm-close:hover { color: var(--text); border-color: var(--border-md); background: var(--card); }
-.vm-header { position: relative; }
 
 /* ── Detail Panel ─────────────────────────────── */
 .detail-panel {
@@ -628,13 +686,6 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   border-right: 1px solid var(--border);
   background: var(--surface);
 }
-.detail-empty {
-  display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
-  height: 100%; color: var(--muted); gap: 12px;
-}
-.detail-empty svg { opacity: 0.2; }
-
 .poster-wrap {
   position: relative; width: 100%; aspect-ratio: 2/3; overflow: hidden; background: var(--card);
 }
@@ -688,7 +739,6 @@ input[type="range"]::-webkit-slider-thumb {
 .episode-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .triple-row  { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
 
-/* Progress bar for books */
 .progress-bar-wrap { margin-bottom: 14px; }
 .progress-bar-track {
   height: 4px; border-radius: 99px; background: var(--card); overflow: hidden; margin: 6px 0 4px;
@@ -698,7 +748,6 @@ input[type="range"]::-webkit-slider-thumb {
 }
 .progress-pct { font-size: 10px; color: var(--amber); }
 
-/* AI card */
 .ai-card {
   background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
   padding: 12px 14px; margin-bottom: 12px; font-size: 13px; line-height: 1.6;
@@ -707,18 +756,18 @@ input[type="range"]::-webkit-slider-thumb {
   font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
   color: var(--accent); font-weight: 500; margin-bottom: 6px; display: flex; align-items: center; gap: 5px;
 }
-.ai-card-body { color: #c8c4be; }
+.ai-card-body { color: var(--text-dim); }
 
 
 .open-chat-btn {
-  display: flex; align-items: center; gap: 5px;
+  display: inline-flex; align-items: center; gap: 5px;
   padding: 5px 10px;
   border-radius: var(--radius); border: 1px solid var(--amber-dim);
   background: var(--amber-glow); color: var(--amber);
   font-size: 11px; font-family: 'DM Sans', sans-serif; cursor: pointer;
-  transition: all 0.15s;
+  transition: all 0.15s; letter-spacing: 0.01em;
 }
-.open-chat-btn:hover { border-color: var(--amber); }
+.open-chat-btn:hover { border-color: var(--amber); background: rgba(244,162,97,0.2); }
 
 .qa-wrap { margin-bottom: 16px; }
 .qa-input-row { display: flex; gap: 6px; margin-bottom: 8px; }
@@ -730,16 +779,15 @@ input[type="range"]::-webkit-slider-thumb {
 .qa-input-row input::placeholder { color: var(--muted); }
 .qa-answer {
   padding: 10px 12px; background: var(--card); border-left: 2px solid var(--accent);
-  border-radius: 0 var(--radius) 0 0; font-size: 13px; line-height: 1.6;
-  color: #c8c4be; display: none;
+  border-radius: 0 var(--radius) var(--radius) 0; font-size: 13px; line-height: 1.6;
+  color: var(--text-dim); display: none;
 }
 .qa-answer.show { display: block; }
 
-/* Continue in chat nudge */
 .chat-nudge {
   display: none; margin-top: 6px; align-items: center; gap: 5px;
   padding: 5px 10px;
-  border-radius: 0 0 var(--radius) var(--radius); border: 1px solid var(--amber-dim);
+  border-radius: var(--radius); border: 1px solid var(--amber-dim);
   background: var(--amber-glow); color: var(--amber);
   font-size: 11px; font-family: 'DM Sans', sans-serif; cursor: pointer;
   transition: all 0.15s;
@@ -748,6 +796,20 @@ input[type="range"]::-webkit-slider-thumb {
 .chat-nudge.show { display: flex; }
 
 .divider { height: 1px; background: var(--border); margin: 16px 0; }
+
+.desc-toggle-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 10px; border-radius: var(--radius);
+  border: 1px solid var(--border); background: none;
+  color: var(--muted); font-size: 11px; font-family: 'DM Sans', sans-serif;
+  cursor: pointer; transition: all 0.15s;
+}
+.desc-toggle-btn:hover { color: var(--text); border-color: var(--border-md); background: var(--card); }
+.desc-toggle-btn:disabled { opacity: 0.5; cursor: default; pointer-events: none; }
+.detail-overview {
+  font-size: 12px; color: var(--muted); line-height: 1.6;
+  margin-top: 8px; margin-bottom: 4px;
+}
 
 .delete-btn {
   width: 100%; padding: 8px; border-radius: var(--radius);
@@ -810,7 +872,6 @@ body[data-tab="chats"] .detail-body { display: none !important; }
 .chat-list-item:hover .cli-delete { opacity: 1; }
 .cli-delete:hover { color: var(--red); border-color: rgba(224,82,82,0.4); background: rgba(224,82,82,0.1); }
 
-/* New chat panel toolbar */
 .chat-panel-toolbar {
   padding: 12px 16px;
   border-bottom: 1px solid var(--border);
@@ -859,17 +920,16 @@ body[data-tab="chats"] .detail-body { display: none !important; }
   background: rgba(224,82,82,0.15);
 }
 .chat-new-btn {
-  padding: 5px 12px;
+  padding: 6px 12px;
   border-radius: var(--radius);
   border: 1px solid var(--amber-dim);
   background: var(--amber-glow);
   color: var(--amber);
   font-size: 12px; font-family: 'DM Sans', sans-serif; cursor: pointer;
-  transition: all 0.15s;
+  transition: all 0.15s; letter-spacing: 0.01em;
 }
-.chat-new-btn:hover { border-color: var(--amber); }
+.chat-new-btn:hover { border-color: var(--amber); background: rgba(244,162,97,0.2); }
 
-/* Chat messages */
 .chat-messages-wrap {
   flex: 1; overflow-y: auto; padding: 16px;
   display: flex; flex-direction: column; gap: 12px;
@@ -890,7 +950,7 @@ body[data-tab="chats"] .detail-body { display: none !important; }
   align-self: flex-start;
   background: var(--card);
   border: 1px solid var(--border);
-  color: #c8c4be;
+  color: var(--text-dim);
 }
 .chat-msg-time {
   font-size: 10px; color: var(--muted); margin-top: 4px; text-align: right;
@@ -904,7 +964,6 @@ body[data-tab="chats"] .detail-body { display: none !important; }
 }
 .chat-msg-footer .chat-msg-time { margin-top: 0; }
 
-/* Chat input */
 .chat-input-area {
   flex-shrink: 0;
   padding: 12px 16px;
@@ -926,19 +985,11 @@ body[data-tab="chats"] .detail-body { display: none !important; }
 .chat-send-btn {
   padding: 9px 16px; border-radius: var(--radius);
   border: 1px solid var(--accent); background: var(--accent);
-  color: #0e0e10; font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 500;
+  color: var(--bg); font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 500;
   cursor: pointer; transition: all 0.15s; white-space: nowrap;
 }
-.chat-send-btn:hover { background: #8b6ef7; border-color: #8b6ef7; }
+.chat-send-btn:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 .chat-send-btn:disabled { opacity: 0.5; cursor: default; }
-
-/* Empty chat state */
-.chat-empty {
-  flex: 1; display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
-  color: var(--muted); gap: 10px;
-}
-.chat-empty-icon { font-size: 2rem; opacity: 0.3; }
 
 /* New chat creator */
 .new-chat-form {
@@ -957,7 +1008,6 @@ body[data-tab="chats"] .detail-body { display: none !important; }
 }
 .ncf-select:focus { outline: none; border-color: var(--accent); }
 
-/* Library search dropdown for new chat */
 .ncf-dropdown {
   position: relative;
   margin-top: 4px;
@@ -980,53 +1030,103 @@ body[data-tab="chats"] .detail-body { display: none !important; }
 
 /* ── Grid Panel ───────────────────────────────── */
 .grid-panel { grid-area: grid; overflow-y: auto; padding: 20px 24px; background: var(--bg); }
-.grid-toolbar {
-  display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px;
+.grid-top-bar {
+  display: flex; align-items: center; gap: 6px; padding: 10px 0 0;
 }
+.grid-count-row { padding: 5px 0 8px; }
 .grid-count { font-size: 12px; color: var(--muted); }
-.sort-btns { display: flex; gap: 6px; }
+.grid-right-group { margin-left: auto; display: flex; align-items: center; gap: 6px; }
 .sort-btn {
-  padding: 5px 12px; border-radius: var(--radius); border: 1px solid var(--border);
-  background: none; color: var(--muted); font-size: 12px; font-family: 'DM Sans', sans-serif;
-  cursor: pointer; transition: all 0.15s;
+  padding: 5px 12px; border-radius: var(--radius); border: 1px solid var(--border-md);
+  background: var(--card); color: var(--muted); font-size: 12px; font-family: 'DM Sans', sans-serif;
+  cursor: pointer; transition: all 0.15s; letter-spacing: 0.01em;
 }
-.sort-btn:hover { color: var(--text); border-color: var(--border-md); }
+.sort-btn:hover { color: var(--text); border-color: rgba(255,255,255,0.2); background: var(--subtle); }
 .sort-btn.active { color: var(--accent); border-color: var(--accent-dim); background: var(--accent-glow); }
-
-.poster-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 14px; }
-.poster-card {
-  cursor: pointer; border-radius: var(--radius); overflow: hidden;
-  border: 1px solid var(--border); background: var(--card);
-  transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+.size-dd-wrap { position: relative; flex-shrink: 0; }
+.size-dd-btn {
+  padding: 5px 12px; border-radius: var(--radius); border: 1px solid var(--accent-dim);
+  background: var(--accent-glow); color: var(--accent); font-family: 'DM Sans', sans-serif;
+  font-size: 12px; cursor: pointer; transition: all 0.15s; white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 5px; letter-spacing: 0.01em;
 }
-.poster-card:hover { transform: translateY(-4px); border-color: var(--border-md); box-shadow: 0 12px 32px rgba(0,0,0,0.4); }
-.poster-card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 12px 32px rgba(167,139,250,0.18); }
-body[data-tab="watchlist"] .poster-card.selected { border-color: var(--blue);   box-shadow: 0 0 0 1px var(--blue),   0 12px 32px rgba(110,168,212,0.18); }
-body[data-tab="watching"]  .poster-card.selected { border-color: var(--green);  box-shadow: 0 0 0 1px var(--green),  0 12px 32px rgba(82,183,136,0.18); }
-body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); box-shadow: 0 0 0 1px var(--purple), 0 12px 32px rgba(167,139,250,0.18); }
+.size-dd-btn:hover { border-color: var(--accent); background: var(--accent-dim); }
+.size-dd-menu {
+  position: absolute; top: calc(100% + 4px); right: 0;
+  min-width: 190px; background: var(--card); border: 1px solid var(--border-md);
+  border-radius: var(--radius); box-shadow: 0 8px 24px rgba(0,0,0,0.55);
+  z-index: 400; overflow: hidden; display: none;
+}
+.size-dd-menu.open { display: block; }
+.size-dd-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 9px 12px; border-bottom: 1px solid var(--border);
+  cursor: pointer; transition: background 0.12s;
+  font-family: 'DM Sans', sans-serif; font-size: 12px; color: var(--muted);
+}
+.size-dd-item:last-child { border-bottom: none; }
+.size-dd-item:hover { background: rgba(255,255,255,0.04); color: var(--text); }
+.size-dd-item.active { color: var(--accent); background: var(--accent-glow); }
+.size-dd-hint { font-size: 10px; color: var(--muted); opacity: 0.6; }
+.size-dd-item.active .size-dd-hint { color: var(--accent); opacity: 0.7; }
 
+.grid-filter-input {
+  width: 240px; flex-shrink: 0; padding: 5px 10px;
+  background: var(--card); border: 1px solid var(--border-md);
+  border-radius: var(--radius); color: var(--text);
+  font-family: 'DM Sans', sans-serif; font-size: 12px;
+}
+.grid-filter-input:focus { outline: none; border-color: var(--accent); }
+.grid-filter-input::placeholder { color: var(--muted); }
+.grid-type-btn {
+  padding: 4px 8px; border-radius: var(--radius); border: 1px solid var(--border-md);
+  background: var(--card); color: var(--muted); cursor: pointer; font-size: 11px;
+  font-family: 'DM Sans', sans-serif; display: inline-flex; align-items: center;
+  gap: 4px; transition: all 0.15s; white-space: nowrap;
+}
+.grid-type-btn:hover { color: var(--text); border-color: rgba(255,255,255,0.2); background: var(--subtle); }
+.grid-type-btn.active[data-gtype="movie"] { color: var(--blue);  border-color: var(--blue-dim);  background: var(--blue-glow); }
+.grid-type-btn.active[data-gtype="tv"]    { color: var(--green); border-color: var(--green-dim); background: var(--green-glow); }
+.grid-type-btn.active[data-gtype="book"]  { color: var(--amber); border-color: var(--amber-dim); background: var(--amber-glow); }
+.grid-type-btn.active[data-gtype="manga"] { color: var(--pink);  border-color: var(--pink-dim);  background: var(--pink-glow); }
+.grid-filter-clear {
+  padding: 4px 8px; border-radius: var(--radius); border: 1px solid var(--border-md);
+  background: transparent; color: var(--muted); cursor: pointer;
+  font-size: 11px; font-family: 'DM Sans', sans-serif; transition: all 0.15s;
+}
+.grid-filter-clear:hover { color: var(--text); border-color: rgba(255,255,255,0.2); background: var(--subtle); }
+.grid-filter-clear.hidden { display: none; }
+
+.poster-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 14px; }
 .poster-card img { width: 100%; aspect-ratio: 2/3; object-fit: cover; display: block; background: var(--subtle); }
 .poster-info { padding: 8px 9px 10px; }
 .poster-title {
   font-size: 12px; line-height: 1.3; font-weight: 500; margin-bottom: 3px;
-  display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.poster-author { font-size: 10px; color: var(--muted); margin-bottom: 4px; }
+.poster-author { font-size: 11px; color: var(--muted); margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .poster-stars { display: flex; gap: 2px; }
 .pstar { font-size: 9px; color: var(--subtle); }
 .pstar.lit { color: var(--accent); }
-/* Media type badge on grid card */
+.poster-date { font-size: 10px; color: var(--muted); margin-bottom: 3px; }
+.poster-overview {
+  font-size: 11px; color: var(--muted); line-height: 1.45; margin-top: 5px;
+  display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3;
+  -webkit-box-orient: vertical; overflow: hidden;
+}
+.poster-overview-full {
+  font-size: 11px; color: var(--muted); line-height: 1.45; margin-top: 5px;
+}
+.poster-meta-row { display: flex; align-items: center; gap: 5px; margin-bottom: 4px; flex-wrap: wrap; }
 .poster-type-badge {
-  display: inline-block; font-size: 9px; padding: 1px 5px; border-radius: 4px;
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 9px; padding: 2px 6px; border-radius: var(--radius);
   border: 1px solid; margin-bottom: 4px;
 }
 .ptb-movie { color: var(--blue);  border-color: var(--blue-dim);  background: var(--blue-glow); }
 .ptb-tv    { color: var(--green); border-color: var(--green-dim); background: var(--green-glow); }
 .ptb-book  { color: var(--amber); border-color: var(--amber-dim); background: var(--amber-glow); }
 .ptb-manga { color: var(--pink);  border-color: var(--pink-dim);  background: var(--pink-glow); }
-
-.grid-empty { grid-column: 1/-1; text-align: center; padding: 80px 20px; color: var(--muted); }
-.grid-empty span { display: block; font-size: 2rem; margin-bottom: 10px; opacity: 0.3; }
 
 .stats-bar { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin-bottom: 20px; }
 .stat-box { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; }
@@ -1075,7 +1175,6 @@ body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); 
 }
 .toast-undo-btn:hover { border-color: var(--accent); background: var(--accent-dim); }
 
-/* Typing indicator */
 .typing-dots { display: inline-flex; gap: 4px; align-items: center; padding: 2px 0; }
 .typing-dots span {
   width: 6px; height: 6px; border-radius: 50%; background: var(--muted);
@@ -1084,12 +1183,110 @@ body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); 
 .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
 .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
 @keyframes bounce { 0%,80%,100%{transform:scale(0.7);opacity:0.4} 40%{transform:scale(1);opacity:1} }
+
+.spoiler-wrap {
+  position: relative;
+  display: inline-block;
+  width: 100%;
+}
+.spoiler-content {
+  filter: blur(5px);
+  cursor: pointer;
+  user-select: none;
+  transition: filter 0.25s;
+  display: block;
+}
+.spoiler-content.revealed {
+  filter: none;
+  cursor: default;
+}
+.spoiler-hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: var(--muted);
+  pointer-events: none;
+  transition: opacity 0.2s;
+  gap: 5px;
+}
+.spoiler-hint.hidden { opacity: 0; }
+.chat-msg.assistant .no-spoiler-content { display: block; }
+
+.spoiler-threshold-widget {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--muted);
+  border-left: 1px solid var(--border); padding-left: 12px;
+  margin-left: auto; flex-shrink: 0;
+}
+.spoiler-threshold-value {
+  color: var(--green); font-weight: 500; cursor: pointer;
+  border-bottom: 1px dashed rgba(82,183,136,0.4);
+  transition: color 0.15s, border-color 0.15s;
+}
+.spoiler-threshold-value:hover { color: #6fd4a8; border-color: rgba(82,183,136,0.8); }
+#mangaProgLabel { color: var(--pink); border-bottom-color: rgba(224,122,171,0.4); }
+#mangaProgLabel:hover { color: #e89cc0; border-color: rgba(224,122,171,0.8); }
+.spoiler-threshold-edit-btn {
+  background: none; border: none; color: var(--muted); cursor: pointer;
+  font-size: 13px; padding: 0 2px; line-height: 1;
+  transition: color 0.15s;
+}
+.spoiler-threshold-edit-btn:hover { color: var(--text); }
+
+.icon-svg {
+  display: inline-block;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+.detail-empty,
+.chat-empty {
+  flex: 1;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  color: var(--muted); gap: 12px;
+  text-align: center;
+  padding: 24px;
+  min-height: 300px;
+}
+
+.grid-empty {
+  grid-column: 1/-1;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  min-height: 300px;
+  color: var(--muted);
+  gap: 10px;
+  font-size: 13px;
+}
+
+.poster-card {
+  cursor: pointer; border-radius: var(--radius); overflow: hidden;
+  border: 1px solid var(--border); background: var(--card);
+  transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+  position: relative;
+}
+.poster-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius);
+  background: linear-gradient(135deg, rgba(255,255,255,0.015) 0%, transparent 50%);
+  pointer-events: none;
+}
+.poster-card:hover { transform: translateY(-4px); border-color: var(--border-md); box-shadow: 0 12px 32px rgba(0,0,0,0.4); }
+.poster-card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 12px 32px rgba(167,139,250,0.18); }
+body[data-tab="watchlist"] .poster-card.selected { border-color: var(--blue);   box-shadow: 0 0 0 1px var(--blue),   0 12px 32px rgba(110,168,212,0.18); }
+body[data-tab="watching"]  .poster-card.selected { border-color: var(--green);  box-shadow: 0 0 0 1px var(--green),  0 12px 32px rgba(82,183,136,0.18); }
+body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); box-shadow: 0 0 0 1px var(--purple), 0 12px 32px rgba(167,139,250,0.18); }
 </style>
 </head>
 <body>
 <div class="shell">
 
-  <!-- TOP BAR -->
   <header class="topbar">
     <div class="logo">Cine<em>Vault</em></div>
 
@@ -1101,25 +1298,40 @@ body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); 
       </div>
       <div class="search-btn-group">
         <button class="btn-search-main" id="searchMainBtn" onclick="onSearchMainClick()">Search</button>
-        <button class="btn-search-caret" id="searchCaretBtn" onclick="toggleSearchMenu(event)" title="Search mode">▾</button>
+        <button class="btn-search-caret" id="searchCaretBtn" onclick="toggleSearchMenu(event)">▾</button>
         <div class="search-mode-menu" id="searchModeMenu">
           <div class="smm-item active" data-mode="standard" onclick="setSearchMode('standard')">
-            <span class="smm-icon">🔍</span>
-            <div><div class="smm-label">Standard Search</div><div class="smm-sub">Search TMDB, Books & Manga</div></div>
+            <span class="smm-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+            <div><div class="smm-label">Standard Search</div><div class="smm-sub">Search TMDB, Books &amp; Manga</div></div>
           </div>
           <div class="smm-item" data-mode="vibe" onclick="setSearchMode('vibe')">
-            <span class="smm-icon">✨</span>
+            <span class="smm-icon">✦</span>
             <div><div class="smm-label">Vibe Search</div><div class="smm-sub">Describe a mood — AI finds matches</div></div>
           </div>
         </div>
       </div>
     </div>
 
-    <div class="search-type-btns" id="searchTypeBtns">
-      <button class="search-type-btn active" data-stype="movie" onclick="toggleSearchType('movie')">🎬</button>
-      <button class="search-type-btn" data-stype="tv"    onclick="toggleSearchType('tv')">📺</button>
-      <button class="search-type-btn" data-stype="book"  onclick="toggleSearchType('book')">📚</button>
-      <button class="search-type-btn" data-stype="manga" onclick="toggleSearchType('manga')">🎌</button>
+    <div style="display:flex;flex-direction:column;gap:3px;margin-left:8px">
+      <span id="searchTypeLabel" style="font-size:10px;letter-spacing:0.04em;color:var(--muted)">FILTER BY TYPE</span>
+      <div class="search-type-btns" id="searchTypeBtns" style="margin-left:0">
+      <button class="search-type-btn active" data-stype="movie" onclick="toggleSearchType('movie')">
+        <svg class="icon-svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/></svg>
+        Film
+      </button>
+      <button class="search-type-btn active" data-stype="tv" onclick="toggleSearchType('tv')">
+        <svg class="icon-svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="15" rx="2" ry="2"/><polyline points="17 2 12 7 7 2"/></svg>
+        TV
+      </button>
+      <button class="search-type-btn active" data-stype="book" onclick="toggleSearchType('book')">
+        <svg class="icon-svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+        Book
+      </button>
+      <button class="search-type-btn active" data-stype="manga" onclick="toggleSearchType('manga')">
+        <svg class="icon-svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+        Manga
+      </button>
+      </div>
     </div>
 
     <nav class="tabs">
@@ -1130,36 +1342,48 @@ body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); 
     </nav>
   </header>
 
-  <!-- DETAIL PANEL -->
   <aside class="detail-panel" id="detailPanel">
     <div class="detail-empty">
-      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" style="opacity:0.18">
         <rect x="2" y="3" width="20" height="18" rx="2"/>
         <path d="M7 3v18M17 3v18M2 12h20"/>
       </svg>
-      <p>Select a title</p>
+      <p style="font-size:13px">Select a title</p>
     </div>
   </aside>
 
-  <!-- GRID PANEL -->
   <main class="grid-panel" id="gridPanel">
-    <div class="grid-empty"><span>🎬</span>Loading your library…</div>
+    <div class="grid-empty">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" style="opacity:0.2"><rect x="2" y="2" width="20" height="20" rx="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg>
+      Loading your library…
+    </div>
   </main>
 
 </div>
 
-<!-- STANDARD SEARCH MODAL -->
 <div class="search-modal-backdrop" id="searchModalBackdrop" onclick="onBackdropClick(event)">
   <div class="search-modal">
     <div class="sm-header">
       <span class="sm-title" id="smTitle">Search results</span>
       <div class="sm-type-filters">
-        <button class="sm-type-pill active" data-stype="movie"  onclick="toggleModalType('movie')">🎬 Movies</button>
-        <button class="sm-type-pill active" data-stype="tv"     onclick="toggleModalType('tv')">📺 TV</button>
-        <button class="sm-type-pill active" data-stype="book"   onclick="toggleModalType('book')">📚 Books</button>
-        <button class="sm-type-pill active" data-stype="manga"  onclick="toggleModalType('manga')">🎌 Manga</button>
+        <button class="sm-type-pill active" data-stype="movie"  onclick="toggleModalType('movie')">
+          <svg class="icon-svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/></svg>
+          Movies
+        </button>
+        <button class="sm-type-pill active" data-stype="tv"     onclick="toggleModalType('tv')">
+          <svg class="icon-svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="15" rx="2"/><polyline points="17 2 12 7 7 2"/></svg>
+          TV
+        </button>
+        <button class="sm-type-pill active" data-stype="book"   onclick="toggleModalType('book')">
+          <svg class="icon-svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+          Books
+        </button>
+        <button class="sm-type-pill active" data-stype="manga"  onclick="toggleModalType('manga')">
+          <svg class="icon-svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+          Manga
+        </button>
       </div>
-      <button class="sm-close" onclick="closeModal()" title="Close (Esc)">×</button>
+      <button class="sm-close" onclick="closeModal()">×</button>
     </div>
     <div class="sm-body" id="smBody">
       <div class="sm-status">Type something and press Search.</div>
@@ -1167,11 +1391,12 @@ body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); 
   </div>
 </div>
 
-<!-- VIBE SEARCH MODAL -->
 <div class="vibe-modal-backdrop" id="vibeModalBackdrop" onclick="onVibeBackdropClick(event)">
   <div class="vibe-modal">
     <div class="vm-header">
-      <div class="vm-title">✨ <em>Vibe</em> Search</div>
+      <div class="vm-title">
+        ✦ <em>Vibe</em> Search
+      </div>
       <div class="vm-subtitle">Describe a mood, theme, or just a title — AI finds your next obsession</div>
       <button class="vm-close" onclick="closeVibeModal()">×</button>
     </div>
@@ -1182,12 +1407,24 @@ body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); 
       <div class="vm-controls">
         <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
           <div class="vm-type-toggle" id="vibeTypeToggle">
-            <button class="vm-type-btn" data-vtype="movie" onclick="toggleVibeType(this)">🎬 Movies</button>
-            <button class="vm-type-btn" data-vtype="tv"    onclick="toggleVibeType(this)">📺 TV</button>
-            <button class="vm-type-btn" data-vtype="book"  onclick="toggleVibeType(this)">📚 Books</button>
-            <button class="vm-type-btn" data-vtype="manga" onclick="toggleVibeType(this)">🎌 Manga</button>
+            <button class="vm-type-btn" data-vtype="movie" onclick="toggleVibeType(this)">
+              <svg class="icon-svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/></svg>
+              Movies
+            </button>
+            <button class="vm-type-btn" data-vtype="tv" onclick="toggleVibeType(this)">
+              <svg class="icon-svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="15" rx="2"/><polyline points="17 2 12 7 7 2"/></svg>
+              TV
+            </button>
+            <button class="vm-type-btn" data-vtype="book" onclick="toggleVibeType(this)">
+              <svg class="icon-svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+              Books
+            </button>
+            <button class="vm-type-btn" data-vtype="manga" onclick="toggleVibeType(this)">
+              <svg class="icon-svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+              Manga
+            </button>
           </div>
-          <span class="vm-ai-hint" id="vibeAiHint">✦ AI picked</span>
+          <span class="vm-ai-hint" id="vibeAiHint">✦ AI PICKED</span>
         </div>
         <button class="btn btn-accent btn-sm" style="margin-left: auto;" onclick="startVibeSearch()">Find matches</button>
       </div>
@@ -1198,7 +1435,6 @@ body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); 
   </div>
 </div>
 
-<!-- TOAST -->
 <div class="toast" id="toast"></div>
 
 <script>
@@ -1211,6 +1447,20 @@ let currentTab   = 'finished';
 let selectedId   = null;
 let currentSort  = 'name';
 let searchMode   = 'standard';
+
+const _ALL_TYPES = ['movie','tv','book','manga'];
+const tabFilter = {
+  watchlist: { query: '', types: new Set(_ALL_TYPES) },
+  watching:  { query: '', types: new Set(_ALL_TYPES) },
+  finished:  { query: '', types: new Set(_ALL_TYPES) },
+};
+const SIZE_COLS = { small: '180px', medium: '180px', large: '180px' };
+const _VALID_SIZES = new Set(['small','medium','large']);
+const tabSize = {
+  watchlist: _VALID_SIZES.has(localStorage.getItem('tabSize_watchlist')) ? localStorage.getItem('tabSize_watchlist') : 'medium',
+  watching:  _VALID_SIZES.has(localStorage.getItem('tabSize_watching'))  ? localStorage.getItem('tabSize_watching')  : 'medium',
+  finished:  _VALID_SIZES.has(localStorage.getItem('tabSize_finished'))  ? localStorage.getItem('tabSize_finished')  : 'medium',
+};
 let activeChatId = null;
 let chatMovieFilter = '';
 let pendingResetChatId = null;
@@ -1218,9 +1468,15 @@ let chatSendPending = false;
 let mediaUndoState = null;
 let qaAutoChat   = null;
 let pendingSelectId = null;
-let searchTypeActive = new Set(['movie']);
+let searchTypeActive = new Set(['movie', 'tv', 'book', 'manga']);
 let modalActiveTypes = new Set(['movie', 'tv', 'book', 'manga']);
 let modalSearchPending = false;
+
+const tabLastSelected = { watchlist: null, watching: null, finished: null };
+
+// TV/Manga constraint cache
+const tvInfoCache    = {};
+const mangaInfoCache = {};
 
 const inLibrary    = new Set();
 const tmdbResultMap = {};
@@ -1230,7 +1486,13 @@ const BROKEN_POSTER_FULL  = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
 const BROKEN_POSTER_BLANK = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 300'%3E%3Crect width='200' height='300' fill='%231c1c21'/%3E%3C/svg%3E";
 
 const TYPE_LABEL = { movie:'Movie', tv:'TV Show', book:'Book', manga:'Manga' };
-const TYPE_EMOJI = { movie:'🎬', tv:'📺', book:'📚', manga:'🎌' };
+
+const TYPE_SVG = {
+  movie: `<svg class="icon-svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/></svg>`,
+  tv:    `<svg class="icon-svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="15" rx="2"/><polyline points="17 2 12 7 7 2"/></svg>`,
+  book:  `<svg class="icon-svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`,
+  manga: `<svg class="icon-svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>`,
+};
 
 // ─────────────────────────────────────────────
 // Boot
@@ -1241,7 +1503,7 @@ loadList().then(() => loadChats());
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     closeModal(); closeVibeModal(); closeDropdown();
-    closeSearchMenu(); closeResetChatMenu();
+    closeSearchMenu(); closeResetChatMenu(); closeSizeDropdown();
   }
 });
 document.addEventListener('click', e => {
@@ -1249,7 +1511,29 @@ document.addEventListener('click', e => {
   if (!e.target.closest('.search-anchor') && !e.target.closest('.search-wrap'))
     closeDropdown();
   if (!e.target.closest('.chat-reset-wrap')) closeResetChatMenu();
+  if (!e.target.closest('.size-dd-wrap')) closeSizeDropdown();
 });
+
+function fmtDate(dateStr) {
+  if (!dateStr) return '';
+  const parts = dateStr.split('-');
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return `${months[parseInt(parts[1],10)-1]} '${parts[0].slice(2)}`;
+}
+
+function toggleSizeDropdown(e) {
+  e.stopPropagation();
+  const menu = document.getElementById('sizeDropdownMenu');
+  if (menu) menu.classList.toggle('open');
+}
+function closeSizeDropdown() {
+  const menu = document.getElementById('sizeDropdownMenu');
+  if (menu) menu.classList.remove('open');
+}
+function setSizeFromDropdown(size) {
+  closeSizeDropdown();
+  setTabSize(size);
+}
 
 // ─────────────────────────────────────────────
 // Data
@@ -1323,10 +1607,15 @@ function setSearchMode(mode) {
   btn.textContent = mode === 'vibe' ? 'Vibe' : 'Search';
 
   const typeBtns = document.getElementById('searchTypeBtns');
+  const typeLabel = document.getElementById('searchTypeLabel');
   if (mode === 'vibe') {
     typeBtns.classList.add('hidden');
+    typeLabel.innerHTML = '✦ AI CHOOSES FILTERS FOR YOU';
+    typeLabel.style.color = 'var(--purple)';
   } else {
     typeBtns.classList.remove('hidden');
+    typeLabel.textContent = 'FILTER BY TYPE';
+    typeLabel.style.color = 'var(--muted)';
   }
 }
 function toggleSearchType(type) {
@@ -1340,18 +1629,10 @@ function toggleSearchType(type) {
     searchTypeActive.add(type);
     btn.classList.add('active');
   }
-  // If the standard search modal is open, re-run search with new types
   const backdrop = document.getElementById('searchModalBackdrop');
   if (backdrop && backdrop.classList.contains('open') && lastModalQuery) {
     runModalSearch(lastModalQuery);
   }
-}
-
-function setSearchTypeButtons(types) {
-  searchTypeActive = new Set(types);
-  document.querySelectorAll('.search-type-btn').forEach(b => {
-    b.classList.toggle('active', searchTypeActive.has(b.dataset.stype));
-  });
 }
 
 function onSearchMainClick() {
@@ -1369,6 +1650,9 @@ function onSearchMainClick() {
 // ─────────────────────────────────────────────
 function switchTab(tab, selectId = null) {
   const prevTab = currentTab;
+  if (prevTab !== 'chats' && selectedId !== null) {
+    tabLastSelected[prevTab] = selectedId;
+  }
   if (currentSort === 'rating' && tab !== 'finished') currentSort = 'name';
 
   if (tab === 'chats') {
@@ -1391,26 +1675,41 @@ function switchTab(tab, selectId = null) {
     t.classList.toggle('active', t.dataset.tab === tab)
   );
 
-  pendingSelectId = selectId;
+  if (selectId != null) {
+    pendingSelectId = selectId;
+  } else if (tabLastSelected[tab] != null) {
+    pendingSelectId = tabLastSelected[tab];
+  } else {
+    pendingSelectId = null;
+  }
   renderGrid();
 }
 
 function tabItems() { return allItems.filter(i => i.status === currentTab); }
 
 function sortedItems() {
-  const items = tabItems().slice();
+  let items = tabItems().slice();
   if (currentSort === 'rating' && currentTab === 'finished')
-    return items.sort((a, b) => (b.rating || 0) - (a.rating || 0));
-  if (currentSort === 'added')
-    return items.sort((a, b) => b.id - a.id);
-  return items.sort((a, b) => a.title.localeCompare(b.title));
+    items.sort((a, b) => (b.rating || 0) - (a.rating || 0));
+  else if (currentSort === 'added')
+    items.sort((a, b) => b.id - a.id);
+  else
+    items.sort((a, b) => a.title.localeCompare(b.title));
+  const f = tabFilter[currentTab];
+  if (f.query) {
+    const q = f.query.toLowerCase();
+    items = items.filter(i => i.title.toLowerCase().includes(q));
+  }
+  if (f.types.size < _ALL_TYPES.length)
+    items = items.filter(i => f.types.has(i.media_type));
+  return items;
 }
 
 function autoSelectFirst() {
   const items = sortedItems();
   if (items.length) selectItem(items[0].id);
   else document.getElementById('detailPanel').innerHTML =
-    '<div class="detail-empty"><p>Nothing here — add something!</p></div>';
+    '<div class="detail-empty"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" style="opacity:0.18"><rect x="2" y="3" width="20" height="18" rx="2"/><path d="M7 3v18M17 3v18M2 12h20"/></svg><p style="font-size:13px">Nothing here — add something!</p></div>';
 }
 
 // ─────────────────────────────────────────────
@@ -1433,44 +1732,98 @@ function renderGrid() {
     </div>`;
   }
 
+  const f = tabFilter[currentTab];
+  const hasFilter = !!(f.query || f.types.size < _ALL_TYPES.length);
+
   const ratingSortBtn = currentTab === 'finished'
     ? `<button class="sort-btn ${currentSort==='rating'?'active':''}" onclick="setSort('rating')">Rating</button>` : '';
 
-  const toolbar = `<div class="grid-toolbar">
-    <span class="grid-count">${items.length} title${items.length!==1?'s':''}</span>
-    <div class="sort-btns">
-      <button class="sort-btn ${currentSort==='name'?'active':''}"  onclick="setSort('name')">A–Z</button>
+  const sizeOpts   = ['small','medium','large'];
+  const sizeLabels = { small:'Compact', medium:'Default', large:'Large' };
+  const sizeHints  = { small:'remove poster', medium:'', large:'add description' };
+  const curSize    = tabSize[currentTab];
+  const topBar = `<div class="grid-top-bar">
+    <input class="grid-filter-input" id="gridFilterInput" placeholder="Search titles…"
+      value="${esc(f.query)}" oninput="onGridFilter(this.value)">
+    ${_ALL_TYPES.map(t => `<button class="grid-type-btn${f.types.has(t)?' active':''}" data-gtype="${t}" onclick="toggleGridType('${t}')">${TYPE_SVG[t]} ${TYPE_LABEL[t]}</button>`).join('')}
+    <button class="grid-filter-clear${hasFilter?'':' hidden'}" onclick="clearGridFilter()">Clear</button>
+    <div class="grid-right-group">
+      <button class="sort-btn ${currentSort==='name'?'active':''}" onclick="setSort('name')">A–Z</button>
       ${ratingSortBtn}
       <button class="sort-btn ${currentSort==='added'?'active':''}" onclick="setSort('added')">Recent</button>
+      <div class="size-dd-wrap">
+        <button class="size-dd-btn" onclick="toggleSizeDropdown(event)">${sizeLabels[curSize]} <span style="font-size:9px;opacity:0.7">▾</span></button>
+        <div class="size-dd-menu" id="sizeDropdownMenu">
+          ${sizeOpts.map(s => `<div class="size-dd-item${curSize===s?' active':''}" onclick="setSizeFromDropdown('${s}')"><span>${sizeLabels[s]}</span><span class="size-dd-hint">${sizeHints[s]}</span></div>`).join('')}
+        </div>
+      </div>
     </div>
+  </div>
+  <div class="grid-count-row">
+    <span class="grid-count">${items.length} title${items.length!==1?'s':''}</span>
   </div>`;
 
+  const colMin = SIZE_COLS[tabSize[currentTab]];
+  const gridStyle = `grid-template-columns:repeat(auto-fill,minmax(${colMin},1fr))`;
+
   if (!items.length) {
-    panel.innerHTML = statsHtml + toolbar +
-      '<div class="poster-grid"><div class="grid-empty"><span>🎬</span>Nothing here yet — add something!</div></div>';
+    panel.innerHTML = statsHtml + topBar +
+      `<div class="poster-grid" style="${gridStyle}"><div class="grid-empty"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" style="opacity:0.2"><rect x="2" y="2" width="20" height="20" rx="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg>Nothing here yet — add something!</div></div>`;
     pendingSelectId = null;
     autoSelectFirst();
     return;
   }
 
+  const size = tabSize[currentTab];
   const cards = items.map(item => {
     const stars = currentTab === 'finished'
       ? `<div class="poster-stars">${[1,2,3,4,5,6,7,8,9,10].map(s =>
           `<span class="pstar ${(item.rating||0)>=s?'lit':''}">★</span>`).join('')}</div>` : '';
-    const typeBadge = `<span class="poster-type-badge ptb-${item.media_type}">${TYPE_EMOJI[item.media_type]} ${TYPE_LABEL[item.media_type]}</span>`;
-    const author = item.author ? `<div class="poster-author">${esc(item.author)}</div>` : '';
+    const typeBadge = `<span class="poster-type-badge ptb-${item.media_type}">${TYPE_SVG[item.media_type]} ${TYPE_LABEL[item.media_type]}</span>`;
+    const author = `<div class="poster-author" id="pa-${item.id}"${item.author ? '' : ' style="display:none"'}>${esc(item.author||'')}</div>`;
+    const dateStr = fmtDate(item.date_added);
+
+    const dateHtml = dateStr ? `<div class="poster-date">${dateStr}</div>` : '';
+
+    if (size === 'small') {
+      return `<div class="poster-card" id="pc-${item.id}" onclick="selectItem(${item.id})">
+        <div class="poster-info">
+          ${typeBadge}
+          <div class="poster-title" style="white-space:normal;overflow:visible;text-overflow:clip">${esc(item.title)}</div>
+          ${author}
+          ${dateHtml}
+          ${stars}
+        </div>
+      </div>`;
+    }
+
+    if (size === 'large') {
+      return `<div class="poster-card" id="pc-${item.id}" onclick="selectItem(${item.id})">
+        <img src="${posterUrl(item)}" onerror="this.src='${BROKEN_POSTER_FULL}'" loading="lazy">
+        <div class="poster-info">
+          ${typeBadge}
+          <div class="poster-title">${esc(item.title)}</div>
+          ${author}
+          ${dateHtml}
+          ${item.overview ? `<div class="poster-overview-full">${esc(item.overview)}</div>` : ''}
+          ${stars}
+        </div>
+      </div>`;
+    }
+
     return `<div class="poster-card" id="pc-${item.id}" onclick="selectItem(${item.id})">
       <img src="${posterUrl(item)}" onerror="this.src='${BROKEN_POSTER_FULL}'" loading="lazy">
       <div class="poster-info">
         ${typeBadge}
         <div class="poster-title">${esc(item.title)}</div>
         ${author}
+        ${dateHtml}
         ${stars}
       </div>
     </div>`;
   }).join('');
 
-  panel.innerHTML = statsHtml + toolbar + `<div class="poster-grid">${cards}</div>`;
+  panel.innerHTML = statsHtml + topBar + `<div class="poster-grid" style="${gridStyle}">${cards}</div>`;
 
   if (pendingSelectId !== null) {
     const id = pendingSelectId;
@@ -1485,7 +1838,78 @@ function renderGrid() {
   }
 }
 
+async function toggleDescription(itemId) {
+  const btn = document.getElementById('descToggleBtn');
+  const content = document.getElementById('descContent');
+  if (!btn || !content) return;
+
+  if (content.style.display !== 'none') {
+    content.style.display = 'none';
+    btn.textContent = 'Load description';
+    return;
+  }
+
+  const item = allItems.find(i => i.id === itemId);
+  if (item && item.overview) {
+    content.textContent = item.overview;
+    content.style.display = 'block';
+    btn.textContent = 'Close description';
+    return;
+  }
+
+  btn.textContent = 'Loading…';
+  btn.disabled = true;
+  try {
+    const data = await fetch(`/api/item/${itemId}/overview`).then(r => r.json());
+    const ov = data.overview || '';
+    if (item) item.overview = ov;
+    if (ov) {
+      content.textContent = ov;
+      content.style.display = 'block';
+      btn.textContent = 'Close description';
+    } else {
+      btn.textContent = 'No description available';
+    }
+  } catch {
+    btn.textContent = 'Load description';
+  }
+  btn.disabled = false;
+}
+
 function setSort(s) { currentSort = s; renderGrid(); }
+
+function onGridFilter(val) {
+  tabFilter[currentTab].query = val;
+  renderGrid();
+  const inp = document.getElementById('gridFilterInput');
+  if (inp) { inp.focus(); const l = inp.value.length; inp.setSelectionRange(l, l); }
+}
+
+function toggleGridType(type) {
+  const f = tabFilter[currentTab];
+  if (f.types.has(type)) {
+    if (f.types.size === 1) return;
+    f.types.delete(type);
+  } else {
+    f.types.add(type);
+  }
+  renderGrid();
+  const inp = document.getElementById('gridFilterInput');
+  if (inp) inp.focus();
+}
+
+function clearGridFilter() {
+  tabFilter[currentTab] = { query: '', types: new Set(_ALL_TYPES) };
+  renderGrid();
+}
+
+function setTabSize(size) {
+  tabSize[currentTab] = size;
+  localStorage.setItem(`tabSize_${currentTab}`, size);
+  renderGrid();
+  const inp = document.getElementById('gridFilterInput');
+  if (inp) inp.focus();
+}
 
 // ─────────────────────────────────────────────
 // Detail panel
@@ -1498,6 +1922,7 @@ function highlightCard(id) {
 
 function selectItem(id) {
   selectedId = id;
+  if (currentTab !== 'chats') tabLastSelected[currentTab] = id;
   highlightCard(id);
   const item = allItems.find(i => i.id === id);
   if (item) renderDetail(item);
@@ -1505,6 +1930,7 @@ function selectItem(id) {
 
 function renderDetail(item) {
   const panel = document.getElementById('detailPanel');
+  panel.scrollTop = 0;
   qaAutoChat = null;
 
   const ratingHtml = item.status === 'finished' ? `
@@ -1520,37 +1946,56 @@ function renderDetail(item) {
   let progressHtml = '';
   if (item.status === 'watching') {
     if (item.media_type === 'tv') {
+      const s = item.last_season || 1;
+      const e = item.last_episode || 1;
       progressHtml = `<div class="field">
         <label>Progress</label>
         <div class="episode-row">
-          <input type="number" placeholder="Season" min="1" value="${item.last_season||''}"
-                 onchange="saveEpisode(${item.id},'season',this.value)">
-          <input type="number" placeholder="Episode" min="1" value="${item.last_episode||''}"
-                 onchange="saveEpisode(${item.id},'episode',this.value)">
+          <div>
+            <input type="number" id="tvSeasonInput_${item.id}" placeholder="Season" min="1" value="${s}" autocomplete="off"
+                   onchange="saveEpisodeConstrained(${item.id},'season',this.value)">
+            <div style="font-size:10px;color:var(--muted);margin-top:3px" id="tvSeasonHint_${item.id}"></div>
+          </div>
+          <div>
+            <input type="number" id="tvEpisodeInput_${item.id}" placeholder="Episode" min="1" value="${e}" autocomplete="off"
+                   onchange="saveEpisodeConstrained(${item.id},'episode',this.value)">
+            <div style="font-size:10px;color:var(--muted);margin-top:3px" id="tvEpisodeHint_${item.id}"></div>
+          </div>
         </div>
       </div>`;
+      // Async fetch TV constraints (non-blocking)
+      if (item.tmdb_id || item.external_id) {
+        setTimeout(() => loadTVConstraints(item.id, item.tmdb_id || item.external_id), 0);
+      }
     } else if (item.media_type === 'manga') {
+      const ch = item.last_chapter || 1;
       progressHtml = `<div class="field">
         <label>Chapter</label>
-        <input type="number" placeholder="Chapter" min="1" step="0.1" value="${item.last_chapter||''}"
-               onchange="saveMangaProgress(${item.id},'chapter',this.value)">
+        <input type="number" id="mangaChapInput_${item.id}" placeholder="Chapter" min="1" step="0.1" value="${ch}" autocomplete="off"
+               onchange="saveMangaProgressConstrained(${item.id},this.value)">
+        <div style="font-size:10px;color:var(--muted);margin-top:3px" id="mangaChapHint_${item.id}"></div>
       </div>`;
+      if (item.external_id) {
+        setTimeout(() => loadMangaConstraints(item.id, item.external_id), 0);
+      }
     } else if (item.media_type === 'book') {
       progressHtml = `<div class="field">
         <label>Current page</label>
-        <input type="number" placeholder="Page number" min="1" value="${item.current_page||''}"
-               onchange="saveBookProgress(${item.id},'current',this.value,0)">
+        <input type="number" placeholder="Page number" min="1" value="${item.current_page||''}" autocomplete="off"
+               onchange="saveBookProgress(${item.id},this.value)">
+        <div style="font-size:10px;color:var(--muted);margin-top:4px">AI does not support specific page numbers</div>
       </div>`;
     } else if (item.media_type === 'movie') {
       progressHtml = `<div class="field">
         <label>Timestamp</label>
-        <input type="text" placeholder="e.g. 1h 23m" value="${esc(item.last_timestamp||'')}"
+        <input type="text" placeholder="e.g. 1h 23m" value="${esc(item.last_timestamp||'')}" autocomplete="off"
                onblur="saveField(${item.id},'last_timestamp',this.value)">
+        <div style="font-size:10px;color:var(--muted);margin-top:4px">AI does not support specific timestamps</div>
       </div>`;
     }
   }
 
-  const authorHtml = item.author ? `<p class="detail-meta" style="margin-top:-10px;margin-bottom:10px">by ${esc(item.author)}</p>` : '';
+  const authorHtml = `<p class="detail-meta" id="detailAuthor" style="margin-top:-10px;margin-bottom:10px${item.author ? '' : ';display:none'}">by ${esc(item.author||'')}</p>`;
 
   panel.innerHTML = `
     <div class="poster-wrap">
@@ -1558,8 +2003,12 @@ function renderDetail(item) {
     </div>
     <div class="detail-body">
       <h2 class="detail-title">${esc(item.title)}</h2>
-      <p class="detail-meta">${TYPE_EMOJI[item.media_type]} ${TYPE_LABEL[item.media_type]}</p>
+      <p class="detail-meta">${TYPE_SVG[item.media_type]} ${TYPE_LABEL[item.media_type]}</p>
       ${authorHtml}
+      <div style="margin-bottom:14px">
+        <button id="descToggleBtn" class="desc-toggle-btn" onclick="toggleDescription(${item.id})">Load description</button>
+        <div id="descContent" class="detail-overview" style="display:none"></div>
+      </div>
       <div class="status-row">
         <button class="status-pill ${item.status==='watchlist'?'active-wl':''}" onclick="changeStatus(${item.id},'watchlist')">Watchlist</button>
         <button class="status-pill ${item.status==='watching'?'active-wa':''}"  onclick="changeStatus(${item.id},'watching')">Watching</button>
@@ -1572,34 +2021,66 @@ function renderDetail(item) {
       </div>
       <div class="divider"></div>
       <div class="ai-card" id="aiCard">
-        <div class="ai-card-label">✦ AI insight</div>
+        <div class="ai-card-label">
+          ✦ AI INSIGHT
+        </div>
         <div class="ai-card-body">
           <div class="typing-dots" style="display:inline-flex"><span></span><span></span><span></span></div>
         </div>
       </div>
       <div class="qa-wrap">
-        <div class="ai-card-label" style="margin-bottom:8px">✦ Ask anything
+        <div class="ai-card-label" style="margin-bottom:8px">
+          ✦ ASK ANYTHING
           <span style="color:var(--muted);font-weight:300;font-size:10px;text-transform:none;letter-spacing:0">(spoiler-aware)</span>
         </div>
         <div class="qa-input-row">
-          <input type="text" id="qaInput" placeholder="Characters, themes, plot…"
+          <input type="text" id="qaInput" placeholder="Characters, themes, plot…" autocomplete="off"
                  onkeydown="if(event.key==='Enter')askQuestion(${item.id})">
           <button class="btn btn-accent" onclick="askQuestion(${item.id})">Ask</button>
         </div>
         <div class="qa-answer" id="qaAnswer"></div>
-        <div class="chat-nudge" id="chatNudge" onclick="jumpToQAChat()">💬 Continue this conversation in Chats</div>
+        <div class="chat-nudge" id="chatNudge" onclick="jumpToQAChat()">
+          <svg class="icon-svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          Continue this conversation in Chats
+        </div>
       </div>
       <div class="divider"></div>
       <button class="delete-btn" onclick="deleteItem(${item.id})">Remove from library</button>
     </div>`;
 
   loadAICard(item);
+
+  // Lazy-fetch director/creator for movie/TV items that don't have one yet
+  if (!item.author && (item.media_type === 'movie' || item.media_type === 'tv')) {
+    fetch(`/api/item/${item.id}/fetch_director`)
+      .then(r => r.json())
+      .then(data => {
+        if (!data.author) return;
+        item.author = data.author;
+        const detailEl = document.getElementById('detailAuthor');
+        if (detailEl) { detailEl.textContent = `by ${data.author}`; detailEl.style.display = ''; }
+        const gridEl = document.getElementById(`pa-${item.id}`);
+        if (gridEl) { gridEl.textContent = data.author; gridEl.style.display = ''; }
+      })
+      .catch(() => {});
+  }
+
+  // Restore pending Q&A state if a question is still in-flight for this item
+  if (askQuestionPendingMap.get(item.id)) {
+    const askBtn = document.getElementById('qaInput')?.closest('.qa-wrap')?.querySelector('.btn-accent');
+    const answer = document.getElementById('qaAnswer');
+    if (askBtn) askBtn.disabled = true;
+    if (answer) {
+      answer.textContent = 'Thinking…';
+      answer.classList.add('show');
+    }
+  }
 }
 
 // ─────────────────────────────────────────────
 // Progress helpers
 // ─────────────────────────────────────────────
-async function saveBookProgress(id, field, rawValue, other) {
+async function saveBookProgress(id, rawValue) {
   const val = parseInt(rawValue, 10);
   if (!val || val < 1) return;
   const item = allItems.find(i => i.id === id);
@@ -1616,73 +2097,208 @@ async function saveBookProgress(id, field, rawValue, other) {
   }
 }
 
-async function saveMangaProgress(id, field, rawValue) {
-  const val = parseFloat(rawValue);
-  if (!val || val < 1) return;
-  const item = allItems.find(i => i.id === id);
-  if (!item) return;
-  const oldChap = item.last_chapter;
-  try {
-    await apiPost('/api/add', { id, last_chapter: val });
-    item.last_chapter = val;
-    invalidateProgressCache(id);
-  } catch {
-    showToast('Failed to update chapter');
-    const cInput = document.querySelector(`[placeholder="Chapter"][onchange*="${id}"]`);
-    if (cInput) cInput.value = oldChap || '';
-  }
-}
-
-async function editTVProgress(mediaId) {
+async function editTVProgress(mediaId, chatId) {
   const label = document.getElementById('tvProgLabel');
   if (!label) return;
+  label.onclick = null;  // prevent input clicks bubbling back up
+  label.classList.remove('spoiler-threshold-value');
+
   const item = allItems.find(i => i.id === mediaId);
-  if (!item) return;
-  const oldSeason = item.last_season || '';
-  const oldEpisode = item.last_episode || '';
-  label.innerHTML = `<input type="number" id="tvSeasonInp" placeholder="S" min="1" value="${oldSeason}"
-    style="width:48px;padding:2px 4px;font-size:12px;background:var(--card);border:1px solid var(--border);border-radius:4px;color:var(--text)"
-    onkeydown="if(event.key==='Enter')saveTVProgress(${mediaId})">
-    <input type="number" id="tvEpInp" placeholder="E" min="1" value="${oldEpisode}"
-    style="width:48px;padding:2px 4px;font-size:12px;background:var(--card);border:1px solid var(--border);border-radius:4px;color:var(--text)"
-    onkeydown="if(event.key==='Enter')saveTVProgress(${mediaId})">`;
+  const chat = allChats.find(c => c.id === chatId);
+  if (!item || !chat) return;
+
+  const curS = chat.spoiler_season || item.last_season || '';
+  const curE = chat.spoiler_episode || item.last_episode || '';
+
+  const tmdbId = item.tmdb_id || item.external_id;
+  if (tmdbId && !tvInfoCache[String(tmdbId)]) {
+    try {
+      const data = await fetch(`/api/tv-info/${tmdbId}`).then(r => r.json());
+      if (data && !data.error) tvInfoCache[String(tmdbId)] = data;
+    } catch { /* ignore */ }
+  }
+  const info = tmdbId ? tvInfoCache[String(tmdbId)] : null;
+  const maxSeasons = info ? info.num_seasons : '';
+
+  function getMaxEp(seasonNum) {
+    if (!info) return '';
+    const sd = info.seasons.find(s => s.season_number === parseInt(seasonNum));
+    return sd ? sd.episode_count : '';
+  }
+
+  window._updateTVEpConstraint = function() {
+    const sInp = document.getElementById('tvSeasonInp');
+    const eInp = document.getElementById('tvEpInp');
+    const eHintEl = document.getElementById('tvEHintInline');
+    if (!sInp || !eInp) return;
+    const maxEp = getMaxEp(sInp.value);
+    if (maxEp) { eInp.max = String(maxEp); } else { eInp.removeAttribute('max'); }
+    if (eHintEl) eHintEl.textContent = maxEp ? `1–${maxEp}` : '';
+  };
+
+  const initMaxEp = getMaxEp(curS);
+  const inp = 'width:44px;padding:2px 4px;font-size:12px;background:var(--card);border:1px solid var(--border);border-radius:4px;color:var(--text);outline:none;transition:border-color 0.15s';
+  const lbl = 'font-size:10px;color:var(--muted)';
+
+  label.innerHTML = `<div style="display:flex;gap:8px;align-items:flex-start">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:2px">
+      <span style="${lbl}">S</span>
+      <input type="number" id="tvSeasonInp" placeholder="S" min="1" ${maxSeasons ? `max="${maxSeasons}"` : ''} value="${curS}" autocomplete="off"
+        style="${inp}" oninput="window._updateTVEpConstraint()"
+        onfocus="this.style.borderColor='var(--green)'" onblur="this.style.borderColor='var(--border)'"
+        onkeydown="if(event.key==='Enter')saveTVProgress(${mediaId},${chatId})">
+      <span style="${lbl}">${maxSeasons ? `1–${maxSeasons}` : ''}</span>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:center;gap:2px">
+      <span style="${lbl}">E</span>
+      <input type="number" id="tvEpInp" placeholder="E" min="1" ${initMaxEp ? `max="${initMaxEp}"` : ''} value="${curE}" autocomplete="off"
+        style="${inp}" onfocus="this.style.borderColor='var(--green)'" onblur="this.style.borderColor='var(--border)'"
+        onkeydown="if(event.key==='Enter')saveTVProgress(${mediaId},${chatId})">
+      <span id="tvEHintInline" style="${lbl}">${initMaxEp ? `1–${initMaxEp}` : ''}</span>
+    </div>
+  </div>`;
+
+  const penBtn = document.getElementById('tvProgEditBtn');
+  if (penBtn) penBtn.onclick = () => saveTVProgress(mediaId, chatId);
+
   document.getElementById('tvSeasonInp')?.focus();
 }
 
-async function saveTVProgress(mediaId) {
+async function saveTVProgress(mediaId, chatId) {
   const seasonInp = document.getElementById('tvSeasonInp');
   const epInp     = document.getElementById('tvEpInp');
   const label     = document.getElementById('tvProgLabel');
   if (!seasonInp || !epInp || !label) return;
-  const newSeason = parseInt(seasonInp.value, 10);
-  const newEpisode = parseInt(epInp.value, 10);
-  if (!newSeason || !newEpisode || newSeason < 1 || newEpisode < 1) {
-    label.innerHTML = `S${allItems.find(i => i.id === mediaId).last_season||'?'} E${allItems.find(i => i.id === mediaId).last_episode||'?'}`;
+
+  let newSeason  = parseInt(seasonInp.value, 10);
+  let newEpisode = parseInt(epInp.value, 10);
+
+  const item = allItems.find(i => i.id === mediaId);
+  const chat = allChats.find(c => c.id === chatId);
+  if (!item || !chat) return;
+
+  if (!newSeason || newSeason < 1) newSeason = 1;
+  if (!newEpisode || newEpisode < 1) newEpisode = 1;
+
+  const tmdbId = item.tmdb_id || item.external_id;
+  const info = tmdbId ? tvInfoCache[String(tmdbId)] : null;
+  if (info) {
+    newSeason = Math.max(1, Math.min(newSeason, info.num_seasons));
+    const seasonData = info.seasons.find(s => s.season_number === newSeason);
+    const maxEp = seasonData ? seasonData.episode_count : 999;
+    newEpisode = Math.max(1, Math.min(newEpisode, maxEp));
+  }
+
+  label.innerHTML = `S${newSeason} E${newEpisode}`;
+  label.classList.add('spoiler-threshold-value');
+  label.onclick = () => editTVProgress(mediaId, chatId);
+
+  const penBtn = document.getElementById('tvProgEditBtn');
+  if (penBtn) penBtn.onclick = () => editTVProgress(mediaId, chatId);
+
+  try {
+    await apiPost(`/api/chats/${chatId}/spoiler-threshold`, { season: newSeason, episode: newEpisode });
+    chat.spoiler_season  = newSeason;
+    chat.spoiler_episode = newEpisode;
+    const cliEl = document.getElementById(`cli-${chatId}`);
+    if (cliEl) cliEl.outerHTML = renderChatListItem(chat);
+    reapplySpoilerBlurs(chatId);
+    showToast('Spoiler threshold updated');
+  } catch {
+    showToast('Failed to update spoiler threshold');
+    label.innerHTML = `S${chat.spoiler_season||'?'} E${chat.spoiler_episode||'?'}`;
+    label.classList.add('spoiler-threshold-value');
+  }
+}
+
+async function editMangaProgress(mediaId, chatId) {
+  const label = document.getElementById('mangaProgLabel');
+  if (!label) return;
+  label.onclick = null;  // prevent input clicks bubbling back up
+  label.classList.remove('spoiler-threshold-value');
+
+  const item = allItems.find(i => i.id === mediaId);
+  const chat = allChats.find(c => c.id === chatId);
+  if (!item || !chat) return;
+
+  const curCh = chat.spoiler_chapter || item.last_chapter || '';
+
+  if (item.external_id && !mangaInfoCache[item.external_id]) {
+    try {
+      const data = await fetch(`/api/manga-info/${encodeURIComponent(item.external_id)}`).then(r => r.json());
+      if (data && !data.error) mangaInfoCache[item.external_id] = data;
+    } catch { /* ignore */ }
+  }
+  const info = item.external_id ? mangaInfoCache[item.external_id] : null;
+  const maxCh = info?.last_chapter || '';
+
+  const inp = 'width:64px;padding:2px 4px;font-size:12px;background:var(--card);border:1px solid var(--border);border-radius:4px;color:var(--text);outline:none;transition:border-color 0.15s';
+  const lbl = 'font-size:10px;color:var(--muted)';
+
+  label.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;gap:2px">
+    <span style="${lbl}">Ch</span>
+    <input type="number" id="mangaChapInp" placeholder="Ch" min="1" step="0.1" ${maxCh ? `max="${maxCh}"` : ''} value="${curCh}" autocomplete="off"
+      style="${inp}" onfocus="this.style.borderColor='var(--pink)'" onblur="this.style.borderColor='var(--border)'"
+      onkeydown="if(event.key==='Enter')saveMangaProgressFromWidget(${mediaId},${chatId})">
+    <span style="${lbl}">${maxCh ? `1–${maxCh}` : ''}</span>
+  </div>`;
+
+  const penBtn = document.getElementById('mangaProgEditBtn');
+  if (penBtn) penBtn.onclick = () => saveMangaProgressFromWidget(mediaId, chatId);
+
+  document.getElementById('mangaChapInp')?.focus();
+}
+
+async function saveMangaProgressFromWidget(mediaId, chatId) {
+  const chapInp = document.getElementById('mangaChapInp');
+  const label   = document.getElementById('mangaProgLabel');
+  if (!chapInp || !label) return;
+
+  const item = allItems.find(i => i.id === mediaId);
+  const chat = allChats.find(c => c.id === chatId);
+  if (!item || !chat) return;
+
+  let val = parseFloat(chapInp.value);
+
+  const info = item.external_id ? mangaInfoCache[item.external_id] : null;
+  if (!val || val < 1) {
+    label.innerHTML = `CH${chat.spoiler_chapter || item.last_chapter || '?'}`;
+    label.classList.add('spoiler-threshold-value');
+    label.onclick = () => editMangaProgress(mediaId, chatId);
+    const penBtn = document.getElementById('mangaProgEditBtn');
+    if (penBtn) penBtn.onclick = () => editMangaProgress(mediaId, chatId);
     return;
   }
-  const item = allItems.find(i => i.id === mediaId);
-  const oldSeason = item.last_season;
-  const oldEpisode = item.last_episode;
+
+  if (info?.last_chapter) val = Math.min(val, info.last_chapter);
+
+  label.innerHTML = `CH${val}`;
+  label.classList.add('spoiler-threshold-value');
+  label.onclick = () => editMangaProgress(mediaId, chatId);
+
+  const penBtn = document.getElementById('mangaProgEditBtn');
+  if (penBtn) penBtn.onclick = () => editMangaProgress(mediaId, chatId);
+
   try {
-    await apiPost('/api/add', { id: mediaId, last_season: newSeason, last_episode: newEpisode });
-    item.last_season = newSeason;
-    item.last_episode = newEpisode;
-    label.innerHTML = `S${newSeason} E${newEpisode}`;
-    invalidateProgressCache(mediaId);
-    showToast('Progress updated');
+    await apiPost(`/api/chats/${chatId}/spoiler-threshold`, { chapter: val });
+    chat.spoiler_chapter = val;
+    const cliEl = document.getElementById(`cli-${chatId}`);
+    if (cliEl) cliEl.outerHTML = renderChatListItem(chat);
+    reapplySpoilerBlurs(chatId);
+    showToast('Spoiler threshold updated');
   } catch {
-    showToast('Failed to update progress');
-    item.last_season = oldSeason;
-    item.last_episode = oldEpisode;
-    label.innerHTML = `S${oldSeason||'?'} E${oldEpisode||'?'}`;
+    showToast('Failed to update spoiler threshold');
+    label.innerHTML = `CH${chat.spoiler_chapter || item.last_chapter || '?'}`;
+    label.classList.add('spoiler-threshold-value');
   }
 }
 
 function invalidateProgressCache(id) {
+  const item = allItems.find(i => i.id === id);
+  if (item && (item.media_type === 'book' || item.media_type === 'movie')) return;
   Object.keys(aiCache).forEach(k => {
     if (k.startsWith(`${id}_watching_`)) delete aiCache[k];
   });
-  const item = allItems.find(i => i.id === id);
   if (item && selectedId === id) {
     const card = document.getElementById('aiCard');
     if (card) loadAICard(item);
@@ -1690,19 +2306,157 @@ function invalidateProgressCache(id) {
 }
 
 // ─────────────────────────────────────────────
+// TV / Manga progress constraints
+// ─────────────────────────────────────────────
+async function loadTVConstraints(mediaId, tmdbId) {
+  if (!tmdbId) return;
+  const cacheKey = String(tmdbId);
+  if (!tvInfoCache[cacheKey]) {
+    try {
+      const data = await fetch(`/api/tv-info/${tmdbId}`).then(r => r.json());
+      if (data && !data.error) tvInfoCache[cacheKey] = data;
+    } catch { return; }
+  }
+  const info = tvInfoCache[cacheKey];
+  if (!info) return;
+  // Set max season
+  const sInput = document.getElementById(`tvSeasonInput_${mediaId}`);
+  const eInput = document.getElementById(`tvEpisodeInput_${mediaId}`);
+  if (sInput) {
+    sInput.max = info.num_seasons;
+    const curS = parseInt(sInput.value, 10) || 1;
+    if (curS > info.num_seasons) { sInput.value = info.num_seasons; }
+    if (curS < 1) { sInput.value = 1; }
+    const sHint = document.getElementById(`tvSeasonHint_${mediaId}`);
+    if (sHint) sHint.textContent = `1 – ${info.num_seasons}`;
+  }
+  if (eInput && sInput) {
+    const curS = parseInt(sInput.value, 10) || 1;
+    const seasonData = info.seasons.find(s => s.season_number === curS);
+    const maxEp = seasonData ? seasonData.episode_count : 999;
+    eInput.max = maxEp;
+    const curE = parseInt(eInput.value, 10) || 1;
+    if (curE > maxEp) { eInput.value = maxEp; }
+    if (curE < 1) { eInput.value = 1; }
+    const eHint = document.getElementById(`tvEpisodeHint_${mediaId}`);
+    if (eHint) eHint.textContent = `1 – ${maxEp}`;
+  }
+}
+
+async function loadMangaConstraints(mediaId, mangaId) {
+  if (!mangaId) return;
+  if (!mangaInfoCache[mangaId]) {
+    try {
+      const data = await fetch(`/api/manga-info/${encodeURIComponent(mangaId)}`).then(r => r.json());
+      if (data && !data.error) mangaInfoCache[mangaId] = data;
+    } catch { return; }
+  }
+  const info = mangaInfoCache[mangaId];
+  if (!info || !info.last_chapter) return;
+  const input = document.getElementById(`mangaChapInput_${mediaId}`);
+  if (input) {
+    input.max = info.last_chapter;
+    const cur = parseFloat(input.value) || 1;
+    if (cur > info.last_chapter) { input.value = info.last_chapter; }
+    if (cur < 1) { input.value = 1; }
+    const hint = document.getElementById(`mangaChapHint_${mediaId}`);
+    if (hint) hint.textContent = `Ch. 1 – ${info.last_chapter}`;
+  }
+}
+
+async function saveEpisodeConstrained(id, field, rawValue) {
+  const item = allItems.find(i => i.id === id);
+  if (!item) return;
+  let value = parseInt(rawValue, 10);
+  if (!value || value < 1) value = 1;
+
+  const tmdbId = item.tmdb_id || item.external_id;
+  const info = tmdbId ? tvInfoCache[String(tmdbId)] : null;
+  if (info) {
+    const currentSeason = field === 'season' ? value : (item.last_season || 1);
+    if (field === 'season') {
+      value = Math.max(1, Math.min(value, info.num_seasons));
+    }
+    if (field === 'episode') {
+      const seasonData = info.seasons.find(s => s.season_number === currentSeason);
+      const maxEp = seasonData ? seasonData.episode_count : 999;
+      value = Math.max(1, Math.min(value, maxEp));
+    }
+  }
+
+  const sInput = document.getElementById(`tvSeasonInput_${id}`);
+  const eInput = document.getElementById(`tvEpisodeInput_${id}`);
+  if (field === 'season' && sInput) sInput.value = value;
+  if (field === 'episode' && eInput) eInput.value = value;
+
+  if (field === 'season' && info && eInput) {
+    const seasonData = info.seasons.find(s => s.season_number === value);
+    const maxEp = seasonData ? seasonData.episode_count : 999;
+    eInput.max = maxEp;
+    const curEp = parseInt(eInput.value, 10) || 1;
+    if (curEp > maxEp) { eInput.value = maxEp; }
+    const eHint = document.getElementById(`tvEpisodeHint_${id}`);
+    if (eHint) eHint.textContent = `1 – ${maxEp}`;
+  }
+
+  const newSeason  = field === 'season'  ? value : (item.last_season || 1);
+  const newEpisode = field === 'episode' ? value : (item.last_episode || 1);
+  const oldSeason  = item.last_season;
+  const oldEpisode = item.last_episode;
+
+  try {
+    await apiPost('/api/add', { id, last_season: newSeason, last_episode: newEpisode });
+    item.last_season  = newSeason;
+    item.last_episode = newEpisode;
+    invalidateProgressCache(id);
+    if (activeChatId) reapplySpoilerBlurs(activeChatId);
+  } catch {
+    showToast('Failed to update progress');
+    item.last_season  = oldSeason;
+    item.last_episode = oldEpisode;
+    if (sInput) sInput.value = oldSeason || 1;
+    if (eInput) eInput.value = oldEpisode || 1;
+  }
+}
+
+async function saveMangaProgressConstrained(id, rawValue) {
+  const item = allItems.find(i => i.id === id);
+  if (!item) return;
+  let val = parseFloat(rawValue);
+  if (!val || val < 1) val = 1;
+
+  const info = item.external_id ? mangaInfoCache[item.external_id] : null;
+  if (info && info.last_chapter) {
+    val = Math.min(val, info.last_chapter);
+  }
+
+  const input = document.getElementById(`mangaChapInput_${id}`);
+  if (input) input.value = val;
+
+  const oldChap = item.last_chapter;
+  try {
+    await apiPost('/api/add', { id, last_chapter: val });
+    item.last_chapter = val;
+    invalidateProgressCache(id);
+    if (activeChatId) reapplySpoilerBlurs(activeChatId);
+  } catch {
+    showToast('Failed to update chapter');
+    item.last_chapter = oldChap;
+    if (input) input.value = oldChap || 1;
+  }
+}
+
+// ─────────────────────────────────────────────
 // AI card
 // ─────────────────────────────────────────────
 
-// Monotonic counter: each selectItem call gets its own generation. Any
-// in-flight stream from a previous generation will abort itself before
-// touching the DOM, eliminating the tab-switch race condition.
 let aiCardGeneration = 0;
 
 function aiCacheKey(item) {
   if (item.status === 'watchlist') return `${item.id}_watchlist`;
   if (item.status === 'finished')  return `${item.id}_finished`;
   if (item.media_type === 'movie') return `${item.id}_watching_movie`;
-  if (item.media_type === 'book')  return `${item.id}_watching_book_p${item.current_page||0}`;
+  if (item.media_type === 'book')  return `${item.id}_watching_book`;
   if (item.media_type === 'manga') return `${item.id}_watching_manga_v${item.last_volume||0}c${item.last_chapter||0}`;
   return `${item.id}_watching_S${item.last_season||0}E${item.last_episode||0}`;
 }
@@ -1711,7 +2465,6 @@ async function loadAICard(item) {
   const key        = aiCacheKey(item);
   const myGen      = ++aiCardGeneration;
 
-  // Serve from cache immediately — no network needed.
   if (aiCache[key]) {
     if (aiCardGeneration === myGen) {
       renderAICard(document.getElementById('aiCard'), aiCache[key], item.status, item.media_type);
@@ -1722,7 +2475,6 @@ async function loadAICard(item) {
   const card = document.getElementById('aiCard');
   if (!card || aiCardGeneration !== myGen) return;
 
-  // Prep the card for streaming output.
   renderAICardShell(card, item.status, item.media_type);
   const bodyEl = card.querySelector('.ai-card-body');
 
@@ -1751,7 +2503,6 @@ async function loadAICard(item) {
         if (!payload) continue;
         try {
           const obj = JSON.parse(payload);
-          // Abort if a newer generation has taken over.
           if (aiCardGeneration !== myGen) { reader.cancel(); return; }
           if (obj.token) {
             full += obj.token;
@@ -1774,7 +2525,7 @@ async function loadAICard(item) {
 function renderAICardShell(card, status, mediaType) {
   const { title, sub } = aiCardMeta(status, mediaType);
   card.innerHTML = `
-    <div class="ai-card-label">${title}
+    <div class="ai-card-label">✦ ${title}
       <span style="color:var(--muted);font-weight:300;font-size:10px;text-transform:none;letter-spacing:0">${sub}</span>
     </div>
     <div class="ai-card-body">
@@ -1783,18 +2534,18 @@ function renderAICardShell(card, status, mediaType) {
 }
 
 function aiCardMeta(status, mediaType) {
-  if (status === 'watchlist') return { title: '✦ Why watch it', sub: 'spoiler-free pitch' };
-  if (status === 'finished')  return { title: '✦ You might also like', sub: 'recommendations' };
-  if (mediaType === 'book')   return { title: '✦ Story so far', sub: 'reading recap' };
-  if (mediaType === 'manga')  return { title: '✦ Volume recap', sub: 'manga progress' };
-  if (mediaType === 'movie')  return { title: "✦ What's Special", sub: 'vibe & highlights' };
-  return { title: '✦ So far', sub: 'progress recap' };
+  if (status === 'watchlist') return { title: 'Why watch it', sub: 'spoiler-free pitch' };
+  if (status === 'finished')  return { title: 'You might also like', sub: 'recommendations' };
+  if (mediaType === 'book')   return { title: 'Story so far', sub: 'reading recap' };
+  if (mediaType === 'manga')  return { title: 'Volume recap', sub: 'manga progress' };
+  if (mediaType === 'movie')  return { title: "What's Special", sub: 'vibe &amp; highlights' };
+  return { title: 'So far', sub: 'progress recap' };
 }
 
 function renderAICard(card, content, status, mediaType) {
   const { title, sub } = aiCardMeta(status, mediaType);
   card.innerHTML = `
-    <div class="ai-card-label">${title}
+    <div class="ai-card-label">✦ ${title}
       <span style="color:var(--muted);font-weight:300;font-size:10px;text-transform:none;letter-spacing:0">${sub}</span>
     </div>
     <div class="ai-card-body">${formatAI(esc(content))}</div>`;
@@ -1834,39 +2585,53 @@ function chatMatchesMovieFilter(c) {
 
 // ─────────────────────────────────────────────
 // Quick Q&A
+// Per-media pending map: key = mediaId, value = { question, answer }
 // ─────────────────────────────────────────────
-let askQuestionPending = false;
+const askQuestionPendingMap = new Map();
 
 async function askQuestion(mediaId) {
-  if (askQuestionPending) return;
+  if (askQuestionPendingMap.get(mediaId)) return;
   const input  = document.getElementById('qaInput');
   const answer = document.getElementById('qaAnswer');
   const nudge  = document.getElementById('chatNudge');
   const askBtn = input?.closest('.qa-wrap')?.querySelector('.btn-accent');
   const q      = input.value.trim();
   if (!q) return;
-  askQuestionPending = true;
+  askQuestionPendingMap.set(mediaId, true);
   input.value  = '';
-  if (askBtn) askBtn.disabled = true;
+  if (askBtn) { askBtn.disabled = true; }
   answer.textContent = 'Thinking…';
   answer.classList.add('show');
   try {
     const data = await apiPost('/api/ask', {
-      media_id: mediaId,
-      question: q,
-      chat_id:  qaAutoChat || undefined,
+      media_id:       mediaId,
+      question:       q,
+      chat_id:        qaAutoChat || undefined,
     });
-    answer.innerHTML = formatAI(esc(data.answer || data.error || '—'));
-    if (data.chat_id) {
-      qaAutoChat = data.chat_id;
-      await loadChats();
-      if (nudge) nudge.classList.add('show');
+    if (selectedId === mediaId) {
+      const liveAnswer = document.getElementById('qaAnswer');
+      const liveNudge  = document.getElementById('chatNudge');
+      if (liveAnswer) {
+      const html = formatAI(esc(data.answer || data.error || '—'));
+      liveAnswer.innerHTML = data.is_spoiler ? _spoilerWrapHtml(html, 'qa-spoiler') : html;
+    }
+      if (data.chat_id) {
+        qaAutoChat = data.chat_id;
+        await loadChats();
+        if (liveNudge) liveNudge.classList.add('show');
+      }
     }
   } catch {
-    answer.textContent = 'Failed to get an answer.';
+    if (selectedId === mediaId) {
+      const liveAnswer = document.getElementById('qaAnswer');
+      if (liveAnswer) liveAnswer.textContent = 'Failed to get an answer.';
+    }
   } finally {
-    askQuestionPending = false;
-    if (askBtn) askBtn.disabled = false;
+    askQuestionPendingMap.delete(mediaId);
+    if (selectedId === mediaId) {
+      const liveBtn = document.getElementById('qaInput')?.closest('.qa-wrap')?.querySelector('.btn-accent');
+      if (liveBtn) liveBtn.disabled = false;
+    }
   }
 }
 
@@ -1878,34 +2643,6 @@ function jumpToQAChat() {
 // ─────────────────────────────────────────────
 // CRUD
 // ─────────────────────────────────────────────
-async function saveEpisode(id, field, rawValue) {
-  const value = parseInt(rawValue, 10);
-  if (!value || value < 1) return;
-  const item = allItems.find(i => i.id === id);
-  if (!item) return;
-  const oldSeason  = item.last_season;
-  const oldEpisode = item.last_episode;
-  let newSeason = oldSeason, newEpisode = oldEpisode;
-  if (field === 'season') newSeason = value;
-  if (field === 'episode') newEpisode = value;
-  try {
-    await apiPost('/api/add', { id, last_season: newSeason, last_episode: newEpisode });
-    item.last_season  = newSeason;
-    item.last_episode = newEpisode;
-    invalidateProgressCache(id);
-    const sInput = document.querySelector(`[placeholder="Season"][onchange*="${id}"]`);
-    const eInput = document.querySelector(`[placeholder="Episode"][onchange*="${id}"]`);
-    if (sInput) sInput.value = newSeason;
-    if (eInput) eInput.value = newEpisode;
-  } catch {
-    showToast('Failed to update progress');
-    const sInput = document.querySelector(`[placeholder="Season"][onchange*="${id}"]`);
-    const eInput = document.querySelector(`[placeholder="Episode"][onchange*="${id}"]`);
-    if (sInput) sInput.value = oldSeason || '';
-    if (eInput) eInput.value = oldEpisode || '';
-  }
-}
-
 async function saveField(id, field, value) {
   const item = allItems.find(i => i.id === id);
   if (item && item[field] === value) return;
@@ -1962,7 +2699,6 @@ async function _deleteItemImpl(id) {
     const item = allItems.find(i => i.id === id);
     if (!item) return;
 
-    // Fetch media + chats data for possible undo
     let backup = null;
     try {
         const res = await fetch(`/api/media-with-chats/${id}`);
@@ -1971,14 +2707,12 @@ async function _deleteItemImpl(id) {
         console.warn("Could not fetch backup", e);
     }
 
-    // Remove from UI immediately
     const wasSelected = (selectedId === id);
     allItems = allItems.filter(i => i.id !== id);
     rebuildLibrarySet();
     if (wasSelected) selectedId = null;
     renderGrid();
 
-    // Actually delete from server
     try {
         await fetch(`/api/delete/${id}`, { method: 'DELETE' });
     } catch (e) {
@@ -1988,10 +2722,8 @@ async function _deleteItemImpl(id) {
         return;
     }
 
-    // Refresh chats list to remove any chats linked to this media
     await loadChats();
 
-    // Set undo timer
     mediaUndoState = {
         id,
         backup,
@@ -2005,7 +2737,6 @@ async function flushPendingMediaDelete() {
     clearTimeout(mediaUndoState.timer);
     mediaUndoState = null;
     dismissUndoToast();
-    // Nothing else to do – already deleted on server.
 }
 
 async function undoMediaDelete() {
@@ -2038,12 +2769,12 @@ async function undoMediaDelete() {
 }
 
 // ─────────────────────────────────────────────
-// ── CHATS TAB ─────────────────────────────────
+// Chats tab
 // ─────────────────────────────────────────────
 
 function chatEmptyDetailHtml() {
   return `<div class="chat-empty">
-    <div class="chat-empty-icon">💬</div>
+    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" style="opacity:0.18"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
     <p style="font-size:13px;color:var(--muted)">Select a conversation or start a new one</p>
   </div>`;
 }
@@ -2146,7 +2877,7 @@ function renderChatsTab() {
       <button class="chat-new-btn" onclick="openNewChatForm()">+ New chat</button>
     </div>
     <input type="text" class="chat-movie-search" id="chatMovieSearch"
-      placeholder="Search by movie or show…"
+      placeholder="Search by movie or show…" autocomplete="off"
       value="${esc(chatMovieFilter)}"
       oninput="onChatMovieSearchInput()">
     <div class="chat-list" id="chatList">${listHtml}</div>`;
@@ -2167,11 +2898,13 @@ function renderChatListItem(c) {
   let progressStr = '';
   if (c.media_id) {
     const media = allItems.find(i => Number(i.id) === Number(c.media_id));
-    if (media && media.media_type === 'tv' && media.status === 'watching'
-        && (media.last_season || media.last_episode)) {
-      const s = media.last_season || '?';
-      const e = media.last_episode || '?';
-      progressStr = `<span class="cli-progress"> S${s} E${e}</span>`;
+    if (media && media.media_type === 'tv' && tag === 'watching') {
+      const s = c.spoiler_season || media.last_season;
+      const e = c.spoiler_episode || media.last_episode;
+      if (s || e) progressStr = `<span class="cli-progress"> S${s||'?'} E${e||'?'}</span>`;
+    } else if (media && media.media_type === 'manga' && tag === 'watching') {
+      const ch = c.spoiler_chapter || media.last_chapter;
+      if (ch) progressStr = `<span class="cli-progress" style="color:var(--pink)"> CH${ch}</span>`;
     }
   }
 
@@ -2214,30 +2947,285 @@ async function selectChat(chatId) {
   }
   if (activeChatId !== chatId) return;
   const msgs = data.messages || [];
+  const chatMedia = (preview && preview.media_id) ? allItems.find(i => i.id === preview.media_id) : null;
   const msgsHtml = msgs.length
-    ? msgs.map(m => renderChatMsg(m)).join('')
+    ? msgs.map(m => renderChatMsg(m, chatMedia, preview)).join('')
     : '<div style="color:var(--muted);font-size:12px;text-align:center;padding:20px">Start the conversation below.</div>';
   let tvWidget = '';
   if (preview && preview.media_id) {
     const media = allItems.find(i => i.id === preview.media_id);
-    if (media && media.media_type === 'tv' && media.status === 'watching') {
-      tvWidget = tvProgressWidget(media);
+    const effectiveStatus = preview.context_tag || (media ? media.status : '');
+    if (media && media.media_type === 'tv' && effectiveStatus === 'watching') {
+      tvWidget = tvProgressWidget(media, preview);
+    } else if (media && media.media_type === 'manga' && effectiveStatus === 'watching') {
+      tvWidget = mangaProgressWidget(media, preview);
     }
   }
 
   if (detail && activeChatId === chatId) {
     detail.innerHTML = buildChatPanelHtml(chatId, formatChatHeading(data), msgsHtml, tvWidget);
     setChatSendingState(chatSendPending);
+    if (chatSendPending && streamingChatId === chatId) {
+      const wrap = document.getElementById('chatMsgsWrap');
+      if (wrap) {
+        const asstBubble = document.createElement('div');
+        asstBubble.className = 'chat-msg assistant';
+        asstBubble.style.alignSelf = 'flex-start';
+
+        const contentArea = document.createElement('div');
+        contentArea.id = 'streamingContentArea';
+        contentArea.className = 'streaming-content-area';
+        if (streamingContent) {
+          contentArea.innerHTML = formatAI(esc(streamingContent));
+        } else {
+          contentArea.innerHTML = '<div class="typing-dots"><span></span><span></span><span></span></div>';
+        }
+
+        const footerEl = document.createElement('div');
+        footerEl.className = 'chat-msg-footer';
+        const footerTime = document.createElement('div');
+        footerTime.className = 'chat-msg-time';
+        footerTime.innerHTML = getProgressTagHtml(chatId);
+        footerEl.appendChild(footerTime);
+
+        asstBubble.appendChild(contentArea);
+        asstBubble.appendChild(footerEl);
+        wrap.appendChild(asstBubble);
+      }
+    }
     scrollChatBottom();
   }
 }
 
-function renderChatMsg(m) {
-  const t = (m.created_at || '').replace('T', ' ').slice(11, 16);
-  return `<div class="chat-msg ${m.role}" style="${m.role==='user'?'align-self:flex-end':'align-self:flex-start'}">
-    ${formatAI(esc(m.content))}
-    <div class="chat-msg-footer"><div class="chat-msg-time">${t}</div></div>
+// ─── Spoiler logic ────────────────────────────
+function _seInt(v) { return v ? parseInt(v, 10) : 0; }
+function _seFloat(v) { return v ? parseFloat(v) : 0; }
+
+// Returns { season, episode } or { chapter } representing the effective spoiler
+// threshold for a given chat — the chat's own threshold takes precedence over
+// the media's tracked progress.
+function _chatSpoilerThreshold(chat, media) {
+  if (!media) return null;
+  if (media.media_type === 'tv') {
+    const s = chat?.spoiler_season  || media.last_season  || 0;
+    const e = chat?.spoiler_episode || media.last_episode || 0;
+    return { season: _seInt(s), episode: _seInt(e) };
+  }
+  if (media.media_type === 'manga') {
+    const ch = chat?.spoiler_chapter || media.last_chapter || 0;
+    return { chapter: _seFloat(ch) };
+  }
+  return null;
+}
+
+// Returns the HTML for a per-message progress tag (shown in message footer).
+function _progressTagHtmlForSnap(snapS, snapE, snapCh, mediaType) {
+  if (mediaType === 'tv' && (snapS || snapE)) {
+    return `<span style="font-size:10px;color:var(--green);background:var(--green-glow);border:1px solid var(--green-dim);border-radius:4px;padding:1px 5px;margin-left:6px">up to S${snapS||'?'} E${snapE||'?'}</span>`;
+  }
+  if (mediaType === 'manga' && snapCh) {
+    return `<span style="font-size:10px;color:var(--pink);background:var(--pink-glow);border:1px solid var(--pink-dim);border-radius:4px;padding:1px 5px;margin-left:6px">up to CH${snapCh}</span>`;
+  }
+  return '';
+}
+
+// Scan message text for the furthest season/episode or chapter naturally mentioned.
+// Matches: S3E7, Season 3 Episode 7, 3x07 / Chapter 47, Ch. 47, ch47
+// Returns { season, episode } or { chapter } or null.
+function _extractSnapProgress(text, mediaType) {
+  if (!text) return null;
+  if (mediaType === 'tv') {
+    const pats = [
+      /\bS(\d{1,2})[\s\-_]?E(\d{1,3})\b/gi,
+      /\bseason\s*(\d{1,2})\s*ep(?:isode)?\s*(\d{1,3})\b/gi,
+      /\b(\d{1,2})x(\d{1,3})\b/gi,
+    ];
+    let maxS = 0, maxE = 0, found = false;
+    for (const pat of pats) {
+      let m;
+      while ((m = pat.exec(text)) !== null) {
+        const s = parseInt(m[1], 10), e = parseInt(m[2], 10);
+        if (!found || s > maxS || (s === maxS && e > maxE)) { maxS = s; maxE = e; found = true; }
+      }
+    }
+    return found ? { season: maxS, episode: maxE } : null;
+  }
+  if (mediaType === 'manga') {
+    const pat = /\bch(?:apter)?\.?\s*(\d+(?:\.\d+)?)\b/gi;
+    let maxCh = 0, found = false, m;
+    while ((m = pat.exec(text)) !== null) {
+      const c = parseFloat(m[1]);
+      if (!found || c > maxCh) { maxCh = c; found = true; }
+    }
+    return found ? { chapter: maxCh } : null;
+  }
+  return null;
+}
+
+// Returns true if a bubble's snapshotted progress exceeds the chat's spoiler threshold.
+function _bubbleIsPastProgress(bubble, chat, media) {
+  if (!media) return false;
+  const threshold = _chatSpoilerThreshold(chat, media);
+  if (!threshold) return false;
+  if (media.media_type === 'tv') {
+    const snapS = _seInt(bubble.dataset.snapSeason);
+    const snapE = _seInt(bubble.dataset.snapEpisode);
+    if (!snapS && !snapE) return false;
+    return snapS > threshold.season || (snapS === threshold.season && snapE > threshold.episode);
+  }
+  if (media.media_type === 'manga') {
+    const snapCh = _seFloat(bubble.dataset.snapChapter);
+    if (!snapCh) return false;
+    return snapCh > threshold.chapter;
+  }
+  return false;
+}
+
+function _spoilerWrapHtml(innerHtml, msgId) {
+  return `<div class="spoiler-wrap">
+    <span class="spoiler-content" id="${msgId}" onclick="revealSpoiler('${msgId}')">${innerHtml}</span>
+    <span class="spoiler-hint" id="${msgId}-hint">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+      Click to reveal
+    </span>
   </div>`;
+}
+
+// Re-evaluate all assistant bubbles in the current chat after spoiler threshold changes.
+function reapplySpoilerBlurs(chatId) {
+  const preview = allChats.find(c => c.id === chatId);
+  if (!preview || !preview.media_id) return;
+  const media = allItems.find(i => i.id === preview.media_id);
+  if (!media) return;
+  const wrap = document.getElementById('chatMsgsWrap');
+  if (!wrap) return;
+  wrap.querySelectorAll('.chat-msg.assistant[data-msg-id]').forEach(bubble => {
+    const isSpoiler = _bubbleIsPastProgress(bubble, preview, media);
+    const msgId = bubble.dataset.msgId;
+    const wrapEl = bubble.querySelector('.spoiler-wrap');
+    const plainEl = bubble.querySelector('.no-spoiler-content');
+
+    if (isSpoiler && plainEl) {
+      const newWrap = document.createElement('div');
+      newWrap.className = 'spoiler-wrap';
+      newWrap.innerHTML = `<span class="spoiler-content" id="${msgId}" onclick="revealSpoiler('${msgId}')">${plainEl.innerHTML}</span>
+        <span class="spoiler-hint" id="${msgId}-hint">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          Click to reveal
+        </span>`;
+      plainEl.replaceWith(newWrap);
+    } else if (!isSpoiler && wrapEl) {
+      const contentEl = wrapEl.querySelector('.spoiler-content');
+      const plain = document.createElement('span');
+      plain.className = 'no-spoiler-content';
+      plain.innerHTML = contentEl ? contentEl.innerHTML : wrapEl.innerHTML;
+      wrapEl.replaceWith(plain);
+    }
+
+    const footerTime = bubble.querySelector('.chat-msg-time');
+    if (footerTime) {
+      const snapS = bubble.dataset.snapSeason, snapE = bubble.dataset.snapEpisode;
+      const snapCh = bubble.dataset.snapChapter;
+      const tagHtml = _progressTagHtmlForSnap(snapS, snapE, snapCh, media.media_type);
+      const timeOnly = footerTime.innerHTML.replace(/<span[^>]*>.*?<\/span>/gs, '').trim();
+      footerTime.innerHTML = timeOnly + tagHtml;
+    }
+  });
+}
+
+function renderChatMsg(m, media, chat) {
+  const t = (m.created_at || '').replace('T', ' ').slice(11, 16);
+  let progressTag = '';
+  let snapSeason = '', snapEpisode = '', snapChapter = '';
+
+  if (m.role === 'assistant' && media) {
+    const snap = _extractSnapProgress(m.content, media.media_type);
+
+    if (media.media_type === 'tv') {
+      if (snap) {
+        snapSeason = snap.season; snapEpisode = snap.episode;
+      } else if (m.snap_season) {
+        snapSeason = m.snap_season; snapEpisode = m.snap_episode || '';
+      }
+      if (snapSeason || snapEpisode) {
+        progressTag = _progressTagHtmlForSnap(snapSeason, snapEpisode, null, 'tv');
+      }
+    } else if (media.media_type === 'manga') {
+      if (snap) {
+        snapChapter = snap.chapter;
+      } else if (m.snap_chapter) {
+        snapChapter = m.snap_chapter;
+      }
+      if (snapChapter) {
+        progressTag = _progressTagHtmlForSnap(null, null, snapChapter, 'manga');
+      }
+    }
+  }
+
+  const innerHtml = formatAI(esc(m.content));
+  const msgId = `msg-${m.id || Math.random().toString(36).slice(2)}`;
+
+  const isSpoilerNow = (() => {
+    if (!media || m.role !== 'assistant') return false;
+    const threshold = _chatSpoilerThreshold(chat, media);
+    if (!threshold) return false;
+    if (media.media_type === 'tv' && snapSeason) {
+      return _seInt(snapSeason) > threshold.season ||
+        (_seInt(snapSeason) === threshold.season && _seInt(snapEpisode) > threshold.episode);
+    }
+    if (media.media_type === 'manga' && snapChapter) {
+      return _seFloat(snapChapter) > threshold.chapter;
+    }
+    return false;
+  })();
+
+  let contentHtml;
+  if (m.role === 'assistant') {
+    contentHtml = isSpoilerNow
+      ? _spoilerWrapHtml(innerHtml, msgId)
+      : `<span class="no-spoiler-content">${innerHtml}</span>`;
+  } else {
+    contentHtml = innerHtml;
+  }
+
+  const dataAttrs = m.role === 'assistant'
+    ? `data-msg-id="${msgId}"${snapSeason ? ` data-snap-season="${snapSeason}" data-snap-episode="${snapEpisode}"` : ''}${snapChapter ? ` data-snap-chapter="${snapChapter}"` : ''}`
+    : '';
+
+  return `<div class="chat-msg ${m.role}" style="${m.role==='user'?'align-self:flex-end':'align-self:flex-start'}" ${dataAttrs}>
+    ${contentHtml}
+    <div class="chat-msg-footer"><div class="chat-msg-time">${t}${progressTag}</div></div>
+  </div>`;
+}
+
+function revealSpoiler(id) {
+  const el = document.getElementById(id);
+  const hint = document.getElementById(id + '-hint');
+  if (!el || el.classList.contains('revealed')) return;
+  el.classList.add('revealed');
+  if (hint) hint.classList.add('hidden');
+}
+
+function getProgressTagHtml(chatId) {
+  const preview = allChats.find(c => c.id === chatId);
+  if (!preview || !preview.media_id) return '';
+  const media = allItems.find(i => i.id === preview.media_id);
+  if (!media) return '';
+  const effectiveStatus = preview.context_tag || media.status;
+  if (media.media_type === 'tv' && effectiveStatus === 'watching') {
+    const s = preview.spoiler_season || media.last_season;
+    const e = preview.spoiler_episode || media.last_episode;
+    if (s || e) {
+      return `<span style="font-size:10px;color:var(--green);background:var(--green-glow);border:1px solid var(--green-dim);border-radius:4px;padding:1px 5px;margin-left:6px">S${s||'?'} E${e||'?'}</span>`;
+    }
+  }
+  if (media.media_type === 'manga' && effectiveStatus === 'watching') {
+    const ch = preview.spoiler_chapter || media.last_chapter;
+    if (ch) {
+      return `<span style="font-size:10px;color:var(--pink);background:var(--pink-glow);border:1px solid var(--pink-dim);border-radius:4px;padding:1px 5px;margin-left:6px">CH${ch}</span>`;
+    }
+  }
+  return '';
 }
 
 function scrollChatBottom() {
@@ -2245,8 +3233,15 @@ function scrollChatBottom() {
   if (wrap) wrap.scrollTop = wrap.scrollHeight;
 }
 
+let streamingChatId   = null;
+let streamingContent  = '';
+
 function setChatSendingState(isSending) {
   chatSendPending = isSending;
+  if (!isSending) {
+    streamingChatId  = null;
+    streamingContent = '';
+  }
   const input = document.getElementById('chatInput');
   const sendBtn = document.getElementById('chatSendBtn');
   if (sendBtn) sendBtn.disabled = isSending;
@@ -2274,18 +3269,41 @@ async function sendChatMessage(chatId) {
   input.value = '';
   input.style.height = 'auto';
   setChatSendingState(true);
+  streamingChatId  = chatId;
+  streamingContent = '';
+
+  const _chatPreview = allChats.find(c => c.id === chatId);
+  const _chatMedia   = _chatPreview?.media_id ? allItems.find(i => i.id === _chatPreview.media_id) : null;
+
   const userBubble = document.createElement('div');
   userBubble.className = 'chat-msg user';
   userBubble.style.alignSelf = 'flex-end';
   userBubble.textContent = content;
   wrap.appendChild(userBubble);
   scrollChatBottom();
+
   const asstBubble = document.createElement('div');
   asstBubble.className = 'chat-msg assistant';
   asstBubble.style.alignSelf = 'flex-start';
-  asstBubble.innerHTML = '<div class="typing-dots"><span></span><span></span><span></span></div>';
+
+  const contentArea = document.createElement('div');
+  contentArea.className = 'streaming-content-area';
+  contentArea.innerHTML = '<div class="typing-dots"><span></span><span></span><span></span></div>';
+
+  const footerEl = document.createElement('div');
+  footerEl.className = 'chat-msg-footer';
+  const footerTime = document.createElement('div');
+  footerTime.className = 'chat-msg-time';
+  const now = new Date();
+  const timeStr = now.toTimeString().slice(0, 5);
+  footerTime.innerHTML = timeStr + getProgressTagHtml(chatId);
+  footerEl.appendChild(footerTime);
+
+  asstBubble.appendChild(contentArea);
+  asstBubble.appendChild(footerEl);
   wrap.appendChild(asstBubble);
   scrollChatBottom();
+
   try {
     const response = await fetch(`/api/chats/${chatId}/message`, {
       method: 'POST',
@@ -2298,6 +3316,8 @@ async function sendChatMessage(chatId) {
     let buffer = '';
     let fullText = '';
     let firstToken = true;
+    let pendingSpoiler = false;
+    let preBlurred = false;
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -2311,25 +3331,90 @@ async function sendChatMessage(chatId) {
         try {
           const obj = JSON.parse(payload);
           if (obj.token) {
-            if (firstToken) {
-              asstBubble.innerHTML = '';
-              firstToken = false;
-            }
+            if (firstToken) { firstToken = false; }
             fullText += obj.token;
-            asstBubble.innerHTML = formatAI(esc(fullText));
+            streamingContent = fullText;
+            const liveArea = document.getElementById('streamingContentArea') || contentArea;
+            liveArea.innerHTML = formatAI(esc(fullText));
             scrollChatBottom();
+          } else if (obj.meta) {
+            const liveArea = document.getElementById('streamingContentArea') || contentArea;
+            const liveBubble = liveArea.closest('.chat-msg.assistant') || asstBubble;
+            const meta = obj.meta;
+
+            if (meta.pre_blur) {
+              preBlurred = true;
+              contentArea.style.filter = 'blur(5px)';
+              contentArea.style.userSelect = 'none';
+              contentArea.style.pointerEvents = 'none';
+              const liveFooterTime = liveBubble.querySelector('.chat-msg-time');
+              if (liveFooterTime) {
+                const timeOnly = liveFooterTime.innerHTML.replace(/<span[^>]*>.*?<\/span>/g, '').trim();
+                if (meta.snap_season) {
+                  liveFooterTime.innerHTML = timeOnly + _progressTagHtmlForSnap(meta.snap_season, meta.snap_episode, null, 'tv');
+                } else if (meta.snap_chapter) {
+                  liveFooterTime.innerHTML = timeOnly + _progressTagHtmlForSnap(null, null, meta.snap_chapter, 'manga');
+                }
+              }
+            } else {
+              if (meta.is_spoiler === true) {
+                pendingSpoiler = true;
+              }
+              if (meta.snap_season) {
+                liveBubble.dataset.snapSeason  = meta.snap_season;
+                liveBubble.dataset.snapEpisode = meta.snap_episode || '';
+                const liveFooterTime = liveBubble.querySelector('.chat-msg-time');
+                if (liveFooterTime) {
+                  const timeOnly = liveFooterTime.innerHTML.replace(/<span[^>]*>.*?<\/span>/g, '').trim();
+                  liveFooterTime.innerHTML = timeOnly + _progressTagHtmlForSnap(meta.snap_season, meta.snap_episode, null, 'tv');
+                }
+              } else if (meta.snap_chapter) {
+                liveBubble.dataset.snapChapter = meta.snap_chapter;
+                const liveFooterTime = liveBubble.querySelector('.chat-msg-time');
+                if (liveFooterTime) {
+                  const timeOnly = liveFooterTime.innerHTML.replace(/<span[^>]*>.*?<\/span>/g, '').trim();
+                  liveFooterTime.innerHTML = timeOnly + _progressTagHtmlForSnap(null, null, meta.snap_chapter, 'manga');
+                }
+              }
+            }
           } else if (obj.done) {
             if (firstToken) {
-              asstBubble.innerHTML = '<em>(empty response)</em>';
+              contentArea.innerHTML = '<em style="color:var(--muted)">(empty response)</em>';
+            } else {
+              const liveArea = document.getElementById('streamingContentArea') || contentArea;
+              const liveBubble = liveArea.closest('.chat-msg.assistant') || asstBubble;
+              liveBubble.dataset.msgId = `msg-streaming-${Date.now()}`;
+              const _latestChat = allChats.find(c => c.id === chatId);
+              const isSpoiler = pendingSpoiler || (_chatMedia && _bubbleIsPastProgress(liveBubble, _latestChat, _chatMedia));
+              if (isSpoiler) {
+                const inner = liveArea.innerHTML;
+                const msgId = liveBubble.dataset.msgId;
+                const wrapDiv = document.createElement('div');
+                wrapDiv.className = 'spoiler-wrap';
+                wrapDiv.innerHTML = `<span class="spoiler-content" id="${msgId}" onclick="revealSpoiler('${msgId}')">${inner}</span>
+                  <span class="spoiler-hint" id="${msgId}-hint">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    Click to reveal
+                  </span>`;
+                liveArea.replaceWith(wrapDiv);
+              } else {
+                if (preBlurred) {
+                  liveArea.style.filter = '';
+                  liveArea.style.userSelect = '';
+                  liveArea.style.pointerEvents = '';
+                }
+                liveArea.classList.remove('streaming-content-area');
+                liveArea.classList.add('no-spoiler-content');
+              }
             }
           } else if (obj.error) {
-            asstBubble.innerHTML = `<span style="color:var(--red)">Error: ${esc(obj.error)}</span>`;
+            contentArea.innerHTML = `<span style="color:var(--red)">Error: ${esc(obj.error)}</span>`;
           }
         } catch (e) {}
       }
     }
   } catch (err) {
-    asstBubble.innerHTML = `<span style="color:var(--red)">Failed to send — try again.</span>`;
+    contentArea.innerHTML = `<span style="color:var(--red)">Failed to send — try again.</span>`;
   } finally {
     setChatSendingState(false);
     if (input) input.focus();
@@ -2478,7 +3563,7 @@ function ncfFilterItems() {
   }
   dropdown.innerHTML = matches.map(i => `
     <div class="ncf-dropdown-item" onclick="ncfSelectMedia(${i.id})">
-      ${esc(i.title)} (${TYPE_EMOJI[i.media_type]} ${i.status})
+      ${esc(i.title)} (${TYPE_SVG[i.media_type]} ${i.status})
     </div>`).join('');
   dropdown.classList.add('open');
 }
@@ -2554,7 +3639,7 @@ async function showDropdownSuggestions(q) {
       return `<div class="sd-row" onclick="selectLibraryItem(${i.id})">
         <div>
           <div class="sd-title">${esc(i.title)}</div>
-          <div class="sd-sub">${TYPE_EMOJI[i.media_type]} ${TYPE_LABEL[i.media_type]} · <span style="color:${statusColor}">${i.status}</span></div>
+          <div class="sd-sub">${TYPE_SVG[i.media_type]} ${TYPE_LABEL[i.media_type]} · <span style="color:${statusColor}">${i.status}</span></div>
         </div>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
       </div>`;
@@ -2571,7 +3656,7 @@ async function showDropdownSuggestions(q) {
       return `<div class="sd-row" onclick="addFromDropdown('${key}')">
         <div>
           <div class="sd-title">${esc(r.title)} <span style="color:var(--muted);font-size:11px">(${r.year||'?'})</span></div>
-          <div class="sd-sub">${TYPE_EMOJI[r.media_type]} ${TYPE_LABEL[r.media_type]}${r.author?' · '+esc(r.author):''}</div>
+          <div class="sd-sub">${TYPE_SVG[r.media_type]} ${TYPE_LABEL[r.media_type]}${r.author?' · '+esc(r.author):''}</div>
         </div>
         <span style="font-size:11px;color:${already?'var(--green)':'var(--accent)'}">${already?'✓ In library':'+ Add'}</span>
       </div>`;
@@ -2617,6 +3702,7 @@ async function addFromDropdown(key) {
       cover_url:   r.cover_url  || null,
       author:      r.author     || null,
       total_pages: r.total_pages || null,
+      overview:    r.overview   || null,
     });
     await loadList();
     const newItem = allItems.find(i =>
@@ -2667,9 +3753,6 @@ async function openModal() {
     document.querySelectorAll('.sm-type-pill').forEach(p =>
         p.classList.toggle('active', modalActiveTypes.has(p.dataset.stype))
     );
-    const hint = document.getElementById('smAiHint');
-    if (hint) hint.classList.remove('show');
-
     document.getElementById('searchModalBackdrop').classList.add('open');
     document.body.style.overflow = 'hidden';
 
@@ -2744,7 +3827,7 @@ function renderModalResults(libMatches, tmdbResults, q) {
       return `<div class="sm-lib-row" onclick="selectLibraryItem(${i.id})">
         <div>
           <div class="sm-lib-title">${esc(i.title)}</div>
-          <div class="sm-lib-sub">${TYPE_EMOJI[i.media_type]} ${TYPE_LABEL[i.media_type]}${prog?' · '+prog:''}</div>
+          <div class="sm-lib-sub">${TYPE_SVG[i.media_type]} ${TYPE_LABEL[i.media_type]}${prog?' · '+prog:''}</div>
         </div>
         <span class="sm-lib-badge" style="color:${statusColor};border-color:${borderColor}">${i.status}</span>
       </div>`;
@@ -2773,11 +3856,24 @@ function _progressLabel(item) {
   return '';
 }
 
-function tvProgressWidget(media) {
-  return `<div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);border-left:1px solid var(--border);padding-left:12px;margin-left:auto">
-    <span id="tvProgLabel">S${media.last_season||'?'} E${media.last_episode||'?'}</span>
-    <button type="button" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;padding:0 2px;"
-      onclick="editTVProgress(${media.id})" title="Edit progress">✎</button>
+function tvProgressWidget(media, chat) {
+  const s = chat.spoiler_season || media.last_season || '?';
+  const e = chat.spoiler_episode || media.last_episode || '?';
+  return `<div class="spoiler-threshold-widget">
+    <svg class="icon-svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+    <span style="font-size:10px;color:var(--muted);letter-spacing:0.02em">Spoilers up to</span>
+    <span id="tvProgLabel" class="spoiler-threshold-value" onclick="editTVProgress(${media.id}, ${chat.id})">S${s} E${e}</span>
+    <button type="button" id="tvProgEditBtn" class="spoiler-threshold-edit-btn" onclick="editTVProgress(${media.id}, ${chat.id})">✎</button>
+  </div>`;
+}
+
+function mangaProgressWidget(media, chat) {
+  const ch = chat.spoiler_chapter || media.last_chapter || '?';
+  return `<div class="spoiler-threshold-widget">
+    <svg class="icon-svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+    <span style="font-size:10px;color:var(--muted);letter-spacing:0.02em">Spoilers up to</span>
+    <span id="mangaProgLabel" class="spoiler-threshold-value" onclick="editMangaProgress(${media.id}, ${chat.id})">CH${ch}</span>
+    <button type="button" id="mangaProgEditBtn" class="spoiler-threshold-edit-btn" onclick="editMangaProgress(${media.id}, ${chat.id})">✎</button>
   </div>`;
 }
 
@@ -2794,7 +3890,7 @@ function renderSmCard(r) {
   }
   const chips = [];
   if (r.year) chips.push(`<span class="sm-chip year">${esc(r.year)}</span>`);
-  chips.push(`<span class="sm-chip ${r.media_type}">${TYPE_EMOJI[r.media_type]} ${TYPE_LABEL[r.media_type]}</span>`);
+  chips.push(`<span class="sm-chip ${r.media_type}">${TYPE_SVG[r.media_type]} ${TYPE_LABEL[r.media_type]}</span>`);
   const authorHtml = r.author ? `<div class="sm-card-author">${esc(r.author)}</div>` : '';
   const safeKey    = key.replace(/'/g, "\\'");
   return `<div class="sm-card ${already?'in-library':''}" data-media-type="${r.media_type}">
@@ -2834,6 +3930,7 @@ async function addFromModal(key) {
       cover_url:   r.cover_url  || null,
       author:      r.author     || null,
       total_pages: r.total_pages || null,
+      overview:    r.overview   || null,
     });
     await loadList();
     const newItem = allItems.find(i =>
@@ -3068,7 +4165,7 @@ function renderVibeResults(append) {
         ${authorHtml}
         <div class="sm-chips">
           ${r.year ? `<span class="sm-chip year">${esc(r.year)}</span>` : ''}
-          <span class="sm-chip ${r.media_type}">${TYPE_EMOJI[r.media_type]} ${TYPE_LABEL[r.media_type]}</span>
+          <span class="sm-chip ${r.media_type}">${TYPE_SVG[r.media_type]} ${TYPE_LABEL[r.media_type]}</span>
         </div>
         ${r.overview ? `<div class="sm-overview">${esc(r.overview)}</div>` : ''}
         <button class="sm-add-btn" id="${btnId}" onclick="addVibeResult('${safeKey}')" ${already ? 'disabled' : ''}>
@@ -3117,6 +4214,7 @@ async function addVibeResult(key) {
       cover_url:   r.cover_url  || null,
       author:      r.author     || null,
       total_pages: r.total_pages || null,
+      overview:    r.overview   || null,
     });
     await loadList();
     const newItem = allItems.find(i =>

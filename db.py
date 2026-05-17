@@ -32,6 +32,7 @@ def init_db():
                 notes           TEXT,
                 cover_url       TEXT,
                 author          TEXT,
+                overview        TEXT,
                 date_added      TEXT DEFAULT (date('now')),
                 UNIQUE(external_id, media_type)
             )
@@ -39,22 +40,28 @@ def init_db():
 
         conn.execute("""
             CREATE TABLE IF NOT EXISTS chats (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                media_id    INTEGER REFERENCES media(id) ON DELETE CASCADE,
-                title       TEXT NOT NULL,
-                context_tag TEXT,
-                created_at  TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S','now')),
-                updated_at  TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S','now'))
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                media_id        INTEGER REFERENCES media(id) ON DELETE CASCADE,
+                title           TEXT NOT NULL,
+                context_tag     TEXT,
+                spoiler_season  INTEGER,
+                spoiler_episode INTEGER,
+                spoiler_chapter REAL,
+                created_at      TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S','now')),
+                updated_at      TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S','now'))
             )
         """)
 
         conn.execute("""
             CREATE TABLE IF NOT EXISTS chat_messages (
-                id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                chat_id    INTEGER NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
-                role       TEXT NOT NULL,
-                content    TEXT NOT NULL,
-                created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S','now'))
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                chat_id      INTEGER NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+                role         TEXT NOT NULL,
+                content      TEXT NOT NULL,
+                snap_season  INTEGER,
+                snap_episode INTEGER,
+                snap_chapter REAL,
+                created_at   TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S','now'))
             )
         """)
 
@@ -71,10 +78,6 @@ def init_db():
 def row_to_dict(row):
     return dict(row) if row is not None else None
 
-
-# ══════════════════════════════════════════════════
-# MEDIA
-# ══════════════════════════════════════════════════
 
 def get_all_media():
     with get_conn() as conn:
@@ -103,17 +106,17 @@ def add_media_entry(
     title, media_type, status="watchlist",
     tmdb_id=None, external_id=None,
     cover_url=None, author=None,
-    total_pages=None,
+    total_pages=None, overview=None,
 ):
     ext = external_id or (str(tmdb_id) if tmdb_id else None)
     with get_conn() as conn:
         conn.execute("""
             INSERT OR IGNORE INTO media
                 (tmdb_id, external_id, title, media_type, status,
-                 cover_url, author, total_pages)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 cover_url, author, total_pages, overview)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (tmdb_id, ext, title, media_type, status,
-              cover_url, author, total_pages))
+              cover_url, author, total_pages, overview))
         row = conn.execute(
             "SELECT id FROM media WHERE external_id = ? AND media_type = ?",
             (ext, media_type),
@@ -126,7 +129,7 @@ _UPDATABLE = frozenset({
     "last_season", "last_episode",
     "last_volume", "last_chapter",
     "current_page", "total_pages",
-    "notes", "cover_url", "author",
+    "notes", "cover_url", "author", "overview",
 })
 
 
@@ -145,10 +148,6 @@ def delete_media_entry(media_id: int):
         conn.execute("DELETE FROM chats WHERE media_id = ?", (media_id,))
         conn.execute("DELETE FROM media WHERE id = ?", (media_id,))
 
-
-# ══════════════════════════════════════════════════
-# CHATS
-# ══════════════════════════════════════════════════
 
 def get_chats_by_media_id(media_id: int):
     with get_conn() as conn:
@@ -204,12 +203,30 @@ def create_chat(media_id, title, context_tag=None):
 def append_message(chat_id: int, role: str, content: str):
     now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
     with get_conn() as conn:
-        conn.execute(
+        cur = conn.execute(
             "INSERT INTO chat_messages (chat_id, role, content, created_at) VALUES (?,?,?,?)",
             (chat_id, role, content, now),
         )
         conn.execute(
             "UPDATE chats SET updated_at = ? WHERE id = ?", (now, chat_id)
+        )
+        return cur.lastrowid
+
+
+def update_message_snap(msg_id: int, snap_season=None, snap_episode=None, snap_chapter=None):
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE chat_messages SET snap_season = ?, snap_episode = ?, snap_chapter = ? WHERE id = ?",
+            (snap_season, snap_episode, snap_chapter, msg_id),
+        )
+
+
+def update_chat_spoiler_threshold(chat_id: int, season=None, episode=None, chapter=None):
+    now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE chats SET spoiler_season = ?, spoiler_episode = ?, spoiler_chapter = ?, updated_at = ? WHERE id = ?",
+            (season, episode, chapter, now, chat_id),
         )
 
 
@@ -226,10 +243,6 @@ def clear_chat_messages(chat_id: int):
             "UPDATE chats SET updated_at = ? WHERE id = ?", (now, chat_id)
         )
 
-
-# ══════════════════════════════════════════════════
-# USER MEMORY
-# ══════════════════════════════════════════════════
 
 def get_all_memory() -> dict:
     with get_conn() as conn:

@@ -15,6 +15,7 @@ from db import (
     add_media_entry, update_media_entry, delete_media_entry,
     get_all_chats, get_chats_by_media_id, get_chat_by_id, get_chat_messages,
     create_chat, append_message, delete_chat, clear_chat_messages,
+    update_chat_spoiler_threshold, update_message_snap,
     get_all_memory,
 )
 
@@ -32,17 +33,22 @@ GEMINI_MODEL  = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
 
 init_db()
 
-# ── In-memory caches ─────────────────────────────
 poster_cache:   dict[str, tuple[bytes, str]]  = {}
 search_cache:   dict[str, list]               = {}
 media_cache:    dict[int, dict]               = {}
-ai_card_cache:  dict[str, tuple[str, float]]  = {}  # (content, expiry)
+ai_card_cache:  dict[str, tuple[str, float]]  = {}
 memory_cache:   dict[str, str]                = {}
 
 MAX_CHAT_HISTORY = 12
 AI_CARD_TTL      = 600
 MANGADEX_HEADERS = {"User-Agent": "CineVault/1.0"}
 SEARCH_CACHE_MAX = 100
+
+SPOILER_CONSENT_PHRASES = [
+    "spoil", "spoilers", "tell me everything",
+    "i don't mind spoilers", "i dont mind spoilers",
+    "you can spoil", "spoil away",
+]
 
 
 def _cache_search(key: str, items: list) -> None:
@@ -157,6 +163,64 @@ def index():
 # Search (TMDB, Books, Manga)
 # ═══════════════════════════════════════════════════
 
+def _fetch_tmdb_director(media_type: str, tmdb_id: int) -> str:
+    try:
+        if media_type == "movie":
+            url = f"https://api.themoviedb.org/3/movie/{tmdb_id}/credits?api_key={tmdb.api_key}"
+            data = requests.get(url, timeout=3).json()
+            names = [c["name"] for c in data.get("crew", []) if c.get("job") == "Director"]
+        else:
+            url = f"https://api.themoviedb.org/3/tv/{tmdb_id}?api_key={tmdb.api_key}"
+            data = requests.get(url, timeout=3).json()
+            names = [c["name"] for c in data.get("created_by", [])]
+        return ", ".join(names[:3])
+    except Exception:
+        return ""
+
+
+@app.route("/api/item/<int:item_id>/fetch_director")
+def fetch_item_director(item_id):
+    item = cached_get_media(item_id)
+    if not item:
+        return jsonify({"author": ""})
+    if item.get("author"):
+        return jsonify({"author": item["author"]})
+    if item.get("media_type") not in ("movie", "tv"):
+        return jsonify({"author": ""})
+    tmdb_id = item.get("tmdb_id") or item.get("external_id")
+    if not tmdb_id:
+        return jsonify({"author": ""})
+    author = _fetch_tmdb_director(item["media_type"], int(tmdb_id))
+    if author:
+        update_media_entry(item_id, author=author)
+        _invalidate_media_cache(item_id)
+    return jsonify({"author": author})
+
+
+@app.route("/api/item/<int:item_id>/overview")
+def fetch_item_overview(item_id):
+    item = cached_get_media(item_id)
+    if not item:
+        return jsonify({"overview": ""}), 404
+    if item.get("overview"):
+        return jsonify({"overview": item["overview"]})
+    media_type = item["media_type"]
+    tmdb_id = item.get("tmdb_id") or item.get("external_id")
+    overview = ""
+    if media_type in ("movie", "tv") and tmdb_id:
+        try:
+            endpoint = "movie" if media_type == "movie" else "tv"
+            url = f"https://api.themoviedb.org/3/{endpoint}/{tmdb_id}?api_key={tmdb.api_key}"
+            data = requests.get(url, timeout=5).json()
+            overview = data.get("overview", "") or ""
+        except Exception as e:
+            print(f"Overview fetch error for {item_id}: {e}")
+    if overview:
+        update_media_entry(item_id, overview=overview)
+        _invalidate_media_cache(item_id)
+    return jsonify({"overview": overview})
+
+
 @app.route("/api/search")
 def search():
     query      = request.args.get("q", "").strip()
@@ -205,6 +269,14 @@ def search():
         items = []
 
     items = items[:10]
+
+    # Fetch director/creator for each result in parallel
+    if items:
+        with ThreadPoolExecutor(max_workers=len(items)) as pool:
+            futs = {pool.submit(_fetch_tmdb_director, i["media_type"], i["tmdb_id"]): i for i in items}
+            for fut in as_completed(futs):
+                futs[fut]["author"] = fut.result()
+
     _cache_search(cache_key, items)
     return jsonify(items)
 
@@ -212,10 +284,7 @@ def search():
 @app.route("/api/search/books")
 def search_books():
     query = request.args.get("q", "").strip()
-    if not query:
-        return jsonify([])
-    
-    if len(query) < 2:
+    if not query or len(query) < 2:
         return jsonify([])
 
     cache_key = f"book:{query.lower()}"
@@ -237,13 +306,11 @@ def search_books():
             cover_url = None
             if cover_id:
                 cover_url = f"https://covers.openlibrary.org/b/id/{cover_id}-L.jpg"
-            
             author_names = doc.get("author_name", [])
             if isinstance(author_names, list):
                 author = ", ".join(author_names)
             else:
                 author = str(author_names)
-
             year = doc.get("first_publish_year")
             if not year:
                 pub_date = doc.get("publish_date")
@@ -263,10 +330,9 @@ def search_books():
                 "overview": "",
                 "popularity": doc.get("ratings_average", 0) or 0,
             })
-        
         _cache_search(cache_key, items)
         return jsonify(items)
-        
+
     except requests.exceptions.HTTPError as e:
         print(f"Open Library HTTP error: {e}")
         return jsonify([])
@@ -285,9 +351,7 @@ def get_book_by_isbn(isbn):
         resp = requests.get(f"https://openlibrary.org/isbn/{isbn}.json", timeout=8)
         if resp.status_code != 200:
             return jsonify({"error": "Not found"}), 404
-        
         data = resp.json()
-        
         work_key = data.get("works", [{}])[0].get("key")
         description = ""
         if work_key:
@@ -302,7 +366,6 @@ def get_book_by_isbn(isbn):
         if data.get("covers"):
             cover_id = data["covers"][0]
             cover_url = f"https://covers.openlibrary.org/b/id/{cover_id}-L.jpg"
-        
         result = {
             "external_id": isbn,
             "title": data.get("title", "Unknown"),
@@ -313,10 +376,9 @@ def get_book_by_isbn(isbn):
             "total_pages": data.get("number_of_pages"),
             "overview": description[:500] if description else "",
         }
-        
         search_cache[cache_key] = result
         return jsonify(result)
-        
+
     except Exception as e:
         print(f"ISBN lookup error: {e}")
         return jsonify({"error": str(e)}), 500
@@ -394,7 +456,7 @@ def search_manga():
     except Exception as e:
         print(f"Manga search error: {e}")
         return jsonify([])
-    
+
 
 # ═══════════════════════════════════════════════════
 # Poster proxy
@@ -497,6 +559,65 @@ def get_poster(media_type, item_id):
 
 
 # ═══════════════════════════════════════════════════
+# TV / Manga constraint info
+# ═══════════════════════════════════════════════════
+
+tv_info_cache:    dict[str, dict] = {}
+manga_info_cache: dict[str, dict] = {}
+
+@app.route("/api/tv-info/<int:tmdb_id>")
+def tv_info(tmdb_id):
+    key = str(tmdb_id)
+    if key in tv_info_cache:
+        return jsonify(tv_info_cache[key])
+    try:
+        url = f"https://api.themoviedb.org/3/tv/{tmdb_id}?api_key={tmdb.api_key}"
+        resp = requests.get(url, timeout=8)
+        resp.raise_for_status()
+        data = resp.json()
+        seasons = data.get("seasons", [])
+        real_seasons = [s for s in seasons if s.get("season_number", 0) > 0]
+        if not real_seasons:
+            real_seasons = seasons
+        info = {
+            "num_seasons": len(real_seasons),
+            "seasons": [
+                {"season_number": s["season_number"], "episode_count": s.get("episode_count", 1)}
+                for s in real_seasons
+            ]
+        }
+        tv_info_cache[key] = info
+        return jsonify(info)
+    except Exception as e:
+        print(f"TV info error for {tmdb_id}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/manga-info/<path:manga_id>")
+def manga_info(manga_id):
+    if manga_id in manga_info_cache:
+        return jsonify(manga_info_cache[manga_id])
+    try:
+        resp = requests.get(
+            f"https://api.mangadex.org/manga/{manga_id}",
+            headers=MANGADEX_HEADERS,
+            params={"includes[]": []},
+            timeout=8,
+        )
+        resp.raise_for_status()
+        attrs = resp.json().get("data", {}).get("attributes", {})
+        last_chapter = attrs.get("lastChapter")
+        info = {
+            "last_chapter": float(last_chapter) if last_chapter else None,
+        }
+        manga_info_cache[manga_id] = info
+        return jsonify(info)
+    except Exception as e:
+        print(f"Manga info error for {manga_id}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+# ═══════════════════════════════════════════════════
 # Library CRUD
 # ═══════════════════════════════════════════════════
 
@@ -508,7 +629,6 @@ def list_media():
 @app.route("/api/add", methods=["POST"])
 def add_media():
     data = request.json or {}
-    
     if "id" in data:
         allowed = {
             "status", "rating", "last_timestamp",
@@ -524,7 +644,6 @@ def add_media():
         cover_url = data.get("cover_url")
         media_type = data.get("media_type")
         external_id = data.get("external_id")
-        
         if media_type == "manga" and not cover_url and external_id:
             try:
                 cover_url = _fetch_mangadex_cover_url(external_id)
@@ -540,8 +659,8 @@ def add_media():
             cover_url   = cover_url,
             author      = data.get("author"),
             total_pages = data.get("total_pages"),
+            overview    = data.get("overview"),
         )
-    
     return jsonify({"status": "ok"})
 
 
@@ -656,7 +775,6 @@ def vibe_search_types():
     return jsonify({"types": suggested_types})
 
 
-# Patterns that signal "give me things SIMILAR to X", not X itself.
 _SIMILAR_RE = re.compile(
     r'\b(like|similar\s+to|in\s+the\s+style\s+of|reminds?\s+me\s+of|along\s+the\s+lines\s+of)\b',
     re.IGNORECASE,
@@ -673,8 +791,8 @@ def _vibe_prompt(query: str, types: list, exclude_titles: list, is_first: bool) 
     # Decide whether the query names a specific title the user wants included.
     similarity_phrasing = bool(_SIMILAR_RE.search(query))
     include_seed = (
-        not similarity_phrasing   # "breaking bad" → include it
-        and is_first              # only on the first call
+        not similarity_phrasing
+        and is_first
     )
 
     if include_seed:
@@ -688,7 +806,6 @@ def _vibe_prompt(query: str, types: list, exclude_titles: list, is_first: bool) 
             'return only titles similar to it or matching the described vibe.'
         )
 
-    # Build a sharp type constraint based on what the user literally said.
     type_constraint = (
         f'ALLOWED types for this search: [{type_list}]. '
         f'Every result MUST have a media_type from that list — no exceptions. '
@@ -714,7 +831,6 @@ def _vibe_prompt(query: str, types: list, exclude_titles: list, is_first: bool) 
 
 
 def _enrich_one(rec: dict) -> dict:
-    """Fetch poster/metadata for a single vibe search recommendation."""
     mt          = rec.get("media_type", "movie")
     title       = rec.get("title", "")
     year        = rec.get("year", "")
@@ -830,7 +946,6 @@ def _enrich_one(rec: dict) -> dict:
 
 
 def _enrich_results(recs: list) -> list:
-    """Enrich vibe search results in parallel — one thread per result."""
     with ThreadPoolExecutor(max_workers=5) as pool:
         futures = {pool.submit(_enrich_one, rec): i for i, rec in enumerate(recs)}
         ordered = [None] * len(recs)
@@ -897,6 +1012,170 @@ def new_chat():
     return jsonify({"id": chat_id, "title": title})
 
 
+def _extract_furthest_progress(text: str, media: dict):
+    if not media:
+        return None
+    mt = media.get("media_type", "")
+    if mt == "tv":
+        patterns = [
+            r'\bS(\d{1,2})[\s\-_]?E(\d{1,3})\b',
+            r'\bseason\s*(\d{1,2})\s*ep(?:isode)?\s*(\d{1,3})\b',
+            r'\b(\d{1,2})x(\d{1,3})\b',
+        ]
+        max_s, max_e = 0, 0
+        found = False
+        for pat in patterns:
+            for match in re.finditer(pat, text, re.IGNORECASE):
+                s, e = int(match.group(1)), int(match.group(2))
+                if not found or s > max_s or (s == max_s and e > max_e):
+                    max_s, max_e = s, e
+                    found = True
+        if found:
+            return {"snap_season": max_s, "snap_episode": max_e}
+    elif mt == "manga":
+        max_ch = 0.0
+        found = False
+        for match in re.finditer(r'\bch(?:apter)?\.?\s*(\d+(?:\.\d+)?)\b', text, re.IGNORECASE):
+            c = float(match.group(1))
+            if not found or c > max_ch:
+                max_ch = c
+                found = True
+        if found:
+            return {"snap_chapter": max_ch}
+    return None
+
+
+def _identify_spoiler_level(response_text: str, media: dict):
+    try:
+        mt = media.get("media_type", "")
+        title = media.get("title", "this title")
+        if mt == "tv":
+            prompt = (
+                f'The following response about "{title}" contains spoilers. '
+                f'What is the FURTHEST season and episode it discusses? '
+                f'Reply with ONLY "S<number> E<number>" (e.g. "S5 E16"). '
+                f'If you cannot determine, reply "unknown".\n\n'
+                f'Response:\n"""\n{response_text[:1500]}\n"""'
+            )
+            resp = gemini.models.generate_content(model=GEMINI_MODEL, contents=prompt)
+            text = (getattr(resp, "text", "") or "").strip()
+            m = re.search(r'S(\d+)\s*E(\d+)', text, re.IGNORECASE)
+            if m:
+                return {"snap_season": int(m.group(1)), "snap_episode": int(m.group(2))}
+        elif mt == "manga":
+            prompt = (
+                f'The following response about "{title}" contains spoilers. '
+                f'What is the FURTHEST chapter it discusses? '
+                f'Reply with ONLY "Ch <number>" (e.g. "Ch 120"). '
+                f'If you cannot determine, reply "unknown".\n\n'
+                f'Response:\n"""\n{response_text[:1500]}\n"""'
+            )
+            resp = gemini.models.generate_content(model=GEMINI_MODEL, contents=prompt)
+            text = (getattr(resp, "text", "") or "").strip()
+            m = re.search(r'Ch(?:apter)?\s*(\d+(?:\.\d+)?)', text, re.IGNORECASE)
+            if m:
+                return {"snap_chapter": float(m.group(1))}
+    except Exception as e:
+        print(f"_identify_spoiler_level error: {e}")
+    return None
+
+
+def _semantic_spoiler_check(response_text: str, media: dict) -> bool:
+    try:
+        mt = media.get("media_type", "")
+        title = media.get("title", "this title")
+        if mt == "tv":
+            user_s = media.get("last_season") or 0
+            user_e = media.get("last_episode") or 0
+            progress_desc = f"Season {user_s}, Episode {user_e}"
+        elif mt == "manga":
+            user_ch = media.get("last_chapter") or 0
+            progress_desc = f"Chapter {user_ch}"
+        else:
+            return False
+
+        prompt = (
+            f'A user is watching/reading "{title}" and has only reached {progress_desc}.\n'
+            f'Does the following AI response reveal plot events, character fates, or story outcomes '
+            f'that occur AFTER {progress_desc}?\n\n'
+            f'Response to evaluate:\n"""\n{response_text[:1500]}\n"""\n\n'
+            f'Answer with a single word: YES or NO. Nothing else.'
+        )
+        resp = gemini.models.generate_content(model=GEMINI_MODEL, contents=prompt)
+        answer = (getattr(resp, "text", "") or "").strip().upper()
+        return answer.startswith("YES")
+    except Exception as e:
+        print(f"_semantic_spoiler_check error: {e}")
+        return False
+
+
+def _detect_spoiler(response_text: str, media: dict, user_message: str) -> bool:
+    try:
+        if not media:
+            return False
+        if media.get("status") in ("finished", "watchlist"):
+            return False
+        if user_message and any(p in user_message.lower() for p in SPOILER_CONSENT_PHRASES):
+            return False
+        mt = media.get("media_type", "")
+        if mt not in ("tv", "manga"):
+            return False
+
+        snap = _extract_furthest_progress(response_text, media)
+        if snap is not None:
+            if mt == "tv":
+                user_s = media.get("last_season") or 0
+                user_e = media.get("last_episode") or 0
+                snap_s = snap.get("snap_season", 0)
+                snap_e = snap.get("snap_episode", 0)
+                return snap_s > user_s or (snap_s == user_s and snap_e > user_e)
+            if mt == "manga":
+                return snap.get("snap_chapter", 0) > (media.get("last_chapter") or 0)
+        return _semantic_spoiler_check(response_text, media)
+    except Exception as e:
+        print(f"_detect_spoiler error: {e}")
+        return False
+
+
+def _quick_spoiler_precheck(user_message: str, media: dict, progress_str: str) -> dict:
+    mt = media.get("media_type", "")
+    if mt == "tv":
+        snap_fmt = "SPOILER S<season> E<episode>  (e.g. SPOILER S3 E8)"
+    elif mt == "manga":
+        snap_fmt = "SPOILER Ch<chapter>  (e.g. SPOILER Ch42)"
+    else:
+        return {}
+
+    prompt = (
+        f'Title: "{media["title"]}" ({mt})\n'
+        f"User progress: {progress_str or 'not tracked'}\n"
+        f'Question: "{user_message}"\n\n'
+        f"The user is asking from within their current progress. "
+        f"Assume they want the answer scoped to what they have watched/read so far.\n"
+        f"ONLY flag as SPOILER if the question explicitly asks about events beyond current progress "
+        f"(e.g. 'does X survive the whole series?', 'what happens at the finale?', 'who ends up together?', 'how does it end?').\n"
+        f"Questions like 'what happens to X?', 'who is Y?', 'why did Z happen?' can be answered "
+        f"within current progress — do NOT flag these as SPOILER.\n"
+        f"Reply with exactly one line:\n"
+        f"  {snap_fmt}  — ONLY if the question cannot be answered without going past the user's progress\n"
+        f"  CLEAN  — if the question can be addressed within current progress"
+    )
+    try:
+        result = _generate_ai_content(prompt).strip()
+        upper  = result.upper()
+        if mt == "tv":
+            m = re.match(r"SPOILER\s+S(\d+)\s*E(\d+)", upper)
+            if m:
+                return {"pre_blur": True, "snap_season": int(m.group(1)), "snap_episode": int(m.group(2))}
+        elif mt == "manga":
+            m = re.match(r"SPOILER\s+CH\.?\s*(\d+(?:\.\d+)?)", upper)
+            if m:
+                return {"pre_blur": True, "snap_chapter": float(m.group(1))}
+    except Exception as e:
+        print(f"_quick_spoiler_precheck error: {e}")
+    return {}
+
+
 @app.route("/api/chats/<int:chat_id>/message", methods=["POST"])
 def chat_message(chat_id):
     data    = request.json or {}
@@ -915,29 +1194,42 @@ def chat_message(chat_id):
 
     if media:
         progress = _progress_str(media)
+        mt = media["media_type"]
+
         if effective_status == "finished":
-            spoiler_rules = "The user has finished this title. Full discussion of all plot, characters, endings, and themes is allowed."
+            spoiler_rules = "The user has finished this title. Full discussion of all plot, characters, endings, and themes is fair game."
         elif effective_status == "watchlist":
-            spoiler_rules = "The user has not started this yet. Discuss only premise, genre, and tone — no plot details or spoilers."
+            spoiler_rules = "The user hasn't started this yet. Stick to vibe, genre, and premise only — no spoilers."
         else:
-            spoiler_rules = f"The user has only reached {progress or 'their current point'}. Do not reveal anything beyond that."
+            spoiler_rules = (
+                f"The user has only reached {progress or 'their current point'}. "
+                f"Scope EVERY answer to what has happened up to that point — treat the story as if it ends there. "
+                f"For 'what happens to X?' questions, describe what has happened to X SO FAR up to {progress}, not their fate in later seasons/chapters. "
+                f"Never reveal plot, character fates, or story outcomes that occur after {progress}."
+            )
+
+        # Check if user has explicitly requested spoilers in this message
+        if content and any(phrase in content.lower() for phrase in SPOILER_CONSENT_PHRASES):
+            if mt in ("tv", "manga"):
+                spoiler_rules = "The user is asking for spoilers. You may freely discuss plot points beyond their current progress."
+            else:
+                spoiler_rules = "The user is asking for spoilers. Full discussion allowed."
 
         system = (
-            f"You are CineVault AI, an enthusiastic media companion.\n"
-            f"Discussing: \"{media['title']}\" ({media['media_type']})\n"
-            f"Status: {effective_status}\n"
-            f"Progress: {progress or 'not tracked'}\n"
+            f"You are CineVault AI — a chill, enthusiastic media buddy. Talk like you're texting a friend who loves movies, shows, and books.\n"
+            f"You're discussing: \"{media['title']}\" ({mt})\n"
+            f"Status: {effective_status} | Progress: {progress or 'not tracked'}\n"
             f"Notes: {media.get('notes') or 'none'}\n\n"
             f"User facts:\n{memory_str}\n\n"
-            f"Spoiler rules:\n{spoiler_rules}\n"
-            f"Be conversational, insightful, fun. 2-4 sentences per reply."
+            f"Spoiler rules:\n{spoiler_rules}\n\n"
+            f"Keep replies short and fun — 2-3 sentences. Skip bullet points and formal explanations. React like a real person would."
         )
     else:
         system = (
-            f"You are CineVault AI, an enthusiastic media companion. "
+            f"You are CineVault AI — a chill, enthusiastic media buddy. Talk like you're texting a friend who loves movies, shows, and books. "
             f"Help with any movie/TV/book/manga questions.\n\n"
             f"User facts:\n{memory_str}\n\n"
-            f"Be conversational, knowledgeable, and fun."
+            f"Keep it short and fun. Skip the formal tone."
         )
 
     history = get_chat_messages(chat_id)
@@ -959,15 +1251,82 @@ def chat_message(chat_id):
 
     append_message(chat_id, "user", content)
 
+    def _extract_furthest_progress(text: str):
+        if not media:
+            return None
+        mt = media["media_type"]
+        if mt == "tv":
+            patterns = [
+                r'\bS(\d{1,2})[\s\-_]?E(\d{1,3})\b',
+                r'\bseason\s*(\d{1,2})\s*ep(?:isode)?\s*(\d{1,3})\b',
+                r'\b(\d{1,2})x(\d{1,3})\b',
+            ]
+            max_s, max_e = 0, 0
+            found = False
+            for pat in patterns:
+                for match in re.finditer(pat, text, re.IGNORECASE):
+                    s, e = int(match.group(1)), int(match.group(2))
+                    if not found or s > max_s or (s == max_s and e > max_e):
+                        max_s, max_e = s, e
+                        found = True
+            if found and (max_s > (media.get("last_season") or 0) or
+                          (max_s == (media.get("last_season") or 0) and
+                           max_e > (media.get("last_episode") or 0))):
+                return {"snap_season": max_s, "snap_episode": max_e}
+        elif mt == "manga":
+            max_ch = 0.0
+            found = False
+            for match in re.finditer(r'\bch(?:apter)?\.?\s*(\d+(?:\.\d+)?)\b', text, re.IGNORECASE):
+                c = float(match.group(1))
+                if not found or c > max_ch:
+                    max_ch = c
+                    found = True
+            if found and max_ch > (media.get("last_chapter") or 0):
+                return {"snap_chapter": max_ch}
+        return None
+
     def generate():
         full_answer = []
         try:
+            if media and effective_status == "watching" and media.get("media_type") in ("tv", "manga"):
+                pre = _quick_spoiler_precheck(content, media, progress or "")
+                if pre:
+                    yield f"data: {json.dumps({'meta': pre})}\n\n"
             for token in _iter_gemini_response_tokens(gemini_contents):
                 full_answer.append(token)
                 yield f"data: {json.dumps({'token': token})}\n\n"
             answer = "".join(full_answer).strip()
             if answer:
-                append_message(chat_id, "assistant", answer)
+                msg_id = append_message(chat_id, "assistant", answer)
+                snap = _extract_furthest_progress(answer)
+                is_spoiler = _detect_spoiler(answer, media, content)
+                meta = {}
+                if snap:
+                    meta.update(snap)
+                elif media and effective_status == "watching" and media.get("media_type") in ("tv", "manga"):
+                    level = _identify_spoiler_level(answer, media)
+                    if level:
+                        meta.update(level)
+                if media and media.get("media_type") in ("tv", "manga"):
+                    mt = media.get("media_type")
+                    if mt == "tv" and "snap_season" not in meta:
+                        if media.get("last_season") or media.get("last_episode"):
+                            meta["snap_season"] = media.get("last_season")
+                            meta["snap_episode"] = media.get("last_episode")
+                    elif mt == "manga" and "snap_chapter" not in meta:
+                        if media.get("last_chapter"):
+                            meta["snap_chapter"] = media.get("last_chapter")
+                if is_spoiler:
+                    meta["is_spoiler"] = True
+                if msg_id and ("snap_season" in meta or "snap_episode" in meta or "snap_chapter" in meta):
+                    update_message_snap(
+                        msg_id,
+                        snap_season=meta.get("snap_season"),
+                        snap_episode=meta.get("snap_episode"),
+                        snap_chapter=meta.get("snap_chapter"),
+                    )
+                if media and effective_status == "watching":
+                    yield f"data: {json.dumps({'meta': meta})}\n\n"
             yield f"data: {json.dumps({'done': True})}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
@@ -993,6 +1352,16 @@ def reset_chat(chat_id):
     return jsonify({"status": "reset"})
 
 
+@app.route("/api/chats/<int:chat_id>/spoiler-threshold", methods=["POST"])
+def update_chat_spoiler(chat_id):
+    data    = request.json or {}
+    season  = data.get("season")
+    episode = data.get("episode")
+    chapter = data.get("chapter")
+    update_chat_spoiler_threshold(chat_id, season=season, episode=episode, chapter=chapter)
+    return jsonify({"status": "ok"})
+
+
 # ═══════════════════════════════════════════════════
 # AI card + quick Q&A
 # ═══════════════════════════════════════════════════
@@ -1005,7 +1374,7 @@ def _ai_card_cache_key(media: dict) -> str:
     if media["media_type"] == "movie":
         return f"{media['id']}_watching_movie"
     if media["media_type"] == "book":
-        return f"{media['id']}_watching_book_p{media.get('current_page', 0)}"
+        return f"{media['id']}_watching_book"
     if media["media_type"] == "manga":
         return f"{media['id']}_watching_manga_v{media.get('last_volume', 0)}c{media.get('last_chapter', 0)}"
     return f"{media['id']}_watching_S{media.get('last_season', 0)}E{media.get('last_episode', 0)}"
@@ -1035,13 +1404,14 @@ def _ai_card_prompt(media: dict) -> str:
                 f'The user is reading "{title}" and has reached {progress}. '
                 f'Write {depth} recapping story beats before {progress} only. No spoilers beyond that.'
             )
-        if media_type == "book" and progress:
+        if media_type == "book":
             return (
-                f'The user is reading "{title}" and is at {progress}. '
-                f'Write {depth} summarising what has happened so far without spoiling anything beyond that point.'
+                f'The user is currently reading "{title}". '
+                f'Write {depth} describing the overall vibe, themes, and what makes it a great read — no specific plot spoilers.'
             )
+        # movie
         return (
-            f'The user is currently experiencing "{title}" ({media_type}). '
+            f'The user is currently watching "{title}" ({media_type}). '
             f'In {depth}, describe the overall tone, standout elements, '
             f'and what makes it special — without revealing plot details.'
         )
@@ -1119,10 +1489,11 @@ def ai_card_stream():
 
 @app.route("/api/ask", methods=["POST"])
 def ask_ai():
-    data     = request.json or {}
-    question = data.get("question", "").strip()
-    media_id = data.get("media_id")
-    chat_id  = data.get("chat_id")
+    data          = request.json or {}
+    question      = data.get("question", "").strip()
+    media_id      = data.get("media_id")
+    chat_id       = data.get("chat_id")
+    allow_spoilers = data.get("allow_spoilers", False)
 
     if not question:
         return jsonify({"error": "No question provided"}), 400
@@ -1135,7 +1506,10 @@ def ask_ai():
     status   = media["status"]
     progress = _progress_str(media)
 
-    if status == "watchlist":
+    if allow_spoilers:
+        spoiler_rule = "The user has explicitly allowed spoilers. Full discussion of all plot, characters, endings, and twists is allowed. Always warn the user with '⚠️ Spoiler:' before revealing spoiler content."
+        progress_ctx = "spoilers allowed"
+    elif status == "watchlist":
         spoiler_rule = "The user has NOT watched/read this yet. Give only premise/genre info — no plot, no twists, no deaths."
         progress_ctx = "not started"
     elif status == "watching":
@@ -1147,10 +1521,10 @@ def ask_ai():
         progress_ctx = "completed"
 
     prompt = (
-        f'You are an enthusiastic but careful media assistant.\n'
+        f'You are a fun, casual movie/media buddy — like texting a friend who has seen everything.\n'
         f'Title: "{title}" ({media["media_type"]}) | Progress: {progress_ctx}\n'
         f'Rule: {spoiler_rule}\n'
-        f'Answer in 2-4 sentences, conversationally and helpfully.\n\n'
+        f'Keep it short and conversational, 2-3 sentences max. No bullet points.\n\n'
         f'Question: {question}'
     )
 
@@ -1161,15 +1535,51 @@ def ask_ai():
         return jsonify({"error": str(e)}), 500
 
     if not chat_id:
+        try:
+            name_prompt = (
+                f'Give a short 2-4 word chat title for this question about "{title}": "{question}". '
+                f'Just the title, nothing else. No quotes.'
+            )
+            name_resp = gemini.models.generate_content(model=GEMINI_MODEL, contents=name_prompt)
+            chat_name = name_resp.text.strip()[:60] or question[:40]
+        except Exception:
+            chat_name = question[:40]
         chat_id = create_chat(
             media_id    = media_id,
-            title       = "Q&A",
+            title       = chat_name,
             context_tag = status,
         )
     append_message(chat_id, "user", question)
-    append_message(chat_id, "assistant", answer)
+    msg_id = append_message(chat_id, "assistant", answer)
 
-    return jsonify({"answer": answer, "chat_id": chat_id})
+    is_spoiler = False
+    snap_data = {}
+    if media.get("media_type") in ("tv", "manga"):
+        snap = _extract_furthest_progress(answer, media)
+        is_spoiler = bool(_detect_spoiler(answer, media, question))
+        if snap:
+            snap_data.update(snap)
+        elif is_spoiler:
+            level = _identify_spoiler_level(answer, media)
+            if level:
+                snap_data.update(level)
+        mt = media.get("media_type")
+        if mt == "tv" and "snap_season" not in snap_data:
+            if media.get("last_season") or media.get("last_episode"):
+                snap_data["snap_season"] = media.get("last_season")
+                snap_data["snap_episode"] = media.get("last_episode")
+        elif mt == "manga" and "snap_chapter" not in snap_data:
+            if media.get("last_chapter"):
+                snap_data["snap_chapter"] = media.get("last_chapter")
+        if msg_id and snap_data:
+            update_message_snap(
+                msg_id,
+                snap_season=snap_data.get("snap_season"),
+                snap_episode=snap_data.get("snap_episode"),
+                snap_chapter=snap_data.get("snap_chapter"),
+            )
+
+    return jsonify({"answer": answer, "chat_id": chat_id, "is_spoiler": is_spoiler, **snap_data})
 
 
 if __name__ == "__main__":

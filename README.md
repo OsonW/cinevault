@@ -61,6 +61,7 @@ Navigate to http://127.0.0.1:5000/ on your browser. Enjoy!
 ### Roadmap
 
 [x] Add manga and book API's  
-[x] Construct Gemini-powered "Vibe Search" with front-end toggle selection
-[x] Complete seamless query logic for intuitive searching
-[ ] Better AI recapping with current progress (remove recap for books, only recaps for manga and tv shows)
+[x] Construct Gemini-powered "Vibe Search" with front-end toggle selection  
+[x] Complete seamless query logic for intuitive searching  
+[x] Better AI recapping with current progress (remove recap for books, only recaps for manga and tv shows)  
+[x] Search in library
