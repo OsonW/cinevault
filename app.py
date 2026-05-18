@@ -1306,29 +1306,16 @@ def chat_message(chat_id):
                 meta = {}
                 if snap:
                     meta.update(snap)
-                elif media and effective_status == "watching" and media.get("media_type") in ("tv", "manga"):
-                    level = _identify_spoiler_level(answer, media)
-                    if level:
-                        meta.update(level)
-                if media and media.get("media_type") in ("tv", "manga"):
-                    mt = media.get("media_type")
-                    if mt == "tv" and "snap_season" not in meta:
-                        if media.get("last_season") or media.get("last_episode"):
-                            meta["snap_season"] = media.get("last_season")
-                            meta["snap_episode"] = media.get("last_episode")
-                    elif mt == "manga" and "snap_chapter" not in meta:
-                        if media.get("last_chapter"):
-                            meta["snap_chapter"] = media.get("last_chapter")
                 if is_spoiler:
                     meta["is_spoiler"] = True
-                if msg_id and ("snap_season" in meta or "snap_episode" in meta or "snap_chapter" in meta):
+                if msg_id and snap:
                     update_message_snap(
                         msg_id,
                         snap_season=meta.get("snap_season"),
                         snap_episode=meta.get("snap_episode"),
                         snap_chapter=meta.get("snap_chapter"),
                     )
-                if media and effective_status == "watching":
+                if meta and media and effective_status == "watching":
                     yield f"data: {json.dumps({'meta': meta})}\n\n"
             yield f"data: {json.dumps({'done': True})}\n\n"
         except Exception as e:

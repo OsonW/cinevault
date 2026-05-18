@@ -2977,6 +2977,14 @@ function renderChatsTab() {
   if (activeChatId) {
     const chat = allChats.find(c => c.id === activeChatId);
     if (chat) {
+      // If the stream is active and the panel is already rendered, just sync the selection
+      // highlight and skip a full rebuild (which would cause duplicate bubbles).
+      if (chatSendPending && streamingChatId === activeChatId && document.getElementById('chatMsgsWrap')) {
+        document.querySelectorAll('.chat-list-item').forEach(el =>
+          el.classList.toggle('selected', el.id === 'cli-' + activeChatId)
+        );
+        return;
+      }
       selectChat(activeChatId);
       return;
     }
@@ -3040,6 +3048,12 @@ async function selectChat(chatId) {
   }
   if (activeChatId !== chatId) return;
   const msgs = data.messages || [];
+  // If a stream is in progress for this chat, the last assistant message in DB is the one
+  // currently streaming — exclude it here so we don't show a duplicate alongside the live bubble.
+  if (chatSendPending && streamingChatId === chatId &&
+      msgs.length > 0 && msgs[msgs.length - 1].role === 'assistant') {
+    msgs.pop();
+  }
   const chatMedia = (preview && preview.media_id) ? allItems.find(i => i.id === preview.media_id) : null;
   const msgsHtml = msgs.length
     ? msgs.map(m => renderChatMsg(m, chatMedia, preview)).join('')
@@ -3440,15 +3454,6 @@ async function sendChatMessage(chatId) {
               contentArea.style.filter = 'blur(5px)';
               contentArea.style.userSelect = 'none';
               contentArea.style.pointerEvents = 'none';
-              const liveFooterTime = liveBubble.querySelector('.chat-msg-time');
-              if (liveFooterTime) {
-                const timeOnly = liveFooterTime.innerHTML.replace(/<span[^>]*>.*?<\/span>/g, '').trim();
-                if (meta.snap_season) {
-                  liveFooterTime.innerHTML = timeOnly + _progressTagHtmlForSnap(meta.snap_season, meta.snap_episode, null, 'tv');
-                } else if (meta.snap_chapter) {
-                  liveFooterTime.innerHTML = timeOnly + _progressTagHtmlForSnap(null, null, meta.snap_chapter, 'manga');
-                }
-              }
             } else {
               if (meta.is_spoiler === true) {
                 pendingSpoiler = true;
