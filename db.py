@@ -33,10 +33,16 @@ def init_db():
                 cover_url       TEXT,
                 author          TEXT,
                 overview        TEXT,
+                year            TEXT,
                 date_added      TEXT DEFAULT (date('now')),
                 UNIQUE(external_id, media_type)
             )
         """)
+
+        # migration: add year column to existing databases
+        existing = [r[1] for r in conn.execute("PRAGMA table_info(media)").fetchall()]
+        if "year" not in existing:
+            conn.execute("ALTER TABLE media ADD COLUMN year TEXT")
 
         conn.execute("""
             CREATE TABLE IF NOT EXISTS chats (
@@ -106,17 +112,17 @@ def add_media_entry(
     title, media_type, status="watchlist",
     tmdb_id=None, external_id=None,
     cover_url=None, author=None,
-    total_pages=None, overview=None,
+    total_pages=None, overview=None, year=None,
 ):
     ext = external_id or (str(tmdb_id) if tmdb_id else None)
     with get_conn() as conn:
         conn.execute("""
             INSERT OR IGNORE INTO media
                 (tmdb_id, external_id, title, media_type, status,
-                 cover_url, author, total_pages, overview)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 cover_url, author, total_pages, overview, year)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (tmdb_id, ext, title, media_type, status,
-              cover_url, author, total_pages, overview))
+              cover_url, author, total_pages, overview, year))
         row = conn.execute(
             "SELECT id FROM media WHERE external_id = ? AND media_type = ?",
             (ext, media_type),
@@ -141,6 +147,19 @@ def update_media_entry(media_id: int, **fields):
     params  = list(updates.values()) + [media_id]
     with get_conn() as conn:
         conn.execute(f"UPDATE media SET {clauses} WHERE id = ?", params)
+
+
+def get_items_missing_year():
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, media_type, external_id, tmdb_id FROM media WHERE year IS NULL OR year = ''"
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def set_year(media_id: int, year: str):
+    with get_conn() as conn:
+        conn.execute("UPDATE media SET year = ? WHERE id = ?", (year, media_id))
 
 
 def delete_media_entry(media_id: int):

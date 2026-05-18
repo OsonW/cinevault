@@ -2,6 +2,7 @@ import os
 import re
 import json
 import time
+import threading
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import Flask, jsonify, Response, request, render_template
@@ -17,6 +18,7 @@ from db import (
     create_chat, append_message, delete_chat, clear_chat_messages,
     update_chat_spoiler_threshold, update_message_snap,
     get_all_memory,
+    get_items_missing_year, set_year,
 )
 
 load_dotenv()
@@ -28,7 +30,7 @@ tmdb.api_key  = os.getenv("TMDB_API_KEY")
 movie_api     = Movie()
 tv_api        = TV()
 
-gemini        = genai.Client()
+gemini        = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 GEMINI_MODEL  = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
 
 init_db()
@@ -42,7 +44,86 @@ memory_cache:   dict[str, str]                = {}
 MAX_CHAT_HISTORY = 12
 AI_CARD_TTL      = 600
 MANGADEX_HEADERS = {"User-Agent": "CineVault/1.0"}
+
+
+def _fetch_year_for_item(item: dict) -> str | None:
+    """Return the release year string for an item, or None if unavailable."""
+    mt  = item["media_type"]
+    eid = item.get("external_id") or ""
+    tid = item.get("tmdb_id")
+    api_key = os.getenv("TMDB_API_KEY", "")
+    try:
+        if mt == "movie" and tid:
+            data = requests.get(
+                f"https://api.themoviedb.org/3/movie/{tid}?api_key={api_key}",
+                timeout=6,
+            ).json()
+            return (data.get("release_date") or "")[:4] or None
+
+        if mt == "tv" and tid:
+            data = requests.get(
+                f"https://api.themoviedb.org/3/tv/{tid}?api_key={api_key}",
+                timeout=6,
+            ).json()
+            return (data.get("first_air_date") or "")[:4] or None
+
+        if mt == "book" and eid:
+            data = requests.get(
+                f"https://openlibrary.org/works/{eid}.json",
+                timeout=6,
+            ).json()
+            y = data.get("first_publish_year")
+            if y:
+                return str(y)
+            # fallback: first edition date
+            eds = requests.get(
+                f"https://openlibrary.org/works/{eid}/editions.json?limit=5",
+                timeout=6,
+            ).json()
+            for entry in eds.get("entries", []):
+                pub = str(entry.get("publish_date") or "")
+                digits = [c for c in pub if c.isdigit()]
+                if len(digits) >= 4:
+                    return "".join(digits[-4:])
+            return None
+
+        if mt == "manga" and eid:
+            data = requests.get(
+                f"https://api.mangadex.org/manga/{eid}",
+                headers=MANGADEX_HEADERS,
+                timeout=8,
+            ).json()
+            y = data.get("data", {}).get("attributes", {}).get("year")
+            return str(y) if y else None
+
+    except Exception:
+        pass
+    return None
+
+
+def _backfill_years():
+    items = get_items_missing_year()
+    if not items:
+        return
+    print(f"[year-backfill] {len(items)} items missing year — fetching...")
+
+    def process(item):
+        year = _fetch_year_for_item(item)
+        if year:
+            set_year(item["id"], year)
+        return item["id"], year
+
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        for item_id, year in ex.map(process, items):
+            if year:
+                print(f"[year-backfill] id={item_id} → {year}")
+
+    print("[year-backfill] done")
+
+
 SEARCH_CACHE_MAX = 100
+
+threading.Thread(target=_backfill_years, daemon=True).start()
 
 SPOILER_CONSENT_PHRASES = [
     "spoil", "spoilers", "tell me everything",
@@ -660,6 +741,7 @@ def add_media():
             author      = data.get("author"),
             total_pages = data.get("total_pages"),
             overview    = data.get("overview"),
+            year        = data.get("year"),
         )
     return jsonify({"status": "ok"})
 

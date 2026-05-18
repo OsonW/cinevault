@@ -552,6 +552,35 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   cursor: default;
   opacity: 1;
 }
+.sm-add-btn.remove {
+  border-color: rgba(239, 68, 68, 0.3);
+  color: rgb(239, 68, 68);
+  background: rgba(239, 68, 68, 0.07);
+}
+.sm-add-btn.remove:hover:not(:disabled) {
+  border-color: rgba(239, 68, 68, 0.55);
+  color: rgb(239, 68, 68);
+  background: rgba(239, 68, 68, 0.15);
+}
+
+.sm-text-tooltip {
+  position: fixed;
+  z-index: 10000;
+  max-width: 240px;
+  background: var(--surface);
+  border: 1px solid var(--border-md);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  word-break: break-word;
+}
+.sm-text-tooltip.visible { opacity: 1; }
 
 .sm-skeleton {
   width: 100%;
@@ -1118,10 +1147,17 @@ body[data-tab="chats"] .detail-body { display: none !important; }
   font-size: 11px; color: var(--muted); line-height: 1.45; margin-top: 5px;
 }
 .poster-meta-row { display: flex; align-items: center; gap: 5px; margin-bottom: 4px; flex-wrap: wrap; }
+.poster-badge-row { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; flex-wrap: wrap; }
 .poster-type-badge {
   display: inline-flex; align-items: center; gap: 3px;
   font-size: 9px; padding: 2px 6px; border-radius: var(--radius);
-  border: 1px solid; margin-bottom: 4px;
+  border: 1px solid;
+}
+.poster-year-badge {
+  display: inline-flex; align-items: center;
+  font-size: 9px; padding: 2px 6px; border-radius: var(--radius);
+  border: 1px solid rgba(255,255,255,0.18); background: rgba(255,255,255,0.07);
+  color: rgba(255,255,255,0.7);
 }
 .ptb-movie { color: var(--blue);  border-color: var(--blue-dim);  background: var(--blue-glow); }
 .ptb-tv    { color: var(--green); border-color: var(--green-dim); background: var(--green-glow); }
@@ -1436,6 +1472,7 @@ body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); 
 </div>
 
 <div class="toast" id="toast"></div>
+<div class="sm-text-tooltip" id="smTextTooltip"></div>
 
 <script>
 // ─────────────────────────────────────────────
@@ -1779,7 +1816,9 @@ function renderGrid() {
     const stars = currentTab === 'finished'
       ? `<div class="poster-stars">${[1,2,3,4,5,6,7,8,9,10].map(s =>
           `<span class="pstar ${(item.rating||0)>=s?'lit':''}">★</span>`).join('')}</div>` : '';
-    const typeBadge = `<span class="poster-type-badge ptb-${item.media_type}">${TYPE_SVG[item.media_type]} ${TYPE_LABEL[item.media_type]}</span>`;
+    const yearBadge  = item.year ? `<span class="poster-year-badge">${esc(item.year)}</span>` : '';
+    const typeBadge  = `<span class="poster-type-badge ptb-${item.media_type}">${TYPE_SVG[item.media_type]} ${TYPE_LABEL[item.media_type]}</span>`;
+    const badgeRow   = `<div class="poster-badge-row">${yearBadge}${typeBadge}</div>`;
     const author = `<div class="poster-author" id="pa-${item.id}"${item.author ? '' : ' style="display:none"'}>${esc(item.author||'')}</div>`;
     const dateStr = fmtDate(item.date_added);
 
@@ -1788,7 +1827,7 @@ function renderGrid() {
     if (size === 'small') {
       return `<div class="poster-card" id="pc-${item.id}" onclick="selectItem(${item.id})">
         <div class="poster-info">
-          ${typeBadge}
+          ${badgeRow}
           <div class="poster-title" style="white-space:normal;overflow:visible;text-overflow:clip">${esc(item.title)}</div>
           ${author}
           ${dateHtml}
@@ -1801,7 +1840,7 @@ function renderGrid() {
       return `<div class="poster-card" id="pc-${item.id}" onclick="selectItem(${item.id})">
         <img src="${posterUrl(item)}" onerror="this.src='${BROKEN_POSTER_FULL}'" loading="lazy">
         <div class="poster-info">
-          ${typeBadge}
+          ${badgeRow}
           <div class="poster-title">${esc(item.title)}</div>
           ${author}
           ${dateHtml}
@@ -1814,7 +1853,7 @@ function renderGrid() {
     return `<div class="poster-card" id="pc-${item.id}" onclick="selectItem(${item.id})">
       <img src="${posterUrl(item)}" onerror="this.src='${BROKEN_POSTER_FULL}'" loading="lazy">
       <div class="poster-info">
-        ${typeBadge}
+        ${badgeRow}
         <div class="poster-title">${esc(item.title)}</div>
         ${author}
         ${dateHtml}
@@ -3900,10 +3939,9 @@ function renderSmCard(r) {
       ${authorHtml}
       <div class="sm-chips">${chips.join('')}</div>
       ${r.overview ? `<div class="sm-overview">${esc(r.overview)}</div>` : ''}
-      <button class="sm-add-btn" id="smbtn-${r.media_type}-${(r.external_id||r.tmdb_id||'').toString().replace(/[^a-z0-9]/gi,'_')}"
-        onclick="addFromModal('${safeKey}')"
-        ${already?'disabled':''}>
-        ${already?'✓ In library':'+ Add to Watchlist'}
+      <button class="sm-add-btn${already?' remove':''}" id="smbtn-${r.media_type}-${(r.external_id||r.tmdb_id||'').toString().replace(/[^a-z0-9]/gi,'_')}"
+        onclick="${already?`removeFromModal('${safeKey}')`:`addFromModal('${safeKey}')`}">
+        ${already?'− Remove from watchlist':'+ Add to Watchlist'}
       </button>
     </div>
   </div>`;
@@ -3915,9 +3953,10 @@ async function addFromModal(key) {
   const btnId = `smbtn-${r.media_type}-${((r.external_id||r.tmdb_id||'').toString().replace(/[^a-z0-9]/gi,'_'))}`;
   const btn   = document.getElementById(btnId);
   if (btn) {
-    btn.textContent = '✓ In library';
-    btn.disabled    = true;
-    btn.onclick     = null;
+    btn.textContent = '− Remove from watchlist';
+    btn.classList.add('remove');
+    btn.disabled    = false;
+    btn.onclick     = () => removeFromModal(key);
     btn.closest('.sm-card').classList.add('in-library');
   }
   try {
@@ -3931,6 +3970,7 @@ async function addFromModal(key) {
       author:      r.author     || null,
       total_pages: r.total_pages || null,
       overview:    r.overview   || null,
+      year:        r.year       || null,
     });
     await loadList();
     const newItem = allItems.find(i =>
@@ -3943,12 +3983,47 @@ async function addFromModal(key) {
     inLibrary.delete(key);
     if (btn) {
       btn.textContent = '+ Add to Watchlist';
+      btn.classList.remove('remove');
       btn.disabled    = false;
       btn.onclick     = () => addFromModal(key);
       btn.closest('.sm-card').classList.remove('in-library');
     }
     showToast('Failed to add — please try again.');
     return;
+  }
+}
+
+async function removeFromModal(key) {
+  const r = tmdbResultMap[key];
+  if (!r || !inLibrary.has(key)) return;
+  const item = allItems.find(i =>
+    i.media_type === r.media_type &&
+    (i.external_id === (r.external_id || String(r.tmdb_id || '')) ||
+     String(i.tmdb_id) === String(r.tmdb_id || ''))
+  );
+  if (!item) return;
+  inLibrary.delete(key);
+  const btnId = `smbtn-${r.media_type}-${((r.external_id||r.tmdb_id||'').toString().replace(/[^a-z0-9]/gi,'_'))}`;
+  const btn   = document.getElementById(btnId);
+  if (btn) {
+    btn.textContent = '+ Add to Watchlist';
+    btn.classList.remove('remove');
+    btn.onclick = () => addFromModal(key);
+    btn.closest('.sm-card').classList.remove('in-library');
+  }
+  try {
+    await fetch(`/api/delete/${item.id}`, { method: 'DELETE' });
+    await loadList();
+    showToast(`"${r.title}" removed from Watchlist`);
+  } catch {
+    inLibrary.add(key);
+    if (btn) {
+      btn.textContent = '− Remove from watchlist';
+      btn.classList.add('remove');
+      btn.onclick = () => removeFromModal(key);
+      btn.closest('.sm-card').classList.add('in-library');
+    }
+    showToast('Failed to remove — please try again.');
   }
 }
 
@@ -4168,8 +4243,9 @@ function renderVibeResults(append) {
           <span class="sm-chip ${r.media_type}">${TYPE_SVG[r.media_type]} ${TYPE_LABEL[r.media_type]}</span>
         </div>
         ${r.overview ? `<div class="sm-overview">${esc(r.overview)}</div>` : ''}
-        <button class="sm-add-btn" id="${btnId}" onclick="addVibeResult('${safeKey}')" ${already ? 'disabled' : ''}>
-          ${already ? '✓ In library' : '+ Add to Watchlist'}
+        <button class="sm-add-btn${already ? ' remove' : ''}" id="${btnId}"
+          onclick="${already ? `removeVibeResult('${safeKey}')` : `addVibeResult('${safeKey}')`}">
+          ${already ? '− Remove from watchlist' : '+ Add to Watchlist'}
         </button>
       </div>
     </div>`;
@@ -4200,8 +4276,10 @@ async function addVibeResult(key) {
   const btnId = `vbtn-${r.media_type}-${(r.external_id || r.tmdb_id || r.title).toString().replace(/[^a-z0-9]/gi,'_')}`;
   const btn   = document.getElementById(btnId);
   if (btn) {
-    btn.textContent = '✓ In library';
-    btn.disabled    = true;
+    btn.textContent = '− Remove from watchlist';
+    btn.classList.add('remove');
+    btn.disabled    = false;
+    btn.onclick     = () => removeVibeResult(key);
     btn.closest('.sm-card').classList.add('in-library');
   }
   try {
@@ -4215,6 +4293,7 @@ async function addVibeResult(key) {
       author:      r.author     || null,
       total_pages: r.total_pages || null,
       overview:    r.overview   || null,
+      year:        r.year       || null,
     });
     await loadList();
     const newItem = allItems.find(i =>
@@ -4228,10 +4307,46 @@ async function addVibeResult(key) {
     inLibrary.delete(key);
     if (btn) {
       btn.textContent = '+ Add to Watchlist';
+      btn.classList.remove('remove');
       btn.disabled    = false;
+      btn.onclick     = () => addVibeResult(key);
       btn.closest('.sm-card').classList.remove('in-library');
     }
     showToast('Failed to add — please try again.');
+  }
+}
+
+async function removeVibeResult(key) {
+  const r = tmdbResultMap[key];
+  if (!r || !inLibrary.has(key)) return;
+  const item = allItems.find(i =>
+    i.media_type === r.media_type &&
+    (i.external_id === (r.external_id || String(r.tmdb_id || r.title || '')) ||
+     String(i.tmdb_id) === String(r.tmdb_id || ''))
+  );
+  if (!item) return;
+  inLibrary.delete(key);
+  const btnId = `vbtn-${r.media_type}-${(r.external_id || r.tmdb_id || r.title).toString().replace(/[^a-z0-9]/gi,'_')}`;
+  const btn   = document.getElementById(btnId);
+  if (btn) {
+    btn.textContent = '+ Add to Watchlist';
+    btn.classList.remove('remove');
+    btn.onclick = () => addVibeResult(key);
+    btn.closest('.sm-card').classList.remove('in-library');
+  }
+  try {
+    await fetch(`/api/delete/${item.id}`, { method: 'DELETE' });
+    await loadList();
+    showToast(`"${r.title}" removed from Watchlist`);
+  } catch {
+    inLibrary.add(key);
+    if (btn) {
+      btn.textContent = '− Remove from watchlist';
+      btn.classList.add('remove');
+      btn.onclick = () => removeVibeResult(key);
+      btn.closest('.sm-card').classList.add('in-library');
+    }
+    showToast('Failed to remove — please try again.');
   }
 }
 
@@ -4282,6 +4397,57 @@ function formatAI(text) {
   if (!text) return '';
   return text.replace(/\*(.*?)\*/g, '<strong>$1</strong>');
 }
+
+// ─────────────────────────────────────────────
+// Search modal hover tooltip for truncated text
+// ─────────────────────────────────────────────
+(function () {
+  let _ttTimer = null;
+  const ttEl = () => document.getElementById('smTextTooltip');
+
+  function showTooltip(target) {
+    const text = target.textContent.trim();
+    if (!text) return;
+    clearTimeout(_ttTimer);
+    _ttTimer = setTimeout(() => {
+      const tt = ttEl();
+      if (!tt) return;
+      tt.textContent = text;
+      const rect = target.getBoundingClientRect();
+      const ttW  = 240;
+      // prefer right side; flip to left if near edge
+      let left = rect.right + 10;
+      let top  = rect.top;
+      if (left + ttW > window.innerWidth - 8) left = rect.left - ttW - 10;
+      if (left < 8) left = 8;
+      const ttH = tt.scrollHeight;
+      if (top + ttH > window.innerHeight - 8) top = window.innerHeight - ttH - 8;
+      if (top < 8) top = 8;
+      tt.style.left = left + 'px';
+      tt.style.top  = top  + 'px';
+      tt.classList.add('visible');
+    }, 220);
+  }
+
+  function hideTooltip() {
+    clearTimeout(_ttTimer);
+    const tt = ttEl();
+    if (tt) tt.classList.remove('visible');
+  }
+
+  function isTruncated(el) {
+    return el.scrollHeight > el.clientHeight + 2;
+  }
+
+  document.addEventListener('mouseover', (e) => {
+    const target = e.target.closest('.sm-card-title, .sm-overview');
+    if (target && isTruncated(target)) showTooltip(target);
+  });
+
+  document.addEventListener('mouseout', (e) => {
+    if (e.target.closest('.sm-card-title, .sm-overview')) hideTooltip();
+  });
+})();
 </script>
 </body>
 </html>
