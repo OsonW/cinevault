@@ -1062,8 +1062,31 @@ body[data-tab="chats"] .detail-body { display: none !important; }
 .grid-top-bar {
   display: flex; align-items: center; gap: 6px; padding: 10px 0 0;
 }
-.grid-count-row { padding: 5px 0 8px; }
+.grid-count-row { padding: 5px 0 8px; display: flex; align-items: center; justify-content: space-between; }
 .grid-count { font-size: 12px; color: var(--muted); }
+
+.card-size-slider { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.card-size-label { font-size: 10px; color: var(--muted); letter-spacing: 0.07em; font-weight: 500; text-transform: uppercase; user-select: none; }
+.card-size-range {
+  -webkit-appearance: none; appearance: none;
+  width: 90px; height: 3px; border-radius: 99px;
+  background: var(--border-md); outline: none; cursor: pointer;
+}
+.card-size-range::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 13px; height: 13px; border-radius: 50%;
+  background: var(--accent); border: 2px solid var(--surface);
+  box-shadow: 0 0 0 1px var(--accent-dim);
+  cursor: pointer; transition: box-shadow 0.15s;
+}
+.card-size-range::-moz-range-thumb {
+  width: 13px; height: 13px; border-radius: 50%;
+  background: var(--accent); border: 2px solid var(--surface);
+  box-shadow: 0 0 0 1px var(--accent-dim);
+  cursor: pointer;
+}
+.card-size-range:hover::-webkit-slider-thumb { box-shadow: 0 0 0 4px var(--accent-glow); }
+.card-size-range:hover::-moz-range-thumb    { box-shadow: 0 0 0 4px var(--accent-glow); }
 .grid-right-group { margin-left: auto; display: flex; align-items: center; gap: 6px; }
 .sort-btn {
   padding: 5px 12px; border-radius: var(--radius); border: 1px solid var(--border-md);
@@ -1130,32 +1153,32 @@ body[data-tab="chats"] .detail-body { display: none !important; }
 .poster-card img { width: 100%; aspect-ratio: 2/3; object-fit: cover; display: block; background: var(--subtle); }
 .poster-info { padding: 8px 9px 10px; }
 .poster-title {
-  font-size: 12px; line-height: 1.3; font-weight: 500; margin-bottom: 3px;
+  font-size: 1em; line-height: 1.3; font-weight: 500; margin-bottom: 3px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.poster-author { font-size: 11px; color: var(--muted); margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.poster-author { font-size: 0.917em; color: var(--muted); margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .poster-stars { display: flex; gap: 2px; }
-.pstar { font-size: 9px; color: var(--subtle); }
+.pstar { font-size: 0.75em; color: var(--subtle); }
 .pstar.lit { color: var(--accent); }
-.poster-date { font-size: 10px; color: var(--muted); margin-bottom: 3px; }
+.poster-date { font-size: 0.833em; color: var(--muted); margin-bottom: 3px; }
 .poster-overview {
-  font-size: 11px; color: var(--muted); line-height: 1.45; margin-top: 5px;
+  font-size: 0.917em; color: var(--muted); line-height: 1.45; margin-top: 5px;
   display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3;
   -webkit-box-orient: vertical; overflow: hidden;
 }
 .poster-overview-full {
-  font-size: 11px; color: var(--muted); line-height: 1.45; margin-top: 5px;
+  font-size: 0.917em; color: var(--muted); line-height: 1.45; margin-top: 5px;
 }
 .poster-meta-row { display: flex; align-items: center; gap: 5px; margin-bottom: 4px; flex-wrap: wrap; }
 .poster-badge-row { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; flex-wrap: wrap; }
 .poster-type-badge {
   display: inline-flex; align-items: center; gap: 3px;
-  font-size: 9px; padding: 2px 6px; border-radius: var(--radius);
+  font-size: 0.75em; padding: 2px 6px; border-radius: var(--radius);
   border: 1px solid;
 }
 .poster-year-badge {
   display: inline-flex; align-items: center;
-  font-size: 9px; padding: 2px 6px; border-radius: var(--radius);
+  font-size: 0.75em; padding: 2px 6px; border-radius: var(--radius);
   border: 1px solid rgba(255,255,255,0.18); background: rgba(255,255,255,0.07);
   color: rgba(255,255,255,0.7);
 }
@@ -1498,6 +1521,13 @@ const tabSize = {
   watching:  _VALID_SIZES.has(localStorage.getItem('tabSize_watching'))  ? localStorage.getItem('tabSize_watching')  : 'medium',
   finished:  _VALID_SIZES.has(localStorage.getItem('tabSize_finished'))  ? localStorage.getItem('tabSize_finished')  : 'medium',
 };
+const CARD_WIDTH_MIN = 120, CARD_WIDTH_MAX = 220, CARD_WIDTH_DEFAULT = 160;
+function _clampCardWidth(n) { return Math.max(CARD_WIDTH_MIN, Math.min(CARD_WIDTH_MAX, n || CARD_WIDTH_DEFAULT)); }
+const tabCardWidth = {
+  watchlist: _clampCardWidth(Number(localStorage.getItem('tabCardWidth_watchlist'))),
+  watching:  _clampCardWidth(Number(localStorage.getItem('tabCardWidth_watching'))),
+  finished:  _clampCardWidth(Number(localStorage.getItem('tabCardWidth_finished'))),
+};
 let activeChatId = null;
 let chatMovieFilter = '';
 let pendingResetChatId = null;
@@ -1798,9 +1828,18 @@ function renderGrid() {
   </div>
   <div class="grid-count-row">
     <span class="grid-count">${items.length} title${items.length!==1?'s':''}</span>
+    <div class="card-size-slider">
+      <span class="card-size-label">Size</span>
+      <input class="card-size-range" type="range"
+        min="${CARD_WIDTH_MIN}" max="${CARD_WIDTH_MAX}" step="1"
+        value="${tabCardWidth[currentTab]}"
+        oninput="applyCardWidth(Number(this.value))"
+        onchange="saveCardWidth(Number(this.value))">
+    </div>
   </div>`;
 
-  const colMin = SIZE_COLS[tabSize[currentTab]];
+  const cardW  = tabCardWidth[currentTab];
+  const colMin = `${cardW}px`;
   const gridStyle = `grid-template-columns:repeat(auto-fill,minmax(${colMin},1fr))`;
 
   if (!items.length) {
@@ -1811,7 +1850,9 @@ function renderGrid() {
     return;
   }
 
-  const size = tabSize[currentTab];
+  const size     = tabSize[currentTab];
+  const cardFontPx = (12 * cardW / 160).toFixed(2);
+  const cardFontStyle = `font-size:${cardFontPx}px`;
   const cards = items.map(item => {
     const stars = currentTab === 'finished'
       ? `<div class="poster-stars">${[1,2,3,4,5,6,7,8,9,10].map(s =>
@@ -1825,7 +1866,7 @@ function renderGrid() {
     const dateHtml = dateStr ? `<div class="poster-date">${dateStr}</div>` : '';
 
     if (size === 'small') {
-      return `<div class="poster-card" id="pc-${item.id}" onclick="selectItem(${item.id})">
+      return `<div class="poster-card" id="pc-${item.id}" style="${cardFontStyle}" onclick="selectItem(${item.id})">
         <div class="poster-info">
           ${badgeRow}
           <div class="poster-title" style="white-space:normal;overflow:visible;text-overflow:clip">${esc(item.title)}</div>
@@ -1837,7 +1878,7 @@ function renderGrid() {
     }
 
     if (size === 'large') {
-      return `<div class="poster-card" id="pc-${item.id}" onclick="selectItem(${item.id})">
+      return `<div class="poster-card" id="pc-${item.id}" style="${cardFontStyle}" onclick="selectItem(${item.id})">
         <img src="${posterUrl(item)}" onerror="this.src='${BROKEN_POSTER_FULL}'" loading="lazy">
         <div class="poster-info">
           ${badgeRow}
@@ -1850,7 +1891,7 @@ function renderGrid() {
       </div>`;
     }
 
-    return `<div class="poster-card" id="pc-${item.id}" onclick="selectItem(${item.id})">
+    return `<div class="poster-card" id="pc-${item.id}" style="${cardFontStyle}" onclick="selectItem(${item.id})">
       <img src="${posterUrl(item)}" onerror="this.src='${BROKEN_POSTER_FULL}'" loading="lazy">
       <div class="poster-info">
         ${badgeRow}
@@ -1862,7 +1903,7 @@ function renderGrid() {
     </div>`;
   }).join('');
 
-  panel.innerHTML = statsHtml + topBar + `<div class="poster-grid" style="${gridStyle}">${cards}</div>`;
+  panel.innerHTML = statsHtml + topBar + `<div class="poster-grid" id="posterGrid" style="${gridStyle}">${cards}</div>`;
 
   if (pendingSelectId !== null) {
     const id = pendingSelectId;
@@ -1916,6 +1957,19 @@ async function toggleDescription(itemId) {
 }
 
 function setSort(s) { currentSort = s; renderGrid(); }
+
+function applyCardWidth(w) {
+  w = _clampCardWidth(w);
+  tabCardWidth[currentTab] = w;
+  const grid = document.getElementById('posterGrid');
+  if (grid) grid.style.gridTemplateColumns = `repeat(auto-fill,minmax(${w}px,1fr))`;
+  const fontPx = (12 * w / 160).toFixed(2);
+  document.querySelectorAll('[id^="pc-"]').forEach(el => el.style.fontSize = fontPx + 'px');
+}
+
+function saveCardWidth(w) {
+  localStorage.setItem(`tabCardWidth_${currentTab}`, _clampCardWidth(w));
+}
 
 function onGridFilter(val) {
   tabFilter[currentTab].query = val;
