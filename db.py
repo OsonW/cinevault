@@ -39,11 +39,6 @@ def init_db():
             )
         """)
 
-        # migration: add year column to existing databases
-        existing = [r[1] for r in conn.execute("PRAGMA table_info(media)").fetchall()]
-        if "year" not in existing:
-            conn.execute("ALTER TABLE media ADD COLUMN year TEXT")
-
         conn.execute("""
             CREATE TABLE IF NOT EXISTS chats (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -147,19 +142,6 @@ def update_media_entry(media_id: int, **fields):
     params  = list(updates.values()) + [media_id]
     with get_conn() as conn:
         conn.execute(f"UPDATE media SET {clauses} WHERE id = ?", params)
-
-
-def get_items_missing_year():
-    with get_conn() as conn:
-        rows = conn.execute(
-            "SELECT id, media_type, external_id, tmdb_id FROM media WHERE year IS NULL OR year = ''"
-        ).fetchall()
-    return [dict(r) for r in rows]
-
-
-def set_year(media_id: int, year: str):
-    with get_conn() as conn:
-        conn.execute("UPDATE media SET year = ? WHERE id = ?", (year, media_id))
 
 
 def delete_media_entry(media_id: int):
