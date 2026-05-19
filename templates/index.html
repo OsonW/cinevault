@@ -3246,24 +3246,27 @@ function renderChatMsg(m, media, chat) {
   let snapSeason = '', snapEpisode = '', snapChapter = '';
 
   if (m.role === 'assistant' && media) {
-    const snap = _extractSnapProgress(m.content, media.media_type);
-
     if (media.media_type === 'tv') {
-      if (snap) {
-        snapSeason = snap.season; snapEpisode = snap.episode;
-      } else if (m.snap_season) {
-        snapSeason = m.snap_season; snapEpisode = m.snap_episode || '';
+      // DB-persisted snap is the authoritative source — text regex is only a fallback
+      // for old messages saved before snap columns existed.
+      if (m.snap_season != null) {
+        snapSeason = m.snap_season;
+        snapEpisode = m.snap_episode != null ? m.snap_episode : '';
+      } else {
+        const snap = _extractSnapProgress(m.content, media.media_type);
+        if (snap) { snapSeason = snap.season; snapEpisode = snap.episode; }
       }
-      if (snapSeason || snapEpisode) {
+      if (snapSeason !== '' && snapSeason != null) {
         progressTag = _progressTagHtmlForSnap(snapSeason, snapEpisode, null, 'tv');
       }
     } else if (media.media_type === 'manga') {
-      if (snap) {
-        snapChapter = snap.chapter;
-      } else if (m.snap_chapter) {
+      if (m.snap_chapter != null) {
         snapChapter = m.snap_chapter;
+      } else {
+        const snap = _extractSnapProgress(m.content, media.media_type);
+        if (snap) { snapChapter = snap.chapter; }
       }
-      if (snapChapter) {
+      if (snapChapter != null && snapChapter !== '') {
         progressTag = _progressTagHtmlForSnap(null, null, snapChapter, 'manga');
       }
     }
@@ -3296,7 +3299,7 @@ function renderChatMsg(m, media, chat) {
   }
 
   const dataAttrs = m.role === 'assistant'
-    ? `data-msg-id="${msgId}"${snapSeason ? ` data-snap-season="${snapSeason}" data-snap-episode="${snapEpisode}"` : ''}${snapChapter ? ` data-snap-chapter="${snapChapter}"` : ''}`
+    ? `data-msg-id="${msgId}"${(snapSeason !== '' && snapSeason != null) ? ` data-snap-season="${snapSeason}" data-snap-episode="${snapEpisode}"` : ''}${(snapChapter !== '' && snapChapter != null) ? ` data-snap-chapter="${snapChapter}"` : ''}`
     : '';
 
   return `<div class="chat-msg ${m.role}" style="${m.role==='user'?'align-self:flex-end':'align-self:flex-start'}" ${dataAttrs}>

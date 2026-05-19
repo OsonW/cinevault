@@ -1015,168 +1015,160 @@ def new_chat():
     return jsonify({"id": chat_id, "title": title})
 
 
-def _extract_furthest_progress(text: str, media: dict):
-    if not media:
-        return None
-    mt = media.get("media_type", "")
-    if mt == "tv":
-        patterns = [
-            r'\bS(\d{1,2})[\s\-_]?E(\d{1,3})\b',
-            r'\bseason\s*(\d{1,2})\s*ep(?:isode)?\s*(\d{1,3})\b',
-            r'\b(\d{1,2})x(\d{1,3})\b',
-        ]
-        max_s, max_e = 0, 0
-        found = False
-        for pat in patterns:
-            for match in re.finditer(pat, text, re.IGNORECASE):
-                s, e = int(match.group(1)), int(match.group(2))
-                if not found or s > max_s or (s == max_s and e > max_e):
-                    max_s, max_e = s, e
-                    found = True
-        if found:
-            return {"snap_season": max_s, "snap_episode": max_e}
-    elif mt == "manga":
-        max_ch = 0.0
-        found = False
-        for match in re.finditer(r'\bch(?:apter)?\.?\s*(\d+(?:\.\d+)?)\b', text, re.IGNORECASE):
-            c = float(match.group(1))
-            if not found or c > max_ch:
-                max_ch = c
-                found = True
-        if found:
-            return {"snap_chapter": max_ch}
-    return None
-
-
-def _identify_spoiler_level(response_text: str, media: dict):
-    try:
-        mt = media.get("media_type", "")
-        title = media.get("title", "this title")
-        if mt == "tv":
-            prompt = (
-                f'The following response about "{title}" contains spoilers. '
-                f'What is the FURTHEST season and episode it discusses? '
-                f'Reply with ONLY "S<number> E<number>" (e.g. "S5 E16"). '
-                f'If you cannot determine, reply "unknown".\n\n'
-                f'Response:\n"""\n{response_text[:1500]}\n"""'
-            )
-            resp = gemini.models.generate_content(model=GEMINI_MODEL, contents=prompt)
-            text = (getattr(resp, "text", "") or "").strip()
-            m = re.search(r'S(\d+)\s*E(\d+)', text, re.IGNORECASE)
-            if m:
-                return {"snap_season": int(m.group(1)), "snap_episode": int(m.group(2))}
-        elif mt == "manga":
-            prompt = (
-                f'The following response about "{title}" contains spoilers. '
-                f'What is the FURTHEST chapter it discusses? '
-                f'Reply with ONLY "Ch <number>" (e.g. "Ch 120"). '
-                f'If you cannot determine, reply "unknown".\n\n'
-                f'Response:\n"""\n{response_text[:1500]}\n"""'
-            )
-            resp = gemini.models.generate_content(model=GEMINI_MODEL, contents=prompt)
-            text = (getattr(resp, "text", "") or "").strip()
-            m = re.search(r'Ch(?:apter)?\s*(\d+(?:\.\d+)?)', text, re.IGNORECASE)
-            if m:
-                return {"snap_chapter": float(m.group(1))}
-    except Exception as e:
-        print(f"_identify_spoiler_level error: {e}")
-    return None
-
-
-def _semantic_spoiler_check(response_text: str, media: dict) -> bool:
-    try:
-        mt = media.get("media_type", "")
-        title = media.get("title", "this title")
-        if mt == "tv":
-            user_s = media.get("last_season") or 0
-            user_e = media.get("last_episode") or 0
-            progress_desc = f"Season {user_s}, Episode {user_e}"
-        elif mt == "manga":
-            user_ch = media.get("last_chapter") or 0
-            progress_desc = f"Chapter {user_ch}"
-        else:
-            return False
-
-        prompt = (
-            f'A user is watching/reading "{title}" and has only reached {progress_desc}.\n'
-            f'Does the following AI response reveal plot events, character fates, or story outcomes '
-            f'that occur AFTER {progress_desc}?\n\n'
-            f'Response to evaluate:\n"""\n{response_text[:1500]}\n"""\n\n'
-            f'Answer with a single word: YES or NO. Nothing else.'
-        )
-        resp = gemini.models.generate_content(model=GEMINI_MODEL, contents=prompt)
-        answer = (getattr(resp, "text", "") or "").strip().upper()
-        return answer.startswith("YES")
-    except Exception as e:
-        print(f"_semantic_spoiler_check error: {e}")
-        return False
-
-
-def _detect_spoiler(response_text: str, media: dict, user_message: str) -> bool:
-    try:
-        if not media:
-            return False
-        if media.get("status") in ("finished", "watchlist"):
-            return False
-        if user_message and any(p in user_message.lower() for p in SPOILER_CONSENT_PHRASES):
-            return False
-        mt = media.get("media_type", "")
-        if mt not in ("tv", "manga"):
-            return False
-
-        snap = _extract_furthest_progress(response_text, media)
-        if snap is not None:
-            if mt == "tv":
-                user_s = media.get("last_season") or 0
-                user_e = media.get("last_episode") or 0
-                snap_s = snap.get("snap_season", 0)
-                snap_e = snap.get("snap_episode", 0)
-                return snap_s > user_s or (snap_s == user_s and snap_e > user_e)
-            if mt == "manga":
-                return snap.get("snap_chapter", 0) > (media.get("last_chapter") or 0)
-        return _semantic_spoiler_check(response_text, media)
-    except Exception as e:
-        print(f"_detect_spoiler error: {e}")
-        return False
-
-
-def _quick_spoiler_precheck(user_message: str, media: dict, progress_str: str) -> dict:
-    mt = media.get("media_type", "")
-    if mt == "tv":
-        snap_fmt = "SPOILER S<season> E<episode>  (e.g. SPOILER S3 E8)"
-    elif mt == "manga":
-        snap_fmt = "SPOILER Ch<chapter>  (e.g. SPOILER Ch42)"
-    else:
+def _parse_snap(snap_str: str, media: dict) -> dict:
+    """Parse a snap string like 'S4E10' or 'Ch94' into snap_* fields.
+    Returns {} if snap_str is null/none/unknown/empty."""
+    if not snap_str or not media:
         return {}
-
-    prompt = (
-        f'Title: "{media["title"]}" ({mt})\n'
-        f"User progress: {progress_str or 'not tracked'}\n"
-        f'Question: "{user_message}"\n\n'
-        f"The user is asking from within their current progress. "
-        f"Assume they want the answer scoped to what they have watched/read so far.\n"
-        f"ONLY flag as SPOILER if the question explicitly asks about events beyond current progress "
-        f"(e.g. 'does X survive the whole series?', 'what happens at the finale?', 'who ends up together?', 'how does it end?').\n"
-        f"Questions like 'what happens to X?', 'who is Y?', 'why did Z happen?' can be answered "
-        f"within current progress — do NOT flag these as SPOILER.\n"
-        f"Reply with exactly one line:\n"
-        f"  {snap_fmt}  — ONLY if the question cannot be answered without going past the user's progress\n"
-        f"  CLEAN  — if the question can be addressed within current progress"
-    )
-    try:
-        result = _generate_ai_content(prompt).strip()
-        upper  = result.upper()
-        if mt == "tv":
-            m = re.match(r"SPOILER\s+S(\d+)\s*E(\d+)", upper)
-            if m:
-                return {"pre_blur": True, "snap_season": int(m.group(1)), "snap_episode": int(m.group(2))}
-        elif mt == "manga":
-            m = re.match(r"SPOILER\s+CH\.?\s*(\d+(?:\.\d+)?)", upper)
-            if m:
-                return {"pre_blur": True, "snap_chapter": float(m.group(1))}
-    except Exception as e:
-        print(f"_quick_spoiler_precheck error: {e}")
+    s = snap_str.strip()
+    if s.lower() in ("null", "none", "unknown", "n/a", ""):
+        return {}
+    mt = media.get("media_type", "")
+    if mt == "tv":
+        m = re.match(r'S(\d+)\s*E(\d+)', s, re.IGNORECASE)
+        if m:
+            return {"snap_season": int(m.group(1)), "snap_episode": int(m.group(2))}
+        # Season-only fallback: "S4" with no episode
+        m = re.match(r'S(\d+)$', s, re.IGNORECASE)
+        if m:
+            return {"snap_season": int(m.group(1)), "snap_episode": None}
+    elif mt == "manga":
+        m = re.match(r'Ch\.?\s*(\d+(?:\.\d+)?)', s, re.IGNORECASE)
+        if m:
+            return {"snap_chapter": float(m.group(1))}
     return {}
+
+
+def _snap_is_spoiler(snap: dict, media: dict) -> bool:
+    """Return True if the snapped position is beyond the user's current progress."""
+    if not snap or not media:
+        return False
+    mt = media.get("media_type", "")
+    if mt == "tv":
+        snap_s = snap.get("snap_season") or 0
+        snap_e = snap.get("snap_episode") or 0
+        user_s = media.get("last_season") or 0
+        user_e = media.get("last_episode") or 0
+        return snap_s > user_s or (snap_s == user_s and snap_e > user_e)
+    if mt == "manga":
+        return (snap.get("snap_chapter") or 0) > (media.get("last_chapter") or 0)
+    return False
+
+
+def _build_structured_system(media: dict, effective_status: str, progress: str,
+                              memory_str: str, user_content: str) -> str:
+    """Build the system prompt that instructs the model to return structured JSON.
+
+    The model must ALWAYS reply with exactly this JSON shape — no prose outside it:
+      {"snap": "<tag>", "answer": "<reply>"}
+
+    For TV:   snap = "S<season>E<episode>" e.g. "S4E10"  — the FURTHEST point the answer
+              discusses. If the answer stays within current progress, use the current
+              progress tag. If no progress is known, use null.
+    For manga: snap = "Ch<chapter>" e.g. "Ch94"
+    For all other media: snap = null always.
+    """
+    mt        = media["media_type"]
+    title     = media["title"]
+    user_consented_spoilers = any(
+        p in user_content.lower() for p in SPOILER_CONSENT_PHRASES
+    )
+
+    if effective_status == "finished":
+        spoiler_rules = "The user has finished this title. Full discussion of all plot, characters, endings, and themes is fair game."
+    elif effective_status == "watchlist":
+        spoiler_rules = "The user hasn't started this yet. Stick to vibe, genre, and premise only — no spoilers."
+    elif user_consented_spoilers:
+        spoiler_rules = "The user is explicitly asking for spoilers. You may freely discuss plot points beyond their current progress."
+    else:
+        spoiler_rules = (
+            f"The user has only reached {progress or 'their current point'}. "
+            f"Scope EVERY answer to what has happened up to that point. "
+            f"Never reveal plot, character fates, or story outcomes that occur after {progress}."
+        )
+
+    if mt == "tv":
+        snap_instructions = (
+            f'• "snap": The FURTHEST season+episode your answer touches, as "S<N>E<N>" (e.g. "S4E10").\n'
+            f'  - If your answer covers only events up to the user\'s current progress ({progress or "unknown"}), '
+            f'use that progress point as the snap (e.g. "{_progress_to_snap(media)}").\n'
+            f'  - If your answer discusses events BEYOND current progress (spoilers), use the furthest point mentioned.\n'
+            f'  - If no episode progress is known at all, use null.\n'
+            f'  - Always use exact S#E# format. Never use words like "finale" — figure out the actual episode number.'
+        )
+    elif mt == "manga":
+        snap_instructions = (
+            f'• "snap": The FURTHEST chapter your answer touches, as "Ch<N>" (e.g. "Ch94").\n'
+            f'  - If your answer covers only events up to current progress ({progress or "unknown"}), '
+            f'use that progress point (e.g. "{_progress_to_snap(media)}").\n'
+            f'  - If your answer discusses events BEYOND current progress, use the furthest chapter mentioned.\n'
+            f'  - If no chapter progress is known, use null.'
+        )
+    else:
+        snap_instructions = '• "snap": Always null for this media type.'
+
+    return (
+        f'You are CineVault AI — a chill, enthusiastic media buddy. '
+        f'Talk like you\'re texting a friend who loves movies, shows, and books.\n'
+        f'Discussing: "{title}" ({mt})\n'
+        f'Status: {effective_status} | Progress: {progress or "not tracked"}\n'
+        f'Notes: {media.get("notes") or "none"}\n\n'
+        f'User facts:\n{memory_str}\n\n'
+        f'Spoiler rules:\n{spoiler_rules}\n\n'
+        f'Keep replies short and fun — 2-3 sentences. No bullet points.\n\n'
+        f'RESPONSE FORMAT — you MUST reply with ONLY this JSON, no text outside it:\n'
+        f'{{\n'
+        f'  "snap": "<tag or null>",\n'
+        f'  "answer": "<your reply here>"\n'
+        f'}}\n\n'
+        f'SNAP FIELD RULES:\n'
+        f'{snap_instructions}'
+    )
+
+
+def _progress_to_snap(media: dict) -> str:
+    """Convert current media progress to a snap string, e.g. 'S3E1' or 'Ch47'."""
+    mt = media.get("media_type", "")
+    if mt == "tv":
+        s = media.get("last_season")
+        e = media.get("last_episode")
+        if s and e:
+            return f"S{s}E{e}"
+        if s:
+            return f"S{s}E?"
+    elif mt == "manga":
+        c = media.get("last_chapter")
+        if c:
+            return f"Ch{c}"
+    return "null"
+
+
+def _parse_structured_response(raw: str, media: dict) -> tuple[str, dict]:
+    """Parse the model's JSON envelope. Returns (answer_text, snap_dict).
+    Falls back gracefully if the model doesn't comply."""
+    # Strip markdown code fences the model sometimes adds
+    cleaned = re.sub(r'^```[a-z]*\n?', '', raw.strip(), flags=re.MULTILINE).rstrip('`').strip()
+    try:
+        obj = json.loads(cleaned)
+        answer = str(obj.get("answer", "")).strip()
+        snap   = _parse_snap(str(obj.get("snap", "") or ""), media)
+        if answer:
+            return answer, snap
+    except (json.JSONDecodeError, Exception):
+        pass
+    # Model didn't comply — use the raw text as the answer, snap unknown
+    return raw.strip(), {}
+
+
+def _detect_spoiler(snap: dict, media: dict, user_message: str) -> bool:
+    """Returns True if this snap represents content the user did NOT consent to see."""
+    if not media or not snap:
+        return False
+    if media.get("status") in ("finished", "watchlist"):
+        return False
+    if user_message and any(p in user_message.lower() for p in SPOILER_CONSENT_PHRASES):
+        return False
+    return _snap_is_spoiler(snap, media)
 
 
 @app.route("/api/chats/<int:chat_id>/message", methods=["POST"])
@@ -1194,45 +1186,32 @@ def chat_message(chat_id):
     memory_str = "\n".join(f"- {k}: {v}" for k, v in memory_cache.items()) if memory_cache else "None"
 
     effective_status = chat.get("context_tag") or (media["status"] if media else "finished")
+    progress = _progress_str(media) if media else ""
 
-    if media:
-        progress = _progress_str(media)
+    if media and media.get("media_type") in ("tv", "manga"):
+        system = _build_structured_system(media, effective_status, progress, memory_str, content)
+    elif media:
+        # Non-tv/manga — plain system prompt, no snap envelope needed
         mt = media["media_type"]
-
         if effective_status == "finished":
-            spoiler_rules = "The user has finished this title. Full discussion of all plot, characters, endings, and themes is fair game."
+            spoiler_rules = "Full discussion allowed."
         elif effective_status == "watchlist":
-            spoiler_rules = "The user hasn't started this yet. Stick to vibe, genre, and premise only — no spoilers."
+            spoiler_rules = "Stick to premise/vibe only — no spoilers."
         else:
-            spoiler_rules = (
-                f"The user has only reached {progress or 'their current point'}. "
-                f"Scope EVERY answer to what has happened up to that point — treat the story as if it ends there. "
-                f"For 'what happens to X?' questions, describe what has happened to X SO FAR up to {progress}, not their fate in later seasons/chapters. "
-                f"Never reveal plot, character fates, or story outcomes that occur after {progress}."
-            )
-
-        # Check if user has explicitly requested spoilers in this message
-        if content and any(phrase in content.lower() for phrase in SPOILER_CONSENT_PHRASES):
-            if mt in ("tv", "manga"):
-                spoiler_rules = "The user is asking for spoilers. You may freely discuss plot points beyond their current progress."
-            else:
-                spoiler_rules = "The user is asking for spoilers. Full discussion allowed."
-
+            spoiler_rules = f"Scope answers to {progress or 'current point'} only."
         system = (
-            f"You are CineVault AI — a chill, enthusiastic media buddy. Talk like you're texting a friend who loves movies, shows, and books.\n"
-            f"You're discussing: \"{media['title']}\" ({mt})\n"
+            f"You are CineVault AI — a chill, enthusiastic media buddy.\n"
+            f"Discussing: \"{media['title']}\" ({mt})\n"
             f"Status: {effective_status} | Progress: {progress or 'not tracked'}\n"
-            f"Notes: {media.get('notes') or 'none'}\n\n"
             f"User facts:\n{memory_str}\n\n"
-            f"Spoiler rules:\n{spoiler_rules}\n\n"
-            f"Keep replies short and fun — 2-3 sentences. Skip bullet points and formal explanations. React like a real person would."
+            f"Spoiler rules: {spoiler_rules}\n"
+            f"Keep replies short and fun — 2-3 sentences. No bullet points."
         )
     else:
         system = (
-            f"You are CineVault AI — a chill, enthusiastic media buddy. Talk like you're texting a friend who loves movies, shows, and books. "
+            f"You are CineVault AI — a chill, enthusiastic media buddy. "
             f"Help with any movie/TV/book/manga questions.\n\n"
-            f"User facts:\n{memory_str}\n\n"
-            f"Keep it short and fun. Skip the formal tone."
+            f"User facts:\n{memory_str}\n\nKeep it short and fun."
         )
 
     history = get_chat_messages(chat_id)
@@ -1253,70 +1232,65 @@ def chat_message(chat_id):
     _append_gemini_content(gemini_contents, "user", content)
 
     append_message(chat_id, "user", content)
-
-    def _extract_furthest_progress(text: str):
-        if not media:
-            return None
-        mt = media["media_type"]
-        if mt == "tv":
-            patterns = [
-                r'\bS(\d{1,2})[\s\-_]?E(\d{1,3})\b',
-                r'\bseason\s*(\d{1,2})\s*ep(?:isode)?\s*(\d{1,3})\b',
-                r'\b(\d{1,2})x(\d{1,3})\b',
-            ]
-            max_s, max_e = 0, 0
-            found = False
-            for pat in patterns:
-                for match in re.finditer(pat, text, re.IGNORECASE):
-                    s, e = int(match.group(1)), int(match.group(2))
-                    if not found or s > max_s or (s == max_s and e > max_e):
-                        max_s, max_e = s, e
-                        found = True
-            if found and (max_s > (media.get("last_season") or 0) or
-                          (max_s == (media.get("last_season") or 0) and
-                           max_e > (media.get("last_episode") or 0))):
-                return {"snap_season": max_s, "snap_episode": max_e}
-        elif mt == "manga":
-            max_ch = 0.0
-            found = False
-            for match in re.finditer(r'\bch(?:apter)?\.?\s*(\d+(?:\.\d+)?)\b', text, re.IGNORECASE):
-                c = float(match.group(1))
-                if not found or c > max_ch:
-                    max_ch = c
-                    found = True
-            if found and max_ch > (media.get("last_chapter") or 0):
-                return {"snap_chapter": max_ch}
-        return None
+    uses_structured = media and media.get("media_type") in ("tv", "manga")
 
     def generate():
-        full_answer = []
+        full_raw = []
         try:
-            if media and effective_status == "watching" and media.get("media_type") in ("tv", "manga"):
-                pre = _quick_spoiler_precheck(content, media, progress or "")
-                if pre:
-                    yield f"data: {json.dumps({'meta': pre})}\n\n"
             for token in _iter_gemini_response_tokens(gemini_contents):
-                full_answer.append(token)
-                yield f"data: {json.dumps({'token': token})}\n\n"
-            answer = "".join(full_answer).strip()
+                full_raw.append(token)
+                if not uses_structured:
+                    # Plain media — stream tokens directly to the client
+                    yield f"data: {json.dumps({'token': token})}\n\n"
+
+            raw = "".join(full_raw).strip()
+            if not raw:
+                yield f"data: {json.dumps({'done': True})}\n\n"
+                return
+
+            if uses_structured:
+                answer, snap = _parse_structured_response(raw, media)
+            else:
+                answer, snap = raw, {}
+
             if answer:
-                msg_id = append_message(chat_id, "assistant", answer)
-                snap = _extract_furthest_progress(answer)
-                is_spoiler = _detect_spoiler(answer, media, content)
-                meta = {}
+                msg_id     = append_message(chat_id, "assistant", answer)
+                is_spoiler = _detect_spoiler(snap, media, content)
+                meta       = dict(snap)  # copy snap fields into meta
+
                 if snap:
-                    meta.update(snap)
-                if is_spoiler:
-                    meta["is_spoiler"] = True
-                if msg_id and snap:
                     update_message_snap(
                         msg_id,
-                        snap_season=meta.get("snap_season"),
-                        snap_episode=meta.get("snap_episode"),
-                        snap_chapter=meta.get("snap_chapter"),
+                        snap_season=snap.get("snap_season"),
+                        snap_episode=snap.get("snap_episode"),
+                        snap_chapter=snap.get("snap_chapter"),
                     )
+                elif media and media.get("media_type") in ("tv", "manga"):
+                    # Model returned null snap — fall back to current progress
+                    mt_local = media.get("media_type")
+                    if mt_local == "tv" and (media.get("last_season") or media.get("last_episode")):
+                        meta["snap_season"] = media.get("last_season")
+                        meta["snap_episode"] = media.get("last_episode")
+                        update_message_snap(msg_id,
+                            snap_season=meta["snap_season"],
+                            snap_episode=meta.get("snap_episode"))
+                    elif mt_local == "manga" and media.get("last_chapter"):
+                        meta["snap_chapter"] = media.get("last_chapter")
+                        update_message_snap(msg_id, snap_chapter=meta["snap_chapter"])
+
+                if is_spoiler:
+                    meta["is_spoiler"] = True
+
+                if uses_structured:
+                    # Stream the answer in word-sized chunks (buffered from JSON parse)
+                    words = re.split(r'(\s+)', answer)
+                    for chunk in words:
+                        if chunk:
+                            yield f"data: {json.dumps({'token': chunk})}\n\n"
+
                 if meta and media and effective_status == "watching":
                     yield f"data: {json.dumps({'meta': meta})}\n\n"
+
             yield f"data: {json.dumps({'done': True})}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
@@ -1495,34 +1469,49 @@ def ask_ai():
     title    = media["title"]
     status   = media["status"]
     progress = _progress_str(media)
+    mt       = media["media_type"]
 
-    if allow_spoilers:
-        spoiler_rule = "The user has explicitly allowed spoilers. Full discussion of all plot, characters, endings, and twists is allowed. Always warn the user with '⚠️ Spoiler:' before revealing spoiler content."
-        progress_ctx = "spoilers allowed"
-    elif status == "watchlist":
-        spoiler_rule = "The user has NOT watched/read this yet. Give only premise/genre info — no plot, no twists, no deaths."
-        progress_ctx = "not started"
-    elif status == "watching":
-        ep           = f"up to {progress}" if progress else "early on"
-        spoiler_rule = f"The user has only experienced {ep}. Refuse to reveal ANYTHING after that point."
-        progress_ctx = ep
+    uses_structured = mt in ("tv", "manga")
+
+    if uses_structured:
+        # Use structured system prompt so snap comes back with the answer
+        effective_status = "watching" if status == "watching" else status
+        if allow_spoilers:
+            effective_status = "finished"  # treat as finished so full discussion allowed
+        system = _build_structured_system(media, effective_status, progress, "", question)
+        prompt = f"{system}\n\nQuestion: {question}"
     else:
-        spoiler_rule = "The user has finished this. Full discussion of plot, characters, endings, themes, and twists is allowed."
-        progress_ctx = "completed"
-
-    prompt = (
-        f'You are a fun, casual movie/media buddy — like texting a friend who has seen everything.\n'
-        f'Title: "{title}" ({media["media_type"]}) | Progress: {progress_ctx}\n'
-        f'Rule: {spoiler_rule}\n'
-        f'Keep it short and conversational, 2-3 sentences max. No bullet points.\n\n'
-        f'Question: {question}'
-    )
+        if allow_spoilers:
+            spoiler_rule = "Full discussion allowed."
+            progress_ctx = "spoilers allowed"
+        elif status == "watchlist":
+            spoiler_rule = "Premise/genre only — no plot spoilers."
+            progress_ctx = "not started"
+        elif status == "watching":
+            ep           = f"up to {progress}" if progress else "early on"
+            spoiler_rule = f"Scope to {ep} only."
+            progress_ctx = ep
+        else:
+            spoiler_rule = "Full discussion allowed."
+            progress_ctx = "completed"
+        prompt = (
+            f'You are a fun, casual movie/media buddy.\n'
+            f'Title: "{title}" ({mt}) | Progress: {progress_ctx}\n'
+            f'Rule: {spoiler_rule}\n'
+            f'Keep it short — 2-3 sentences. No bullet points.\n\n'
+            f'Question: {question}'
+        )
 
     try:
-        resp   = gemini.models.generate_content(model=GEMINI_MODEL, contents=prompt)
-        answer = resp.text.strip()
+        resp    = gemini.models.generate_content(model=GEMINI_MODEL, contents=prompt)
+        raw     = resp.text.strip()
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+    if uses_structured:
+        answer, snap = _parse_structured_response(raw, media)
+    else:
+        answer, snap = raw, {}
 
     if not chat_id:
         try:
@@ -1534,40 +1523,29 @@ def ask_ai():
             chat_name = name_resp.text.strip()[:60] or question[:40]
         except Exception:
             chat_name = question[:40]
-        chat_id = create_chat(
-            media_id    = media_id,
-            title       = chat_name,
-            context_tag = status,
-        )
+        chat_id = create_chat(media_id=media_id, title=chat_name, context_tag=status)
+
     append_message(chat_id, "user", question)
     msg_id = append_message(chat_id, "assistant", answer)
 
-    is_spoiler = False
-    snap_data = {}
-    if media.get("media_type") in ("tv", "manga"):
-        snap = _extract_furthest_progress(answer, media)
-        is_spoiler = bool(_detect_spoiler(answer, media, question))
-        if snap:
-            snap_data.update(snap)
-        elif is_spoiler:
-            level = _identify_spoiler_level(answer, media)
-            if level:
-                snap_data.update(level)
-        mt = media.get("media_type")
-        if mt == "tv" and "snap_season" not in snap_data:
-            if media.get("last_season") or media.get("last_episode"):
-                snap_data["snap_season"] = media.get("last_season")
-                snap_data["snap_episode"] = media.get("last_episode")
-        elif mt == "manga" and "snap_chapter" not in snap_data:
-            if media.get("last_chapter"):
-                snap_data["snap_chapter"] = media.get("last_chapter")
-        if msg_id and snap_data:
-            update_message_snap(
-                msg_id,
-                snap_season=snap_data.get("snap_season"),
-                snap_episode=snap_data.get("snap_episode"),
-                snap_chapter=snap_data.get("snap_chapter"),
-            )
+    is_spoiler = _detect_spoiler(snap, media, question)
+    snap_data  = dict(snap)
+
+    if not snap_data and uses_structured:
+        # Model returned null snap — fall back to current progress
+        if mt == "tv" and (media.get("last_season") or media.get("last_episode")):
+            snap_data["snap_season"] = media.get("last_season")
+            snap_data["snap_episode"] = media.get("last_episode")
+        elif mt == "manga" and media.get("last_chapter"):
+            snap_data["snap_chapter"] = media.get("last_chapter")
+
+    if msg_id and snap_data:
+        update_message_snap(
+            msg_id,
+            snap_season=snap_data.get("snap_season"),
+            snap_episode=snap_data.get("snap_episode"),
+            snap_chapter=snap_data.get("snap_chapter"),
+        )
 
     return jsonify({"answer": answer, "chat_id": chat_id, "is_spoiler": is_spoiler, **snap_data})
 
