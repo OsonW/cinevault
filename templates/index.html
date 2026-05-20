@@ -3204,6 +3204,9 @@ function reapplySpoilerBlurs(chatId) {
   if (!preview || !preview.media_id) return;
   const media = allItems.find(i => i.id === preview.media_id);
   if (!media) return;
+  // Spoiler blur is only relevant while actively watching/reading
+  const effectiveStatus = preview.context_tag || media.status;
+  if (effectiveStatus !== 'watching') return;
   const wrap = document.getElementById('chatMsgsWrap');
   if (!wrap) return;
   wrap.querySelectorAll('.chat-msg.assistant[data-msg-id]').forEach(bubble => {
@@ -3245,7 +3248,12 @@ function renderChatMsg(m, media, chat) {
   let progressTag = '';
   let snapSeason = '', snapEpisode = '', snapChapter = '';
 
-  if (m.role === 'assistant' && media) {
+  // Determine the effective status for this chat (context_tag overrides live status)
+  const effectiveStatus = chat?.context_tag || (media ? media.status : '');
+  // Spoiler blur and progress tags are only relevant while actively watching/reading
+  const isWatching = effectiveStatus === 'watching';
+
+  if (m.role === 'assistant' && media && isWatching) {
     if (media.media_type === 'tv') {
       // DB-persisted snap is the authoritative source — text regex is only a fallback
       // for old messages saved before snap columns existed.
@@ -3276,7 +3284,8 @@ function renderChatMsg(m, media, chat) {
   const msgId = `msg-${m.id || Math.random().toString(36).slice(2)}`;
 
   const isSpoilerNow = (() => {
-    if (!media || m.role !== 'assistant') return false;
+    // Only blur for "watching" status — watchlist never spoils, finished has seen it all
+    if (!media || m.role !== 'assistant' || !isWatching) return false;
     const threshold = _chatSpoilerThreshold(chat, media);
     if (!threshold) return false;
     if (media.media_type === 'tv' && snapSeason) {
@@ -3299,7 +3308,7 @@ function renderChatMsg(m, media, chat) {
   }
 
   const dataAttrs = m.role === 'assistant'
-    ? `data-msg-id="${msgId}"${(snapSeason !== '' && snapSeason != null) ? ` data-snap-season="${snapSeason}" data-snap-episode="${snapEpisode}"` : ''}${(snapChapter !== '' && snapChapter != null) ? ` data-snap-chapter="${snapChapter}"` : ''}`
+    ? `data-msg-id="${msgId}"${isWatching && (snapSeason !== '' && snapSeason != null) ? ` data-snap-season="${snapSeason}" data-snap-episode="${snapEpisode}"` : ''}${isWatching && (snapChapter !== '' && snapChapter != null) ? ` data-snap-chapter="${snapChapter}"` : ''}`
     : '';
 
   return `<div class="chat-msg ${m.role}" style="${m.role==='user'?'align-self:flex-end':'align-self:flex-start'}" ${dataAttrs}>
@@ -3486,7 +3495,8 @@ async function sendChatMessage(chatId) {
               const liveBubble = liveArea.closest('.chat-msg.assistant') || asstBubble;
               liveBubble.dataset.msgId = `msg-streaming-${Date.now()}`;
               const _latestChat = allChats.find(c => c.id === chatId);
-              const isSpoiler = pendingSpoiler || (_chatMedia && _bubbleIsPastProgress(liveBubble, _latestChat, _chatMedia));
+              const _liveEffectiveStatus = _latestChat?.context_tag || (_chatMedia ? _chatMedia.status : "");
+              const isSpoiler = _liveEffectiveStatus === "watching" && (pendingSpoiler || (_chatMedia && _bubbleIsPastProgress(liveBubble, _latestChat, _chatMedia)));
               if (isSpoiler) {
                 const inner = liveArea.innerHTML;
                 const msgId = liveBubble.dataset.msgId;
