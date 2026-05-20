@@ -4289,14 +4289,12 @@ function renderSmCard(r) {
   const key      = `${r.media_type}_${r.external_id || r.tmdb_id}`;
   const already  = inLibrary.has(key);
   let posterSrc = BROKEN_POSTER_FULL;
-  if ((r.media_type === 'manga' || r.media_type === 'book') && r.cover_url) {
+  if (r.cover_url) {
     posterSrc = r.cover_url;
   } else if (r.media_type === 'manga' && r.external_id) {
     posterSrc = `/api/poster/manga/${encodeURIComponent(r.external_id)}`;
   } else if (r.poster_path) {
     posterSrc = `https://image.tmdb.org/t/p/w500${r.poster_path}`;
-  } else if (r.cover_url) {
-    posterSrc = r.cover_url;
   }
   const chips = [];
   if (r.year) chips.push(`<span class="sm-chip year">${esc(r.year)}</span>`);
@@ -4592,7 +4590,7 @@ function renderVibeResults(append) {
     const key     = `${r.media_type}_${r.external_id || r.tmdb_id || r.title}`;
     const already = inLibrary.has(key);
     let posterSrc = BROKEN_POSTER_FULL;
-    if ((r.media_type === 'manga' || r.media_type === 'book') && r.cover_url) {
+    if (r.cover_url) {
       posterSrc = r.cover_url;
     } else if (r.media_type === 'manga' && r.external_id) {
       posterSrc = `/api/poster/manga/${encodeURIComponent(r.external_id)}`;
@@ -4600,8 +4598,6 @@ function renderVibeResults(append) {
       posterSrc = `/api/poster/book/${encodeURIComponent(r.external_id)}`;
     } else if (r.poster_path) {
       posterSrc = `https://image.tmdb.org/t/p/w500${r.poster_path}`;
-    } else if (r.cover_url) {
-      posterSrc = r.cover_url;
     }
     const safeKey    = key.replace(/'/g, "\\'");
     const authorHtml = r.author ? `<div class="sm-card-author">${esc(r.author)}</div>` : '';

@@ -577,21 +577,11 @@ def search_manga():
 
 
 # ═══════════════════════════════════════════════════
-# Poster proxy
+# Posters
 # ═══════════════════════════════════════════════════
 
 @app.route("/api/poster/<string:media_type>/<path:item_id>")
 def get_poster(media_type, item_id):
-    cache_key = f"{media_type}_{item_id}"
-
-    if cache_key in poster_cache:
-        img_bytes, content_type = poster_cache[cache_key]
-        return Response(
-            img_bytes,
-            mimetype=content_type,
-            headers={"Cache-Control": "public, max-age=31536000, immutable"},
-        )
-
     if media_type == "book":
         row = get_media_by_external_id(item_id, media_type)
         cover_url = (row or {}).get("cover_url", "")
@@ -629,6 +619,15 @@ def get_poster(media_type, item_id):
         if not cover_url:
             return "", 404
         return redirect(cover_url, code=302)
+
+    cache_key = f"{media_type}_{item_id}"
+    if cache_key in poster_cache:
+        img_bytes, content_type = poster_cache[cache_key]
+        return Response(
+            img_bytes,
+            mimetype=content_type,
+            headers={"Cache-Control": "public, max-age=31536000, immutable"},
+        )
 
     tmdb_key = _get_tmdb_key()
     if not tmdb_key:
