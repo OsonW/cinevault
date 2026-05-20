@@ -574,23 +574,10 @@ def get_poster(media_type, item_id):
                         cover_url = f"https://covers.openlibrary.org/b/id/{cover_id}-L.jpg"
             except Exception as e:
                 print(f"Open Library fetch error for {item_id}: {e}")
-        
+
         if not cover_url:
             return "", 404
-            
-        try:
-            img_resp = requests.get(cover_url, timeout=10)
-            img_resp.raise_for_status()
-            content_type = img_resp.headers.get("Content-Type", "image/jpeg")
-            img_bytes = img_resp.content
-            poster_cache[cache_key] = (img_bytes, content_type)
-            return Response(
-                img_bytes, mimetype=content_type,
-                headers={"Cache-Control": "public, max-age=86400"},
-            )
-        except Exception as e:
-            print(f"Book poster download error for {cover_url}: {e}")
-            return "", 404
+        return redirect(cover_url, code=302)
 
     if media_type == "manga":
         row = get_media_by_external_id(item_id, media_type)
@@ -606,23 +593,7 @@ def get_poster(media_type, item_id):
 
         if not cover_url:
             return "", 404
-
-        try:
-            img_resp = requests.get(
-                cover_url, timeout=15,
-                headers={**MANGADEX_HEADERS, "Referer": "https://mangadex.org"},
-            )
-            img_resp.raise_for_status()
-            content_type = img_resp.headers.get("Content-Type", "image/jpeg")
-            img_bytes = img_resp.content
-            poster_cache[cache_key] = (img_bytes, content_type)
-            return Response(
-                img_bytes, mimetype=content_type,
-                headers={"Cache-Control": "public, max-age=86400"},
-            )
-        except Exception as e:
-            print(f"Manga poster download error for {cover_url}: {e}")
-            return "", 404
+        return redirect(cover_url, code=302)
 
     tmdb_key = _get_tmdb_key()
     if not tmdb_key:
