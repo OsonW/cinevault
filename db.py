@@ -2,19 +2,33 @@ import os
 import sqlite3
 from datetime import datetime
 
-_vol = os.environ.get("RAILWAY_VOLUME_MOUNT_PATH", "")
-DB_NAME = os.path.join(_vol, "movie_tracker.db") if _vol else "movie_tracker.db"
+
+def _get_db_dir() -> str:
+    return os.environ.get("DB_DIR", ".")
 
 
-def get_conn():
-    conn = sqlite3.connect(DB_NAME)
+def get_user_db_path(user_id: int) -> str:
+    return os.path.join(_get_db_dir(), f"movie_tracker_{user_id}.db")
+
+
+def get_conn(db_path: str | None = None):
+    """Open a connection. Pass db_path explicitly (e.g. in init) or rely on
+    flask.g.user_db_path which before_request sets for every authenticated request."""
+    if db_path is None:
+        from flask import g
+        db_path = g.user_db_path
+    conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
 
-def init_db():
-    with get_conn() as conn:
+def init_user_db(user_id: int) -> None:
+    _create_tables(get_user_db_path(user_id))
+
+
+def _create_tables(db_path: str) -> None:
+    with get_conn(db_path) as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS media (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -40,7 +54,6 @@ def init_db():
                 UNIQUE(external_id, media_type)
             )
         """)
-
         conn.execute("""
             CREATE TABLE IF NOT EXISTS chats (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -54,7 +67,6 @@ def init_db():
                 updated_at      TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S','now'))
             )
         """)
-
         conn.execute("""
             CREATE TABLE IF NOT EXISTS chat_messages (
                 id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -67,7 +79,6 @@ def init_db():
                 created_at   TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S','now'))
             )
         """)
-
         conn.execute("""
             CREATE TABLE IF NOT EXISTS user_memory (
                 id         INTEGER PRIMARY KEY AUTOINCREMENT,
