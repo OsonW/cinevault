@@ -13,14 +13,9 @@ A personal movie, TV, book, and manga tracker with AI-powered insights. Track wh
 
 ## API Keys
 
-CineVault requires two free API keys. **You bring your own — they are stored only in your browser and never sent to any server.**
+CineVault requires two free API keys. **Unfortunately, you bring your own (sorry). they are stored only in your browser and never sent to any server.**
 
-| Key | Where to get it |
-|-----|----------------|
-| **Gemini API Key** | [Google AI Studio → API Keys](https://aistudio.google.com/apikey) — free tier available |
-| **TMDB API Key (v3)** | [themoviedb.org → Settings → API](https://www.themoviedb.org/settings/api) — free account required |
-
-When you open the app for the first time, a setup screen will prompt you for both keys. You can reset them at any time using the key icon on the top right corner.
+When you open the app for the first time, a setup screen will prompt you for both keys, as well as instructions on how to get them. You can reset them at any time using the key icon on the top right corner.
 
 ## Roadmap
 
