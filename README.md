@@ -1,67 +1,92 @@
 # CineVault
 
-A personal movie and TV show tracker with AI-powered insights. Track what you're watching, rate your favorites, and get spoiler-aware recommendations.
+A personal movie, TV, book, and manga tracker with AI-powered insights. Track what you're watching, rate your favorites, and get spoiler-aware recommendations.
 
 ## Features
 
-**Track your media** - Organize movies and TV shows into Watchlist, Watching, and Finished  
-**Rich search** - Search TMDB for movies and TV shows with posters, ratings, and overviews  
-**AI-powered insights** - Get spoiler-free pitches, progress recaps, and personalized recommendations  
-**Ask anything** - Chat with AI about any title (spoiler-aware based on your progress)  
-**Rate & review** - Rate out of 10 and add private notes
+**Track your media** — Organize movies, TV shows, books, and manga into Watchlist, Watching, and Finished  
+**Rich search** — Search TMDB, OpenLibrary, and MangaDex with posters and overviews  
+**AI-powered insights** — Get spoiler-free pitches, progress recaps, and personalized recommendations  
+**Vibe search** — Describe a mood or title and get AI-curated recommendations  
+**Ask anything** — Chat with AI about any title (spoiler-aware based on your progress)  
+**Rate & review** — Rate out of 10 and add private notes
+
+## API Keys
+
+CineVault requires two free API keys. **You bring your own — they are stored only in your browser and never sent to any server we control.**
+
+| Key | Where to get it |
+|-----|----------------|
+| **Gemini API Key** | [Google AI Studio → API Keys](https://aistudio.google.com/apikey) — free tier available |
+| **TMDB API Key (v3)** | [themoviedb.org → Settings → API](https://www.themoviedb.org/settings/api) — free account required |
+
+When you open the app for the first time, a setup screen will prompt you for both keys. You can reset them at any time using the key icon (🔑) next to the tabs.
+
+## Local Development
 
 ### Prerequisites
 
 - Python 3.11 or higher
+- No `.env` file needed — keys are entered in the browser
 
-CineVault requires two free API keys to work:
-- TMDB API key ([Get one here](https://www.themoviedb.org/signup))
-- Google Gemini API key ([Get one here](https://aistudio.google.com/))
+### Setup
 
-### Installation
-
-1. 
-Clone the repository:
 ```bash
+# Clone
 git clone https://github.com/OsonW/cinevault.git
 cd cinevault
-```
 
-2. 
-After installing, create a `.env` file in the project root:
-```env
-TMDB_API_KEY=your_tmdb_api_key_here
-GEMINI_API_KEY=your_gemini_api_key_here
-```
-
-3. 
-Install dependencies and virtual environment on Mac/Linux:
-```
+# Mac/Linux
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-```
+python app.py
 
-Install dependencies and virtual environment on Windows:
-```
+# Windows
 python -m venv venv
 venv\Scripts\activate
 pip install -r requirements.txt
-```
-
-4.
-Run the application:
-```
 python app.py
 ```
 
-5. 
-Navigate to http://127.0.0.1:5000/ on your browser. Enjoy!
+Navigate to http://127.0.0.1:5000/ and enter your API keys when prompted.
 
-### Roadmap
+## Railway Deployment
 
-[x] Add manga and book API's  
-[x] Construct Gemini-powered "Vibe Search" with front-end toggle selection  
-[x] Complete seamless query logic for intuitive searching  
-[x] Better AI recapping with current progress (remove recap for books, only recaps for manga and tv shows)  
-[x] Search in library
+CineVault ships with Railway config out of the box. **No environment variables needed** — all API keys are provided by the user in their browser.
+
+### Steps
+
+1. Push this repo to GitHub.
+
+2. Create a new Railway project and connect the GitHub repo.
+
+3. In the Railway service settings, add a **Volume** mounted at `/data`. This persists your SQLite database across deploys.
+
+4. Set one environment variable in Railway:
+
+   | Variable | Value |
+   |----------|-------|
+   | `GEMINI_MODEL` | `gemini-2.0-flash-lite` (or your preferred model) |
+
+5. Deploy. Railway picks up `railway.json` and starts gunicorn automatically.
+
+6. Open the deployed URL — the key setup modal will appear on first visit.
+
+### What stays in Railway
+
+- Your SQLite database (in the `/data` volume)
+- `GEMINI_MODEL` env var (optional — defaults to `gemini-3.1-flash-lite`)
+
+### What stays in the browser
+
+- Gemini API key
+- TMDB API key
+
+## Roadmap
+
+- [x] Add manga and book APIs  
+- [x] Gemini-powered Vibe Search  
+- [x] Spoiler-aware AI chat  
+- [x] Browser-side key management  
+- [x] Railway deployment

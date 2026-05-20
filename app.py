@@ -5,8 +5,6 @@ import time
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import Flask, jsonify, Response, request, render_template
-from dotenv import load_dotenv
-from tmdbv3api import TMDb, Movie, TV
 from google import genai
 
 from db import (
@@ -19,17 +17,28 @@ from db import (
     get_all_memory,
 )
 
-load_dotenv()
-
 app = Flask(__name__)
 
-tmdb          = TMDb()
-tmdb.api_key  = os.getenv("TMDB_API_KEY")
-movie_api     = Movie()
-tv_api        = TV()
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
 
-gemini        = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-GEMINI_MODEL  = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
+
+def _get_tmdb_key() -> str | None:
+    key = request.headers.get('X-TMDB-Key', '').strip()
+    if not key:
+        key = request.args.get('tmdb_key', '').strip()
+    if not key:
+        data = request.get_json(silent=True) or {}
+        key = str(data.get('tmdb_key', '') or '').strip()
+    return key or None
+
+
+def _get_gemini_key() -> str | None:
+    data = request.get_json(silent=True) or {}
+    return str(data.get('gemini_key', '') or '').strip() or None
+
+
+def _make_gemini(api_key: str):
+    return genai.Client(api_key=api_key)
 
 init_db()
 
@@ -134,8 +143,8 @@ def _append_gemini_content(contents: list, role: str, text: str):
         contents.append({"role": role, "parts": [part]})
 
 
-def _iter_gemini_response_tokens(contents):
-    stream_fn = getattr(gemini.models, "generate_content_stream", None)
+def _iter_gemini_response_tokens(contents, gemini_client):
+    stream_fn = getattr(gemini_client.models, "generate_content_stream", None)
     if stream_fn:
         try:
             for chunk in stream_fn(model=GEMINI_MODEL, contents=contents):
@@ -145,14 +154,14 @@ def _iter_gemini_response_tokens(contents):
             return
         except TypeError:
             pass
-    resp = gemini.models.generate_content(model=GEMINI_MODEL, contents=contents)
+    resp = gemini_client.models.generate_content(model=GEMINI_MODEL, contents=contents)
     text = (getattr(resp, "text", "") or "").strip()
     if text:
         yield text
 
 
-def _generate_ai_content(prompt: str) -> str:
-    resp = gemini.models.generate_content(model=GEMINI_MODEL, contents=prompt)
+def _generate_ai_content(prompt: str, gemini_client) -> str:
+    resp = gemini_client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
     return resp.text.strip()
 
 
@@ -165,14 +174,14 @@ def index():
 # Search (TMDB, Books, Manga)
 # ═══════════════════════════════════════════════════
 
-def _fetch_tmdb_director(media_type: str, tmdb_id: int) -> str:
+def _fetch_tmdb_director(media_type: str, tmdb_id: int, api_key: str) -> str:
     try:
         if media_type == "movie":
-            url = f"https://api.themoviedb.org/3/movie/{tmdb_id}/credits?api_key={tmdb.api_key}"
+            url = f"https://api.themoviedb.org/3/movie/{tmdb_id}/credits?api_key={api_key}"
             data = requests.get(url, timeout=3).json()
             names = [c["name"] for c in data.get("crew", []) if c.get("job") == "Director"]
         else:
-            url = f"https://api.themoviedb.org/3/tv/{tmdb_id}?api_key={tmdb.api_key}"
+            url = f"https://api.themoviedb.org/3/tv/{tmdb_id}?api_key={api_key}"
             data = requests.get(url, timeout=3).json()
             names = [c["name"] for c in data.get("created_by", [])]
         return ", ".join(names[:3])
@@ -192,7 +201,10 @@ def fetch_item_director(item_id):
     tmdb_id = item.get("tmdb_id") or item.get("external_id")
     if not tmdb_id:
         return jsonify({"author": ""})
-    author = _fetch_tmdb_director(item["media_type"], int(tmdb_id))
+    tmdb_key = _get_tmdb_key()
+    if not tmdb_key:
+        return jsonify({"error": "TMDB API key required"}), 401
+    author = _fetch_tmdb_director(item["media_type"], int(tmdb_id), tmdb_key)
     if author:
         update_media_entry(item_id, author=author)
         _invalidate_media_cache(item_id)
@@ -210,9 +222,12 @@ def fetch_item_overview(item_id):
     tmdb_id = item.get("tmdb_id") or item.get("external_id")
     overview = ""
     if media_type in ("movie", "tv") and tmdb_id:
+        tmdb_key = _get_tmdb_key()
+        if not tmdb_key:
+            return jsonify({"error": "TMDB API key required"}), 401
         try:
             endpoint = "movie" if media_type == "movie" else "tv"
-            url = f"https://api.themoviedb.org/3/{endpoint}/{tmdb_id}?api_key={tmdb.api_key}"
+            url = f"https://api.themoviedb.org/3/{endpoint}/{tmdb_id}?api_key={tmdb_key}"
             data = requests.get(url, timeout=5).json()
             overview = data.get("overview", "") or ""
         except Exception as e:
@@ -230,40 +245,54 @@ def search():
     if not query:
         return jsonify([])
 
+    tmdb_key = _get_tmdb_key()
+    if not tmdb_key:
+        return jsonify({"error": "TMDB API key required"}), 401
+
     cache_key = f"{media_type}:{query.lower()}"
     if cache_key in search_cache:
         return jsonify(search_cache[cache_key])
 
     try:
         if media_type == "movie":
-            results = movie_api.search(query)
+            resp = requests.get(
+                "https://api.themoviedb.org/3/search/movie",
+                params={"api_key": tmdb_key, "query": query},
+                timeout=8,
+            )
+            resp.raise_for_status()
             items = [
                 {
-                    "tmdb_id":     r.id,
-                    "external_id": str(r.id),
-                    "title":       r.title,
-                    "year":        (getattr(r, "release_date", "") or "")[:4],
+                    "tmdb_id":     r["id"],
+                    "external_id": str(r["id"]),
+                    "title":       r.get("title", ""),
+                    "year":        (r.get("release_date", "") or "")[:4],
                     "media_type":  "movie",
-                    "poster_path": getattr(r, "poster_path", None),
-                    "overview":    getattr(r, "overview", None),
-                    "popularity":  getattr(r, "popularity", 0) or 0,
+                    "poster_path": r.get("poster_path"),
+                    "overview":    r.get("overview"),
+                    "popularity":  r.get("popularity", 0) or 0,
                 }
-                for r in results if hasattr(r, "id")
+                for r in resp.json().get("results", []) if r.get("id")
             ]
         else:
-            results = tv_api.search(query)
+            resp = requests.get(
+                "https://api.themoviedb.org/3/search/tv",
+                params={"api_key": tmdb_key, "query": query},
+                timeout=8,
+            )
+            resp.raise_for_status()
             items = [
                 {
-                    "tmdb_id":     r.id,
-                    "external_id": str(r.id),
-                    "title":       r.name,
-                    "year":        (getattr(r, "first_air_date", "") or "")[:4],
+                    "tmdb_id":     r["id"],
+                    "external_id": str(r["id"]),
+                    "title":       r.get("name", ""),
+                    "year":        (r.get("first_air_date", "") or "")[:4],
                     "media_type":  "tv",
-                    "poster_path": getattr(r, "poster_path", None),
-                    "overview":    getattr(r, "overview", None),
-                    "popularity":  getattr(r, "popularity", 0) or 0,
+                    "poster_path": r.get("poster_path"),
+                    "overview":    r.get("overview"),
+                    "popularity":  r.get("popularity", 0) or 0,
                 }
-                for r in results if hasattr(r, "id")
+                for r in resp.json().get("results", []) if r.get("id")
             ]
         items.sort(key=lambda x: x.get("popularity", 0), reverse=True)
     except Exception as e:
@@ -275,7 +304,7 @@ def search():
     # Fetch director/creator for each result in parallel
     if items:
         with ThreadPoolExecutor(max_workers=len(items)) as pool:
-            futs = {pool.submit(_fetch_tmdb_director, i["media_type"], i["tmdb_id"]): i for i in items}
+            futs = {pool.submit(_fetch_tmdb_director, i["media_type"], i["tmdb_id"], tmdb_key): i for i in items}
             for fut in as_completed(futs):
                 futs[fut]["author"] = fut.result()
 
@@ -539,8 +568,12 @@ def get_poster(media_type, item_id):
         except Exception:
             return "", 404
 
+    tmdb_key = _get_tmdb_key()
+    if not tmdb_key:
+        return "", 401
+
     endpoint = "movie" if media_type == "movie" else "tv"
-    meta_url = f"https://api.themoviedb.org/3/{endpoint}/{item_id}?api_key={tmdb.api_key}"
+    meta_url = f"https://api.themoviedb.org/3/{endpoint}/{item_id}?api_key={tmdb_key}"
     try:
         meta = requests.get(meta_url, timeout=5).json()
         path = meta.get("poster_path")
@@ -572,8 +605,11 @@ def tv_info(tmdb_id):
     key = str(tmdb_id)
     if key in tv_info_cache:
         return jsonify(tv_info_cache[key])
+    tmdb_key = _get_tmdb_key()
+    if not tmdb_key:
+        return jsonify({"error": "TMDB API key required"}), 401
     try:
-        url = f"https://api.themoviedb.org/3/tv/{tmdb_id}?api_key={tmdb.api_key}"
+        url = f"https://api.themoviedb.org/3/tv/{tmdb_id}?api_key={tmdb_key}"
         resp = requests.get(url, timeout=8)
         resp.raise_for_status()
         data = resp.json()
@@ -744,6 +780,11 @@ def vibe_search_types():
     if not query:
         return jsonify({"types": ["movie", "tv"]}), 400
 
+    gemini_key = _get_gemini_key()
+    if not gemini_key:
+        return jsonify({"error": "Gemini API key required"}), 401
+    gemini_client = _make_gemini(gemini_key)
+
     type_prompt = (
         f'The user is searching for: "{query}"\n'
         f'Available media types: movie, tv, book, manga\n'
@@ -767,7 +808,7 @@ def vibe_search_types():
     )
     suggested_types = ["movie", "tv"]
     try:
-        resp   = gemini.models.generate_content(model=GEMINI_MODEL, contents=type_prompt)
+        resp   = gemini_client.models.generate_content(model=GEMINI_MODEL, contents=type_prompt)
         raw    = re.sub(r"^```[a-z]*\n?", "", resp.text.strip()).rstrip("` \n")
         parsed = json.loads(raw)
         valid  = [t for t in parsed if t in ("movie", "tv", "book", "manga")]
@@ -833,7 +874,7 @@ def _vibe_prompt(query: str, types: list, exclude_titles: list, is_first: bool) 
     )
 
 
-def _enrich_one(rec: dict) -> dict:
+def _enrich_one(rec: dict, tmdb_key: str) -> dict:
     mt          = rec.get("media_type", "movie")
     title       = rec.get("title", "")
     year        = rec.get("year", "")
@@ -847,17 +888,21 @@ def _enrich_one(rec: dict) -> dict:
 
     if mt == "movie":
         try:
-            results = movie_api.search(title)
-            for r in results:
-                if not hasattr(r, "id"):
+            resp = requests.get(
+                "https://api.themoviedb.org/3/search/movie",
+                params={"api_key": tmdb_key, "query": title},
+                timeout=5,
+            )
+            for r in resp.json().get("results", []):
+                if not r.get("id"):
                     continue
-                ry = (r.release_date or "")[:4]
+                ry = (r.get("release_date", "") or "")[:4]
                 if year and ry and ry != year and tmdb_id:
                     continue
-                tmdb_id     = r.id
-                external_id = str(r.id)
-                poster_path = getattr(r, "poster_path", None)
-                overview    = getattr(r, "overview", None) or ""
+                tmdb_id     = r["id"]
+                external_id = str(r["id"])
+                poster_path = r.get("poster_path")
+                overview    = r.get("overview") or ""
                 if ry == year:
                     break
         except Exception as e:
@@ -865,17 +910,21 @@ def _enrich_one(rec: dict) -> dict:
 
     elif mt == "tv":
         try:
-            results = tv_api.search(title)
-            for r in results:
-                if not hasattr(r, "id"):
+            resp = requests.get(
+                "https://api.themoviedb.org/3/search/tv",
+                params={"api_key": tmdb_key, "query": title},
+                timeout=5,
+            )
+            for r in resp.json().get("results", []):
+                if not r.get("id"):
                     continue
-                ry = (r.first_air_date or "")[:4]
+                ry = (r.get("first_air_date", "") or "")[:4]
                 if year and ry and ry != year and tmdb_id:
                     continue
-                tmdb_id     = r.id
-                external_id = str(r.id)
-                poster_path = getattr(r, "poster_path", None)
-                overview    = getattr(r, "overview", None) or ""
+                tmdb_id     = r["id"]
+                external_id = str(r["id"])
+                poster_path = r.get("poster_path")
+                overview    = r.get("overview") or ""
                 if ry == year:
                     break
         except Exception as e:
@@ -948,9 +997,9 @@ def _enrich_one(rec: dict) -> dict:
     }
 
 
-def _enrich_results(recs: list) -> list:
+def _enrich_results(recs: list, tmdb_key: str) -> list:
     with ThreadPoolExecutor(max_workers=5) as pool:
-        futures = {pool.submit(_enrich_one, rec): i for i, rec in enumerate(recs)}
+        futures = {pool.submit(_enrich_one, rec, tmdb_key): i for i, rec in enumerate(recs)}
         ordered = [None] * len(recs)
         for future in as_completed(futures):
             ordered[futures[future]] = future.result()
@@ -966,17 +1015,25 @@ def vibe_search():
     if not query:
         return jsonify({"error": "No query provided"}), 400
 
+    gemini_key = _get_gemini_key()
+    if not gemini_key:
+        return jsonify({"error": "Gemini API key required"}), 401
+    tmdb_key = _get_tmdb_key()
+    if not tmdb_key:
+        return jsonify({"error": "TMDB API key required"}), 401
+    gemini_client = _make_gemini(gemini_key)
+
     is_first = not exclude_titles
     prompt   = _vibe_prompt(query, types, exclude_titles, is_first)
 
     try:
-        resp = gemini.models.generate_content(model=GEMINI_MODEL, contents=prompt)
+        resp = gemini_client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
         raw  = re.sub(r"^```[a-z]*\n?", "", resp.text.strip()).rstrip("` \n")
         recs = json.loads(raw)
     except Exception as e:
         return jsonify({"error": f"AI error: {e}"}), 500
 
-    return jsonify(_enrich_results(recs[:5]))
+    return jsonify(_enrich_results(recs[:5], tmdb_key))
 
 
 # ═══════════════════════════════════════════════════
@@ -1178,6 +1235,11 @@ def chat_message(chat_id):
     if not content:
         return jsonify({"error": "Empty message"}), 400
 
+    gemini_key = _get_gemini_key()
+    if not gemini_key:
+        return jsonify({"error": "Gemini API key required"}), 401
+    gemini_client = _make_gemini(gemini_key)
+
     chat = get_chat_by_id(chat_id)
     if not chat:
         return jsonify({"error": "Chat not found"}), 404
@@ -1237,7 +1299,7 @@ def chat_message(chat_id):
     def generate():
         full_raw = []
         try:
-            for token in _iter_gemini_response_tokens(gemini_contents):
+            for token in _iter_gemini_response_tokens(gemini_contents, gemini_client):
                 full_raw.append(token)
                 if not uses_structured:
                     # Plain media — stream tokens directly to the client
@@ -1392,6 +1454,11 @@ def ai_card():
     data     = request.json or {}
     media_id = data.get("media_id")
 
+    gemini_key = _get_gemini_key()
+    if not gemini_key:
+        return jsonify({"error": "Gemini API key required"}), 401
+    gemini_client = _make_gemini(gemini_key)
+
     media = cached_get_media(media_id)
     if not media:
         return jsonify({"error": "Media not found"}), 404
@@ -1405,7 +1472,7 @@ def ai_card():
 
     prompt = _ai_card_prompt(media)
     try:
-        content = _generate_ai_content(prompt)
+        content = _generate_ai_content(prompt, gemini_client)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -1417,6 +1484,11 @@ def ai_card():
 def ai_card_stream():
     data     = request.json or {}
     media_id = data.get("media_id")
+
+    gemini_key = _get_gemini_key()
+    if not gemini_key:
+        return jsonify({"error": "Gemini API key required"}), 401
+    gemini_client = _make_gemini(gemini_key)
 
     media = cached_get_media(media_id)
     if not media:
@@ -1438,7 +1510,7 @@ def ai_card_stream():
     def generate():
         full = []
         try:
-            for token in _iter_gemini_response_tokens([{"role": "user", "parts": [{"text": prompt}]}]):
+            for token in _iter_gemini_response_tokens([{"role": "user", "parts": [{"text": prompt}]}], gemini_client):
                 full.append(token)
                 yield f"data: {json.dumps({'token': token})}\n\n"
             content = "".join(full).strip()
@@ -1461,6 +1533,11 @@ def ask_ai():
 
     if not question:
         return jsonify({"error": "No question provided"}), 400
+
+    gemini_key = _get_gemini_key()
+    if not gemini_key:
+        return jsonify({"error": "Gemini API key required"}), 401
+    gemini_client = _make_gemini(gemini_key)
 
     media = cached_get_media(media_id)
     if not media:
@@ -1503,7 +1580,7 @@ def ask_ai():
         )
 
     try:
-        resp    = gemini.models.generate_content(model=GEMINI_MODEL, contents=prompt)
+        resp    = gemini_client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
         raw     = resp.text.strip()
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1519,7 +1596,7 @@ def ask_ai():
                 f'Give a short 2-4 word chat title for this question about "{title}": "{question}". '
                 f'Just the title, nothing else. No quotes.'
             )
-            name_resp = gemini.models.generate_content(model=GEMINI_MODEL, contents=name_prompt)
+            name_resp = gemini_client.models.generate_content(model=GEMINI_MODEL, contents=name_prompt)
             chat_name = name_resp.text.strip()[:60] or question[:40]
         except Exception:
             chat_name = question[:40]
@@ -1551,4 +1628,5 @@ def ask_ai():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, use_reloader=True)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(debug=True, use_reloader=True, host="0.0.0.0", port=port)

@@ -1341,6 +1341,157 @@ body[data-tab="chats"] .detail-body { display: none !important; }
 body[data-tab="watchlist"] .poster-card.selected { border-color: var(--blue);   box-shadow: 0 0 0 1px var(--blue),   0 12px 32px rgba(110,168,212,0.18); }
 body[data-tab="watching"]  .poster-card.selected { border-color: var(--green);  box-shadow: 0 0 0 1px var(--green),  0 12px 32px rgba(82,183,136,0.18); }
 body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); box-shadow: 0 0 0 1px var(--purple), 0 12px 32px rgba(167,139,250,0.18); }
+
+/* ── Key Modal ────────────────────────────────── */
+.key-modal-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.72);
+  backdrop-filter: blur(6px);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 9000;
+}
+.key-modal-backdrop.hidden { display: none; }
+.key-modal-box {
+  background: var(--card);
+  border: 1px solid var(--border-md);
+  border-radius: var(--radius-lg);
+  width: 760px; max-width: 96vw;
+  display: flex; gap: 0;
+  overflow: hidden;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.6);
+}
+.key-modal-left {
+  flex: 0 0 360px;
+  padding: 32px 28px;
+  display: flex; flex-direction: column; gap: 20px;
+  border-right: 1px solid var(--border);
+}
+.key-modal-right {
+  flex: 1;
+  padding: 32px 28px;
+  background: var(--surface);
+  display: flex; flex-direction: column; gap: 0;
+  overflow-y: auto;
+  min-height: 280px;
+}
+.key-modal-title {
+  font-family: 'Fraunces', serif;
+  font-size: 1.2rem; font-weight: 300;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+.key-modal-sub {
+  font-size: 12px; color: var(--muted);
+  line-height: 1.5;
+}
+.key-field { display: flex; flex-direction: column; gap: 6px; }
+.key-field label {
+  font-size: 12px; font-weight: 500;
+  color: var(--text-dim); letter-spacing: 0.03em;
+}
+.key-field input[type="password"],
+.key-field input[type="text"] {
+  background: var(--surface);
+  border: 1px solid var(--border-md);
+  border-radius: var(--radius);
+  color: var(--text); font-family: 'DM Sans', sans-serif;
+  font-size: 13px; padding: 9px 12px;
+  outline: none; width: 100%;
+  transition: border-color 0.15s;
+}
+.key-field input:focus { border-color: var(--accent); }
+.key-field-row { display: flex; align-items: center; justify-content: space-between; }
+.key-help-link {
+  font-size: 11px; color: var(--accent);
+  background: none; border: none; padding: 0;
+  cursor: pointer; text-decoration: underline;
+  font-family: 'DM Sans', sans-serif;
+}
+.key-help-link:hover { color: var(--accent-hover); }
+.key-modal-save {
+  background: var(--accent); color: #fff;
+  border: none; border-radius: var(--radius);
+  padding: 10px 20px; font-size: 13px;
+  font-family: 'DM Sans', sans-serif; font-weight: 500;
+  cursor: pointer; transition: background 0.15s; width: 100%;
+  margin-top: 4px;
+}
+.key-modal-save:hover { background: var(--accent-hover); }
+.key-modal-save:disabled { opacity: 0.45; cursor: default; }
+.key-help-panel { display: none; flex-direction: column; gap: 16px; }
+.key-help-panel.visible { display: flex; }
+.key-help-header {
+  font-size: 12px; font-weight: 500; color: var(--text-dim);
+  letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 4px;
+}
+.key-help-steps { display: flex; flex-direction: column; gap: 10px; }
+.key-help-step { display: flex; gap: 10px; align-items: flex-start; }
+.key-help-num {
+  flex-shrink: 0; width: 20px; height: 20px;
+  border-radius: 50%; background: var(--accent-dim);
+  color: var(--accent); font-size: 11px; font-weight: 600;
+  display: flex; align-items: center; justify-content: center;
+}
+.key-help-text { font-size: 12px; color: var(--text-dim); line-height: 1.55; }
+.key-help-text a { color: var(--accent); text-decoration: none; }
+.key-help-text a:hover { text-decoration: underline; }
+.key-help-empty {
+  color: var(--muted); font-size: 12px; margin: auto 0;
+  text-align: center; opacity: 0.5;
+}
+
+/* ── Key icon button ──────────────────────────── */
+.key-btn {
+  width: 32px; height: 32px; border-radius: var(--radius);
+  border: 1px solid transparent; background: none;
+  color: var(--muted); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s; flex-shrink: 0;
+  margin-left: 4px;
+}
+.key-btn:hover { color: var(--text); background: rgba(255,255,255,0.05); border-color: var(--border); }
+
+/* ── Key reset confirm dialog ─────────────────── */
+.key-confirm-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.55);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 9100;
+}
+.key-confirm-backdrop.hidden { display: none; }
+.key-confirm-box {
+  background: var(--card);
+  border: 1px solid var(--border-md);
+  border-radius: var(--radius-lg);
+  padding: 24px 24px 20px;
+  width: 320px; max-width: 90vw;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+}
+.key-confirm-title {
+  font-size: 14px; font-weight: 500;
+  color: var(--text); margin-bottom: 8px;
+}
+.key-confirm-body {
+  font-size: 12px; color: var(--muted);
+  line-height: 1.5; margin-bottom: 18px;
+}
+.key-confirm-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.key-confirm-cancel {
+  background: none; border: 1px solid var(--border-md);
+  border-radius: var(--radius); padding: 7px 14px;
+  color: var(--muted); font-size: 12px; cursor: pointer;
+  font-family: 'DM Sans', sans-serif;
+  transition: all 0.12s;
+}
+.key-confirm-cancel:hover { color: var(--text); border-color: var(--border-md); background: rgba(255,255,255,0.04); }
+.key-confirm-delete {
+  background: var(--red); border: none;
+  border-radius: var(--radius); padding: 7px 14px;
+  color: #fff; font-size: 12px; cursor: pointer;
+  font-family: 'DM Sans', sans-serif; font-weight: 500;
+  transition: background 0.12s;
+}
+.key-confirm-delete:hover { background: #c94040; }
 </style>
 </head>
 <body>
@@ -1399,6 +1550,13 @@ body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); 
       <button class="tab active" data-tab="finished" onclick="switchTab('finished')">Finished</button>
       <button class="tab" data-tab="chats"     onclick="switchTab('chats')">Chats</button>
     </nav>
+    <button class="key-btn" onclick="openKeyConfirm()" title="Manage API keys">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="7.5" cy="15.5" r="5.5"/>
+        <path d="M21 2l-9.6 9.6"/>
+        <path d="M15.5 7.5l3 3L22 7l-3-3"/>
+      </svg>
+    </button>
   </header>
 
   <aside class="detail-panel" id="detailPanel">
@@ -1494,10 +1652,138 @@ body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); 
   </div>
 </div>
 
+<!-- ── Key Modal ──────────────────────────────── -->
+<div class="key-modal-backdrop hidden" id="keyModalBackdrop">
+  <div class="key-modal-box">
+    <div class="key-modal-left">
+      <div>
+        <div class="key-modal-title">Welcome to <em style="color:var(--accent);font-style:italic">CineVault</em></div>
+        <div class="key-modal-sub">Enter your API keys to get started. Keys are stored only in your browser.</div>
+      </div>
+      <div class="key-field">
+        <div class="key-field-row">
+          <label>Gemini API Key</label>
+          <button class="key-help-link" onclick="showKeyHelp('gemini')">How do I get this?</button>
+        </div>
+        <input type="password" id="keyInputGemini" placeholder="AIza..." autocomplete="off" oninput="validateKeyForm()">
+      </div>
+      <div class="key-field">
+        <div class="key-field-row">
+          <label>TMDB API Key</label>
+          <button class="key-help-link" onclick="showKeyHelp('tmdb')">How do I get this?</button>
+        </div>
+        <input type="password" id="keyInputTmdb" placeholder="your_tmdb_key" autocomplete="off" oninput="validateKeyForm()">
+      </div>
+      <button class="key-modal-save" id="keyModalSave" onclick="saveKeysFromModal()" disabled>Save Keys</button>
+    </div>
+    <div class="key-modal-right" id="keyHelpPanel">
+      <div class="key-help-empty" id="keyHelpEmpty">Click "How do I get this?" next to a key field.</div>
+      <div class="key-help-panel" id="keyHelpGemini">
+        <div class="key-help-header">Getting a Gemini API Key</div>
+        <div class="key-help-steps">
+          <div class="key-help-step"><div class="key-help-num">1</div><div class="key-help-text">Go to <a href="https://aistudio.google.com/apikey" target="_blank">Google AI Studio → API Keys</a></div></div>
+          <div class="key-help-step"><div class="key-help-num">2</div><div class="key-help-text">Click <strong>Create API key</strong> and select a project (or create a new one)</div></div>
+          <div class="key-help-step"><div class="key-help-num">3</div><div class="key-help-text">Copy the key that starts with <code style="background:var(--surface);padding:1px 5px;border-radius:4px">AIza</code> and paste it here</div></div>
+          <div class="key-help-step"><div class="key-help-num">4</div><div class="key-help-text">Free tier is available — no billing required for light use</div></div>
+        </div>
+      </div>
+      <div class="key-help-panel" id="keyHelpTmdb">
+        <div class="key-help-header">Getting a TMDB API Key</div>
+        <div class="key-help-steps">
+          <div class="key-help-step"><div class="key-help-num">1</div><div class="key-help-text">Create a free account at <a href="https://www.themoviedb.org/signup" target="_blank">themoviedb.org</a></div></div>
+          <div class="key-help-step"><div class="key-help-num">2</div><div class="key-help-text">Go to <a href="https://www.themoviedb.org/settings/api" target="_blank">Settings → API</a></div></div>
+          <div class="key-help-step"><div class="key-help-num">3</div><div class="key-help-text">Click <strong>Request an API key</strong> and choose <em>Developer</em></div></div>
+          <div class="key-help-step"><div class="key-help-num">4</div><div class="key-help-text">Copy the <strong>API Key (v3 auth)</strong> — it's a 32-character hex string</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Key Reset Confirm ───────────────────────── -->
+<div class="key-confirm-backdrop hidden" id="keyConfirmBackdrop">
+  <div class="key-confirm-box">
+    <div class="key-confirm-title">Reset API keys?</div>
+    <div class="key-confirm-body">This will clear your saved Gemini and TMDB keys and re-open the setup screen.</div>
+    <div class="key-confirm-actions">
+      <button class="key-confirm-cancel" onclick="closeKeyConfirm()">Cancel</button>
+      <button class="key-confirm-delete" onclick="resetKeys()">Delete</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 <div class="sm-text-tooltip" id="smTextTooltip"></div>
 
 <script>
+// ─────────────────────────────────────────────
+// API Key management
+// ─────────────────────────────────────────────
+function getKeys() {
+  return {
+    gemini_key: localStorage.getItem('gemini_key') || '',
+    tmdb_key:   localStorage.getItem('tmdb_key')   || '',
+  };
+}
+
+function _keysSet() {
+  const { gemini_key, tmdb_key } = getKeys();
+  return gemini_key.trim().length > 0 && tmdb_key.trim().length > 0;
+}
+
+function showKeyModal() {
+  const { gemini_key, tmdb_key } = getKeys();
+  document.getElementById('keyInputGemini').value = gemini_key;
+  document.getElementById('keyInputTmdb').value   = tmdb_key;
+  validateKeyForm();
+  document.getElementById('keyModalBackdrop').classList.remove('hidden');
+}
+
+function hideKeyModal() {
+  document.getElementById('keyModalBackdrop').classList.add('hidden');
+}
+
+function showKeyHelp(which) {
+  document.getElementById('keyHelpEmpty').style.display  = 'none';
+  document.getElementById('keyHelpGemini').classList.toggle('visible', which === 'gemini');
+  document.getElementById('keyHelpTmdb').classList.toggle('visible',   which === 'tmdb');
+}
+
+function validateKeyForm() {
+  const g = document.getElementById('keyInputGemini').value.trim();
+  const t = document.getElementById('keyInputTmdb').value.trim();
+  document.getElementById('keyModalSave').disabled = !(g && t);
+}
+
+function saveKeysFromModal() {
+  const g = document.getElementById('keyInputGemini').value.trim();
+  const t = document.getElementById('keyInputTmdb').value.trim();
+  if (!g || !t) return;
+  localStorage.setItem('gemini_key', g);
+  localStorage.setItem('tmdb_key',   t);
+  hideKeyModal();
+}
+
+function openKeyConfirm() {
+  document.getElementById('keyConfirmBackdrop').classList.remove('hidden');
+}
+
+function closeKeyConfirm() {
+  document.getElementById('keyConfirmBackdrop').classList.add('hidden');
+}
+
+function resetKeys() {
+  localStorage.removeItem('gemini_key');
+  localStorage.removeItem('tmdb_key');
+  closeKeyConfirm();
+  showKeyModal();
+}
+
+// Check on load — show modal if keys missing
+document.addEventListener('DOMContentLoaded', () => {
+  if (!_keysSet()) showKeyModal();
+});
+
 // ─────────────────────────────────────────────
 // State
 // ─────────────────────────────────────────────
@@ -1630,12 +1916,13 @@ function rebuildLibrarySet() {
 async function apiPost(path, body, timeoutMs = 60000) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  const keys = getKeys();
   let res;
   try {
     res = await fetch(path, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      body: JSON.stringify({ ...body, gemini_key: keys.gemini_key, tmdb_key: keys.tmdb_key }),
       signal: controller.signal,
     });
   } finally {
@@ -1645,13 +1932,19 @@ async function apiPost(path, body, timeoutMs = 60000) {
   return res.json();
 }
 
+function tmdbHeaders() {
+  return { 'X-TMDB-Key': getKeys().tmdb_key };
+}
+
 function posterUrl(item) {
   if (item.media_type === 'book' || item.media_type === 'manga') {
     const ext = item.external_id || '';
     return ext ? `/api/poster/${item.media_type}/${encodeURIComponent(ext)}` : BROKEN_POSTER_FULL;
   }
   const id = item.tmdb_id || item.external_id || '';
-  return `/api/poster/${item.media_type}/${id}`;
+  const key = getKeys().tmdb_key;
+  const qs  = key ? `?tmdb_key=${encodeURIComponent(key)}` : '';
+  return `/api/poster/${item.media_type}/${id}${qs}`;
 }
 
 // ─────────────────────────────────────────────
@@ -1940,7 +2233,7 @@ async function toggleDescription(itemId) {
   btn.textContent = 'Loading…';
   btn.disabled = true;
   try {
-    const data = await fetch(`/api/item/${itemId}/overview`).then(r => r.json());
+    const data = await fetch(`/api/item/${itemId}/overview`, { headers: tmdbHeaders() }).then(r => r.json());
     const ov = data.overview || '';
     if (item) item.overview = ov;
     if (ov) {
@@ -2145,7 +2438,7 @@ function renderDetail(item) {
 
   // Lazy-fetch director/creator for movie/TV items that don't have one yet
   if (!item.author && (item.media_type === 'movie' || item.media_type === 'tv')) {
-    fetch(`/api/item/${item.id}/fetch_director`)
+    fetch(`/api/item/${item.id}/fetch_director`, { headers: tmdbHeaders() })
       .then(r => r.json())
       .then(data => {
         if (!data.author) return;
@@ -2206,7 +2499,7 @@ async function editTVProgress(mediaId, chatId) {
   const tmdbId = item.tmdb_id || item.external_id;
   if (tmdbId && !tvInfoCache[String(tmdbId)]) {
     try {
-      const data = await fetch(`/api/tv-info/${tmdbId}`).then(r => r.json());
+      const data = await fetch(`/api/tv-info/${tmdbId}`, { headers: tmdbHeaders() }).then(r => r.json());
       if (data && !data.error) tvInfoCache[String(tmdbId)] = data;
     } catch { /* ignore */ }
   }
@@ -2406,7 +2699,7 @@ async function loadTVConstraints(mediaId, tmdbId) {
   const cacheKey = String(tmdbId);
   if (!tvInfoCache[cacheKey]) {
     try {
-      const data = await fetch(`/api/tv-info/${tmdbId}`).then(r => r.json());
+      const data = await fetch(`/api/tv-info/${tmdbId}`, { headers: tmdbHeaders() }).then(r => r.json());
       if (data && !data.error) tvInfoCache[cacheKey] = data;
     } catch { return; }
   }
@@ -2575,7 +2868,7 @@ async function loadAICard(item) {
     const response = await fetch('/api/ai-card/stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ media_id: item.id }),
+      body: JSON.stringify({ media_id: item.id, ...getKeys() }),
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
@@ -3427,7 +3720,7 @@ async function sendChatMessage(chatId) {
     const response = await fetch(`/api/chats/${chatId}/message`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content }),
+      body: JSON.stringify({ content, ...getKeys() }),
     });
     if (!response.ok) throw new Error('Network response was not ok');
     const reader = response.body.getReader();
@@ -3729,9 +4022,10 @@ async function showDropdownSuggestions(q) {
   const lower          = q.toLowerCase();
   const libraryMatches = allItems.filter(i => i.title.toLowerCase().includes(lower)).slice(0, 4);
   const dd             = document.getElementById('searchDropdown');
+  const _ddh = { headers: tmdbHeaders() };
   const [movieRes, tvRes, bookRes, mangaRes] = await Promise.all([
-    fetch(`/api/search?q=${encodeURIComponent(q)}&type=movie`).then(r => r.json()).catch(() => []),
-    fetch(`/api/search?q=${encodeURIComponent(q)}&type=tv`).then(r => r.json()).catch(() => []),
+    fetch(`/api/search?q=${encodeURIComponent(q)}&type=movie`, _ddh).then(r => r.json()).catch(() => []),
+    fetch(`/api/search?q=${encodeURIComponent(q)}&type=tv`, _ddh).then(r => r.json()).catch(() => []),
     fetch(`/api/search/books?q=${encodeURIComponent(q)}`).then(r => r.json()).catch(() => []),
     fetch(`/api/search/manga?q=${encodeURIComponent(q)}`).then(r => r.json()).catch(() => []),
   ]);
@@ -3896,11 +4190,12 @@ async function runModalSearch(q) {
         return;
     }
 
+    const _th = { headers: tmdbHeaders() };
     const fetches = [
-      typesToSearch.includes('movie') ? fetch(`/api/search?q=${encodeURIComponent(q)}&type=movie`).then(r=>r.json()).catch(()=>[]) : Promise.resolve([]),
-      typesToSearch.includes('tv')    ? fetch(`/api/search?q=${encodeURIComponent(q)}&type=tv`).then(r=>r.json()).catch(()=>[])    : Promise.resolve([]),
-      typesToSearch.includes('book')  ? fetch(`/api/search/books?q=${encodeURIComponent(q)}`).then(r=>r.json()).catch(()=>[])      : Promise.resolve([]),
-      typesToSearch.includes('manga') ? fetch(`/api/search/manga?q=${encodeURIComponent(q)}`).then(r=>r.json()).catch(()=>[])      : Promise.resolve([]),
+      typesToSearch.includes('movie') ? fetch(`/api/search?q=${encodeURIComponent(q)}&type=movie`, _th).then(r=>r.json()).catch(()=>[]) : Promise.resolve([]),
+      typesToSearch.includes('tv')    ? fetch(`/api/search?q=${encodeURIComponent(q)}&type=tv`, _th).then(r=>r.json()).catch(()=>[])    : Promise.resolve([]),
+      typesToSearch.includes('book')  ? fetch(`/api/search/books?q=${encodeURIComponent(q)}`).then(r=>r.json()).catch(()=>[])            : Promise.resolve([]),
+      typesToSearch.includes('manga') ? fetch(`/api/search/manga?q=${encodeURIComponent(q)}`).then(r=>r.json()).catch(()=>[])            : Promise.resolve([]),
     ];
 
     const [movieData, tvData, bookData, mangaData] = await Promise.all(fetches);

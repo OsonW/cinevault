@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem c:\\\\Users\\\\osonw\\\\Documents\\\\github-workspace\\\\cinema-tracker -Exclude venv)",
+      "Bash(Select-Object Name, PSIsContainer)",
+      "PowerShell(Get-ChildItem c:\\\\Users\\\\osonw\\\\Documents\\\\github-workspace\\\\cinema-tracker | Where-Object { $_.Name -ne 'venv' } | Select-Object Name, PSIsContainer)"
+    ]
+  }
+}

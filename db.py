@@ -1,7 +1,9 @@
+import os
 import sqlite3
 from datetime import datetime
 
-DB_NAME = "movie_tracker.db"
+_vol = os.environ.get("RAILWAY_VOLUME_MOUNT_PATH", "")
+DB_NAME = os.path.join(_vol, "movie_tracker.db") if _vol else "movie_tracker.db"
 
 
 def get_conn():

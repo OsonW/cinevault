@@ -1,5 +1,4 @@
 flask
 requests
-python-dotenv
 google-genai
-tmdbv3api
+gunicorn
