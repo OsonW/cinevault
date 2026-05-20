@@ -2,6 +2,7 @@ import os
 import re
 import json
 import time
+import threading
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import Flask, jsonify, Response, request, render_template, g, redirect, url_for
@@ -9,7 +10,7 @@ from flask_login import login_required, current_user
 from google import genai
 
 from db import (
-    get_user_db_path, init_user_db,
+    get_user_db_path, init_user_db, get_conn,
     get_all_media, get_media_by_id, get_media_by_external_id,
     add_media_entry, update_media_entry, delete_media_entry,
     get_all_chats, get_chats_by_media_id, get_chat_by_id, get_chat_messages,
@@ -86,6 +87,11 @@ def setup_request():
         if uid not in _initialized_users:
             init_user_db(uid)
             _initialized_users.add(uid)
+            threading.Thread(
+                target=_backfill_manga_covers,
+                args=(g.user_db_path,),
+                daemon=True,
+            ).start()
 
     # All /api/* routes require authentication
     if request.path.startswith("/api/") and not current_user.is_authenticated:
@@ -182,6 +188,35 @@ def _fetch_mangadex_cover_url(manga_id: str) -> str:
             cover_file = rel.get("attributes", {}).get("fileName", "")
             return _mangadex_cover_url(manga_id, cover_file)
     return ""
+
+
+def _backfill_manga_covers(db_path: str) -> None:
+    """Populate cover_url for manga rows missing one. Runs once per user per server start."""
+    try:
+        with get_conn(db_path) as conn:
+            rows = conn.execute(
+                "SELECT id, external_id FROM media "
+                "WHERE media_type = 'manga' "
+                "AND (cover_url IS NULL OR cover_url = '') "
+                "AND external_id IS NOT NULL"
+            ).fetchall()
+        if not rows:
+            return
+        print(f"Backfilling cover_url for {len(rows)} manga in {db_path}")
+        for row in rows:
+            try:
+                cover_url = _fetch_mangadex_cover_url(row["external_id"])
+                if cover_url:
+                    with get_conn(db_path) as conn:
+                        conn.execute(
+                            "UPDATE media SET cover_url = ? WHERE id = ?",
+                            (cover_url, row["id"]),
+                        )
+                time.sleep(0.25)  # stay under MangaDex 5 req/sec limit
+            except Exception as e:
+                print(f"Cover backfill error for manga {row['external_id']}: {e}")
+    except Exception as e:
+        print(f"Manga cover backfill failed for {db_path}: {e}")
 
 
 def _append_gemini_content(contents: list, role: str, text: str):
