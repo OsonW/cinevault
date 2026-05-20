@@ -1352,6 +1352,15 @@ body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); 
   z-index: 9000;
 }
 .key-modal-backdrop.hidden { display: none; }
+/* Mandatory first-time entry: solid bg, no blur (matches login page) */
+.key-modal-backdrop.solid {
+  background: var(--bg);
+  backdrop-filter: none;
+}
+.key-modal-title em {
+  color: var(--accent);
+  font-style: italic;
+}
 .key-modal-box {
   background: var(--card);
   border: 1px solid var(--border-md);
@@ -1419,6 +1428,11 @@ body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); 
 }
 .key-modal-save:hover { background: var(--accent-hover); }
 .key-modal-save:disabled { opacity: 0.45; cursor: default; }
+.key-modal-actions {
+  display: flex; gap: 8px; align-items: center; margin-top: 4px;
+}
+.key-modal-actions .key-modal-save { flex: 1; margin-top: 0; }
+.key-modal-actions .key-confirm-cancel { padding: 10px 16px; }
 .key-help-panel { display: none; flex-direction: column; gap: 16px; }
 .key-help-panel.visible { display: flex; }
 .key-help-header {
@@ -1551,11 +1565,18 @@ body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); 
       <button class="tab active" data-tab="finished" onclick="switchTab('finished')">Finished</button>
       <button class="tab" data-tab="chats"     onclick="switchTab('chats')">Chats</button>
     </nav>
-    <button class="key-btn" onclick="openKeyConfirm()" title="Manage API keys">
+    <button class="key-btn" onclick="openKeyUpdate()" title="Update API keys">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="7.5" cy="15.5" r="5.5"/>
         <path d="M21 2l-9.6 9.6"/>
         <path d="M15.5 7.5l3 3L22 7l-3-3"/>
+      </svg>
+    </button>
+    <button class="key-btn" onclick="openLogoutConfirm()" title="Log out">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+        <polyline points="16 17 21 12 16 7"/>
+        <line x1="21" y1="12" x2="9" y2="12"/>
       </svg>
     </button>
   </header>
@@ -1658,8 +1679,8 @@ body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); 
   <div class="key-modal-box">
     <div class="key-modal-left">
       <div>
-        <div class="key-modal-title">Welcome to <em style="color:var(--accent);font-style:italic">CineVault</em></div>
-        <div class="key-modal-sub">Enter your API keys to get started. Keys are stored only in your browser.</div>
+        <div class="key-modal-title" id="keyModalTitle">Cine<em>Vault</em></div>
+        <div class="key-modal-sub" id="keyModalSub">Enter your API keys to get started.</div>
       </div>
       <div class="key-field">
         <div class="key-field-row">
@@ -1675,7 +1696,10 @@ body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); 
         </div>
         <input type="password" id="keyInputTmdb" placeholder="TMDB Key..." autocomplete="off" oninput="validateKeyForm()">
       </div>
-      <button class="key-modal-save" id="keyModalSave" onclick="saveKeysFromModal()" disabled>Save Keys</button>
+      <div class="key-modal-actions">
+        <button class="key-confirm-cancel" id="keyModalCancel" onclick="closeKeyModal()" style="display:none">Cancel</button>
+        <button class="key-modal-save" id="keyModalSave" onclick="saveKeysFromModal()" disabled>Save Keys</button>
+      </div>
     </div>
     <div class="key-modal-right" id="keyHelpPanel">
       <div class="key-help-empty" id="keyHelpEmpty">Click "How do I get this?" next to a key field.</div>
@@ -1701,14 +1725,14 @@ body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); 
   </div>
 </div>
 
-<!-- ── Key Reset Confirm ───────────────────────── -->
-<div class="key-confirm-backdrop hidden" id="keyConfirmBackdrop">
+<!-- ── Logout Confirm ──────────────────────────── -->
+<div class="key-confirm-backdrop hidden" id="logoutConfirmBackdrop">
   <div class="key-confirm-box">
-    <div class="key-confirm-title">Reset API keys?</div>
-    <div class="key-confirm-body">This will clear your saved Gemini and TMDB keys and re-open the setup screen.</div>
+    <div class="key-confirm-title">Log out of CineVault?</div>
+    <div class="key-confirm-body">You'll need to sign in again to access your library.</div>
     <div class="key-confirm-actions">
-      <button class="key-confirm-cancel" onclick="closeKeyConfirm()">Cancel</button>
-      <button class="key-confirm-delete" onclick="resetKeys()">Delete</button>
+      <button class="key-confirm-cancel" onclick="closeLogoutConfirm()">Cancel</button>
+      <button class="key-confirm-delete" onclick="doLogout()">Log out</button>
     </div>
   </div>
 </div>
@@ -1718,29 +1742,53 @@ body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); 
 
 <script>
 // ─────────────────────────────────────────────
-// API Key management
+// API Key management (server-backed, per-account)
 // ─────────────────────────────────────────────
-function getKeys() {
-  return {
-    gemini_key: localStorage.getItem('gemini_key') || '',
-    tmdb_key:   localStorage.getItem('tmdb_key')   || '',
-  };
+let _cachedKeys = { gemini_key: '', tmdb_key: '', has_keys: false };
+let _keyModalMode = 'entry';  // 'entry' = mandatory first-time, 'update' = optional
+
+// Kept for backwards compat with older call sites — keys now live server-side
+// and are looked up from the authenticated session, so request payloads can
+// safely omit them.
+function getKeys() { return { gemini_key: '', tmdb_key: '' }; }
+
+async function refreshKeys() {
+  try {
+    const res = await fetch('/auth/keys');
+    if (res.ok) _cachedKeys = await res.json();
+  } catch {}
+  return _cachedKeys;
 }
 
-function _keysSet() {
-  const { gemini_key, tmdb_key } = getKeys();
-  return gemini_key.trim().length > 0 && tmdb_key.trim().length > 0;
-}
+function showKeyModal(mode) {
+  _keyModalMode = mode || 'entry';
+  const backdrop  = document.getElementById('keyModalBackdrop');
+  const cancelBtn = document.getElementById('keyModalCancel');
+  const saveBtn   = document.getElementById('keyModalSave');
+  const sub       = document.getElementById('keyModalSub');
 
-function showKeyModal() {
-  const { gemini_key, tmdb_key } = getKeys();
-  document.getElementById('keyInputGemini').value = gemini_key;
-  document.getElementById('keyInputTmdb').value   = tmdb_key;
+  if (_keyModalMode === 'update') {
+    backdrop.classList.remove('solid');         // blurred backdrop for updates
+    cancelBtn.style.display = '';
+    saveBtn.textContent = 'Update';
+    sub.textContent = 'Update your API keys.';
+    document.getElementById('keyInputGemini').value = _cachedKeys.gemini_key || '';
+    document.getElementById('keyInputTmdb').value   = _cachedKeys.tmdb_key   || '';
+  } else {
+    backdrop.classList.add('solid');            // solid backdrop for mandatory entry
+    cancelBtn.style.display = 'none';
+    saveBtn.textContent = 'Save Keys';
+    sub.textContent = 'Enter your API keys to get started.';
+    document.getElementById('keyInputGemini').value = '';
+    document.getElementById('keyInputTmdb').value   = '';
+  }
   validateKeyForm();
-  document.getElementById('keyModalBackdrop').classList.remove('hidden');
+  backdrop.classList.remove('hidden');
 }
 
-function hideKeyModal() {
+function closeKeyModal() {
+  // Only allow closing in update mode — entry mode is mandatory.
+  if (_keyModalMode !== 'update') return;
   document.getElementById('keyModalBackdrop').classList.add('hidden');
 }
 
@@ -1756,33 +1804,63 @@ function validateKeyForm() {
   document.getElementById('keyModalSave').disabled = !(g && t);
 }
 
-function saveKeysFromModal() {
+async function saveKeysFromModal() {
   const g = document.getElementById('keyInputGemini').value.trim();
   const t = document.getElementById('keyInputTmdb').value.trim();
   if (!g || !t) return;
-  localStorage.setItem('gemini_key', g);
-  localStorage.setItem('tmdb_key',   t);
-  hideKeyModal();
+
+  const saveBtn   = document.getElementById('keyModalSave');
+  const cancelBtn = document.getElementById('keyModalCancel');
+  const origLabel = saveBtn.textContent;
+  saveBtn.disabled = true;
+  cancelBtn.disabled = true;
+  saveBtn.textContent = 'Validating…';
+
+  let ok = false;
+  try {
+    const res = await fetch('/auth/keys', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ gemini_key: g, tmdb_key: t }),
+    });
+    ok = res.ok;
+  } catch {}
+
+  if (ok) {
+    _cachedKeys = { has_keys: true, gemini_key: g, tmdb_key: t };
+    document.getElementById('keyModalBackdrop').classList.add('hidden');
+    showToast(_keyModalMode === 'update' ? 'Keys updated.' : 'Keys saved.');
+  } else {
+    showToast('Key update unsuccessful — keys remain unchanged.');
+  }
+
+  saveBtn.textContent = origLabel;
+  cancelBtn.disabled = false;
+  validateKeyForm();
 }
 
-function openKeyConfirm() {
-  document.getElementById('keyConfirmBackdrop').classList.remove('hidden');
+async function openKeyUpdate() {
+  await refreshKeys();
+  showKeyModal('update');
 }
 
-function closeKeyConfirm() {
-  document.getElementById('keyConfirmBackdrop').classList.add('hidden');
+// ─────────────────────────────────────────────
+// Logout
+// ─────────────────────────────────────────────
+function openLogoutConfirm() {
+  document.getElementById('logoutConfirmBackdrop').classList.remove('hidden');
+}
+function closeLogoutConfirm() {
+  document.getElementById('logoutConfirmBackdrop').classList.add('hidden');
+}
+function doLogout() {
+  window.location.href = '/auth/logout';
 }
 
-function resetKeys() {
-  localStorage.removeItem('gemini_key');
-  localStorage.removeItem('tmdb_key');
-  closeKeyConfirm();
-  showKeyModal();
-}
-
-// Check on load — show modal if keys missing
-document.addEventListener('DOMContentLoaded', () => {
-  if (!_keysSet()) showKeyModal();
+// On load: fetch key status; if missing, force the mandatory entry modal.
+document.addEventListener('DOMContentLoaded', async () => {
+  await refreshKeys();
+  if (!_cachedKeys.has_keys) showKeyModal('entry');
 });
 
 // ─────────────────────────────────────────────

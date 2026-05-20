@@ -1,7 +1,12 @@
+import requests
 from flask import Blueprint, request, jsonify, redirect, url_for, render_template
-from flask_login import LoginManager, UserMixin, login_user, logout_user
+from flask_login import LoginManager, UserMixin, login_user, logout_user, current_user, login_required
+from google import genai
 
-from users_db import get_user_by_id, create_user, verify_password
+from users_db import (
+    get_user_by_id, create_user, verify_password,
+    get_user_keys, set_user_keys,
+)
 
 auth_bp = Blueprint("auth", __name__)
 login_manager = LoginManager()
@@ -60,3 +65,52 @@ def login():
 def logout():
     logout_user()
     return redirect(url_for("auth.login_page"))
+
+
+def _validate_tmdb_key(key: str) -> bool:
+    try:
+        resp = requests.get(
+            "https://api.themoviedb.org/3/authentication",
+            params={"api_key": key},
+            timeout=6,
+        )
+        return resp.status_code == 200
+    except Exception:
+        return False
+
+
+def _validate_gemini_key(key: str) -> bool:
+    try:
+        client = genai.Client(api_key=key)
+        models_iter = client.models.list()
+        next(iter(models_iter), None)
+        return True
+    except Exception:
+        return False
+
+
+@auth_bp.route("/auth/keys", methods=["GET"])
+@login_required
+def get_keys():
+    keys = get_user_keys(int(current_user.id))
+    return jsonify({
+        "has_keys":   bool(keys["gemini_key"] and keys["tmdb_key"]),
+        "gemini_key": keys["gemini_key"],
+        "tmdb_key":   keys["tmdb_key"],
+    })
+
+
+@auth_bp.route("/auth/keys", methods=["POST"])
+@login_required
+def save_keys():
+    data       = request.json or {}
+    gemini_key = (data.get("gemini_key") or "").strip()
+    tmdb_key   = (data.get("tmdb_key")   or "").strip()
+    if not gemini_key or not tmdb_key:
+        return jsonify({"error": "Both keys required"}), 400
+    if not _validate_tmdb_key(tmdb_key):
+        return jsonify({"error": "invalid_keys", "which": "tmdb"}), 400
+    if not _validate_gemini_key(gemini_key):
+        return jsonify({"error": "invalid_keys", "which": "gemini"}), 400
+    set_user_keys(int(current_user.id), gemini_key, tmdb_key)
+    return jsonify({"status": "ok"})

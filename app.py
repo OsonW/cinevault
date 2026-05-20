@@ -19,7 +19,7 @@ from db import (
     get_all_memory,
 )
 from auth import auth_bp, login_manager
-from users_db import init_users_db
+from users_db import init_users_db, get_user_keys
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-in-production")
@@ -32,18 +32,19 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
 
 
 def _get_tmdb_key() -> str | None:
-    key = request.headers.get('X-TMDB-Key', '').strip()
-    if not key:
-        key = request.args.get('tmdb_key', '').strip()
-    if not key:
-        data = request.get_json(silent=True) or {}
-        key = str(data.get('tmdb_key', '') or '').strip()
-    return key or None
+    if current_user.is_authenticated:
+        key = get_user_keys(int(current_user.id)).get("tmdb_key", "").strip()
+        if key:
+            return key
+    return None
 
 
 def _get_gemini_key() -> str | None:
-    data = request.get_json(silent=True) or {}
-    return str(data.get('gemini_key', '') or '').strip() or None
+    if current_user.is_authenticated:
+        key = get_user_keys(int(current_user.id)).get("gemini_key", "").strip()
+        if key:
+            return key
+    return None
 
 
 def _make_gemini(api_key: str):
