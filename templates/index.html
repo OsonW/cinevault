@@ -1219,7 +1219,7 @@ body[data-tab="chats"] .detail-body { display: none !important; }
   padding: 10px 18px; font-size: 13px; color: var(--text);
   box-shadow: 0 8px 24px rgba(0,0,0,0.5);
   opacity: 0; transition: opacity 0.2s, transform 0.2s;
-  pointer-events: none; z-index: 999;
+  pointer-events: none; z-index: 9500;
 }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 .toast.toast-action {
@@ -1411,6 +1411,21 @@ body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); 
 }
 .key-field input:focus { border-color: var(--accent); }
 .key-field-row { display: flex; align-items: center; justify-content: space-between; }
+.key-input-wrap { position: relative; }
+.key-input-wrap input { padding-right: 36px; }
+.key-eye-btn {
+  position: absolute; top: 50%; right: 6px;
+  transform: translateY(-50%);
+  width: 26px; height: 26px;
+  border: none; background: none; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--muted); cursor: pointer;
+  border-radius: 6px; transition: color 0.15s, background 0.15s;
+}
+.key-eye-btn:hover { color: var(--text); background: rgba(255,255,255,0.05); }
+.key-eye-btn .eye-off { display: none; }
+.key-eye-btn.shown .eye-on  { display: none; }
+.key-eye-btn.shown .eye-off { display: inline; }
 .key-help-link {
   font-size: 11px; color: var(--accent);
   background: none; border: none; padding: 0;
@@ -1456,13 +1471,18 @@ body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); 
 }
 
 /* ── Key icon button ──────────────────────────── */
+.settings-cluster {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
 .key-btn {
   width: 32px; height: 32px; border-radius: var(--radius);
   border: 1px solid transparent; background: none;
   color: var(--muted); cursor: pointer;
   display: flex; align-items: center; justify-content: center;
   transition: all 0.15s; flex-shrink: 0;
-  margin-left: 4px;
 }
 .key-btn:hover { color: var(--text); background: rgba(255,255,255,0.05); border-color: var(--border); }
 
@@ -1565,20 +1585,22 @@ body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); 
       <button class="tab active" data-tab="finished" onclick="switchTab('finished')">Finished</button>
       <button class="tab" data-tab="chats"     onclick="switchTab('chats')">Chats</button>
     </nav>
-    <button class="key-btn" onclick="openKeyUpdate()" title="Update API keys">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="7.5" cy="15.5" r="5.5"/>
-        <path d="M21 2l-9.6 9.6"/>
-        <path d="M15.5 7.5l3 3L22 7l-3-3"/>
-      </svg>
-    </button>
-    <button class="key-btn" onclick="openLogoutConfirm()" title="Log out">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-        <polyline points="16 17 21 12 16 7"/>
-        <line x1="21" y1="12" x2="9" y2="12"/>
-      </svg>
-    </button>
+    <div class="settings-cluster">
+      <button class="key-btn" onclick="openKeyUpdate()" title="Update API keys">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="7.5" cy="15.5" r="5.5"/>
+          <path d="M21 2l-9.6 9.6"/>
+          <path d="M15.5 7.5l3 3L22 7l-3-3"/>
+        </svg>
+      </button>
+      <button class="key-btn" onclick="openLogoutConfirm()" title="Log out">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+          <polyline points="16 17 21 12 16 7"/>
+          <line x1="21" y1="12" x2="9" y2="12"/>
+        </svg>
+      </button>
+    </div>
   </header>
 
   <aside class="detail-panel" id="detailPanel">
@@ -1687,14 +1709,26 @@ body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); 
           <label>Gemini API Key</label>
           <button class="key-help-link" onclick="showKeyHelp('gemini')">How do I get this?</button>
         </div>
-        <input type="password" id="keyInputGemini" placeholder="Gemini Key..." autocomplete="off" oninput="validateKeyForm()">
+        <div class="key-input-wrap">
+          <input type="password" id="keyInputGemini" placeholder="Gemini Key..." autocomplete="one-time-code" data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" oninput="validateKeyForm()">
+          <button type="button" class="key-eye-btn" id="keyEyeGemini" onclick="toggleKeyVisibility('Gemini')" title="Show / hide key">
+            <svg class="eye-on" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            <svg class="eye-off" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+          </button>
+        </div>
       </div>
       <div class="key-field">
         <div class="key-field-row">
           <label>TMDB API Key</label>
           <button class="key-help-link" onclick="showKeyHelp('tmdb')">How do I get this?</button>
         </div>
-        <input type="password" id="keyInputTmdb" placeholder="TMDB Key..." autocomplete="off" oninput="validateKeyForm()">
+        <div class="key-input-wrap">
+          <input type="password" id="keyInputTmdb" placeholder="TMDB Key..." autocomplete="one-time-code" data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" oninput="validateKeyForm()">
+          <button type="button" class="key-eye-btn" id="keyEyeTmdb" onclick="toggleKeyVisibility('Tmdb')" title="Show / hide key">
+            <svg class="eye-on" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            <svg class="eye-off" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+          </button>
+        </div>
       </div>
       <div class="key-modal-actions">
         <button class="key-confirm-cancel" id="keyModalCancel" onclick="closeKeyModal()" style="display:none">Cancel</button>
@@ -1782,6 +1816,7 @@ function showKeyModal(mode) {
     document.getElementById('keyInputGemini').value = '';
     document.getElementById('keyInputTmdb').value   = '';
   }
+  _resetKeyVisibility();
   validateKeyForm();
   backdrop.classList.remove('hidden');
 }
@@ -1796,6 +1831,24 @@ function showKeyHelp(which) {
   document.getElementById('keyHelpEmpty').style.display  = 'none';
   document.getElementById('keyHelpGemini').classList.toggle('visible', which === 'gemini');
   document.getElementById('keyHelpTmdb').classList.toggle('visible',   which === 'tmdb');
+}
+
+function toggleKeyVisibility(which) {
+  const input = document.getElementById('keyInput' + which);
+  const btn   = document.getElementById('keyEye'   + which);
+  if (!input || !btn) return;
+  const showing = input.type === 'text';
+  input.type = showing ? 'password' : 'text';
+  btn.classList.toggle('shown', !showing);
+}
+
+function _resetKeyVisibility() {
+  for (const w of ['Gemini', 'Tmdb']) {
+    const input = document.getElementById('keyInput' + w);
+    const btn   = document.getElementById('keyEye'   + w);
+    if (input) input.type = 'password';
+    if (btn)   btn.classList.remove('shown');
+  }
 }
 
 function validateKeyForm() {
@@ -1831,7 +1884,11 @@ async function saveKeysFromModal() {
     document.getElementById('keyModalBackdrop').classList.add('hidden');
     showToast(_keyModalMode === 'update' ? 'Keys updated.' : 'Keys saved.');
   } else {
-    showToast('Key update unsuccessful — keys remain unchanged.');
+    showToast(
+      _keyModalMode === 'update'
+        ? 'Key update unsuccessful — keys remain unchanged.'
+        : 'Invalid keys — please double-check and try again.'
+    );
   }
 
   saveBtn.textContent = origLabel;
