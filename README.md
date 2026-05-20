@@ -24,3 +24,7 @@ When you open the app for the first time, a setup screen will prompt you for bot
 - [x] Spoiler-aware AI chat  
 - [x] Browser-side key management  
 - [x] Railway deployment
+
+## License
+
+MIT
