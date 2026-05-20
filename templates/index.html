@@ -2174,7 +2174,7 @@ function renderGrid() {
 
     if (size === 'large') {
       return `<div class="poster-card" id="pc-${item.id}" style="${cardFontStyle}" onclick="selectItem(${item.id})">
-        <img src="${posterUrl(item)}" onerror="this.src='${BROKEN_POSTER_FULL}'" loading="lazy">
+        <img src="${posterUrl(item)}" referrerpolicy="no-referrer" onerror="this.src='${BROKEN_POSTER_FULL}'" loading="lazy">
         <div class="poster-info">
           ${badgeRow}
           <div class="poster-title">${esc(item.title)}</div>
@@ -2187,7 +2187,7 @@ function renderGrid() {
     }
 
     return `<div class="poster-card" id="pc-${item.id}" style="${cardFontStyle}" onclick="selectItem(${item.id})">
-      <img src="${posterUrl(item)}" onerror="this.src='${BROKEN_POSTER_FULL}'" loading="lazy">
+      <img src="${posterUrl(item)}" referrerpolicy="no-referrer" onerror="this.src='${BROKEN_POSTER_FULL}'" loading="lazy">
       <div class="poster-info">
         ${badgeRow}
         <div class="poster-title">${esc(item.title)}</div>
@@ -2387,7 +2387,7 @@ function renderDetail(item) {
 
   panel.innerHTML = `
     <div class="poster-wrap">
-      <img src="${posterUrl(item)}" onerror="this.src='${BROKEN_POSTER_BLANK}'">
+      <img src="${posterUrl(item)}" referrerpolicy="no-referrer" onerror="this.src='${BROKEN_POSTER_BLANK}'">
     </div>
     <div class="detail-body">
       <h2 class="detail-title">${esc(item.title)}</h2>
@@ -3314,7 +3314,7 @@ function renderChatListItem(c) {
   const updatedAt = (c.updated_at || '').replace('T', ' ').slice(0, 16);
 
   return `<div class="chat-list-item${sel}" id="cli-${c.id}" onclick="selectChat(${c.id})">
-    <img class="cli-thumb" src="${thumbSrc}" onerror="this.src='${BROKEN_POSTER_FULL}'">
+    <img class="cli-thumb" src="${thumbSrc}" referrerpolicy="no-referrer" onerror="this.src='${BROKEN_POSTER_FULL}'">
     <div class="cli-info">
       <div class="cli-title-row">${formatChatHeading(c, progressStr)}</div>
       <div class="cli-sub">${updatedAt}</div>
@@ -4304,7 +4304,7 @@ function renderSmCard(r) {
   const authorHtml = r.author ? `<div class="sm-card-author">${esc(r.author)}</div>` : '';
   const safeKey    = key.replace(/'/g, "\\'");
   return `<div class="sm-card ${already?'in-library':''}" data-media-type="${r.media_type}">
-    <img class="sm-poster" src="${posterSrc}" onerror="this.src='${BROKEN_POSTER_FULL}'" loading="lazy">
+    <img class="sm-poster" src="${posterSrc}" referrerpolicy="no-referrer" onerror="this.src='${BROKEN_POSTER_FULL}'" loading="lazy">
     <div class="sm-card-body">
       <div class="sm-card-title">${esc(r.title)}</div>
       ${authorHtml}
@@ -4607,7 +4607,7 @@ function renderVibeResults(append) {
     const authorHtml = r.author ? `<div class="sm-card-author">${esc(r.author)}</div>` : '';
     const btnId      = `vbtn-${r.media_type}-${(r.external_id || r.tmdb_id || r.title).toString().replace(/[^a-z0-9]/gi,'_')}`;
     return `<div class="sm-card ${already ? 'in-library' : ''}">
-      <img class="sm-poster" src="${posterSrc}" onerror="this.src='${BROKEN_POSTER_FULL}'" loading="lazy">
+      <img class="sm-poster" src="${posterSrc}" referrerpolicy="no-referrer" onerror="this.src='${BROKEN_POSTER_FULL}'" loading="lazy">
       <div class="sm-card-body">
         <div class="sm-card-title">${esc(r.title)}</div>
         ${authorHtml}
