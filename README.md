@@ -2,6 +2,8 @@
 
 A personal movie, TV, book, and manga tracker with AI-powered insights. Track what you're watching, rate your favorites, and get spoiler-aware recommendations.
 
+https://oson.pythonanywhere.com/
+
 ## Features
 
 **Track your media** — Organize movies, TV shows, books, and manga into Watchlist, Watching, and Finished  

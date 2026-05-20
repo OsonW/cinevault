@@ -608,7 +608,10 @@ def get_poster(media_type, item_id):
             return "", 404
 
         try:
-            img_resp = requests.get(cover_url, timeout=15, headers=MANGADEX_HEADERS)
+            img_resp = requests.get(
+                cover_url, timeout=15,
+                headers={**MANGADEX_HEADERS, "Referer": "https://mangadex.org"},
+            )
             img_resp.raise_for_status()
             content_type = img_resp.headers.get("Content-Type", "image/jpeg")
             img_bytes = img_resp.content
@@ -617,7 +620,8 @@ def get_poster(media_type, item_id):
                 img_bytes, mimetype=content_type,
                 headers={"Cache-Control": "public, max-age=86400"},
             )
-        except Exception:
+        except Exception as e:
+            print(f"Manga poster download error for {cover_url}: {e}")
             return "", 404
 
     tmdb_key = _get_tmdb_key()
