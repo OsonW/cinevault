@@ -1939,6 +1939,7 @@ function tmdbHeaders() {
 
 function posterUrl(item) {
   if (item.media_type === 'book' || item.media_type === 'manga') {
+    if (item.cover_url) return item.cover_url;
     const ext = item.external_id || '';
     return ext ? `/api/poster/${item.media_type}/${encodeURIComponent(ext)}` : BROKEN_POSTER_FULL;
   }
@@ -4288,7 +4289,9 @@ function renderSmCard(r) {
   const key      = `${r.media_type}_${r.external_id || r.tmdb_id}`;
   const already  = inLibrary.has(key);
   let posterSrc = BROKEN_POSTER_FULL;
-  if (r.media_type === 'manga' && r.external_id) {
+  if ((r.media_type === 'manga' || r.media_type === 'book') && r.cover_url) {
+    posterSrc = r.cover_url;
+  } else if (r.media_type === 'manga' && r.external_id) {
     posterSrc = `/api/poster/manga/${encodeURIComponent(r.external_id)}`;
   } else if (r.poster_path) {
     posterSrc = `https://image.tmdb.org/t/p/w500${r.poster_path}`;
@@ -4589,7 +4592,9 @@ function renderVibeResults(append) {
     const key     = `${r.media_type}_${r.external_id || r.tmdb_id || r.title}`;
     const already = inLibrary.has(key);
     let posterSrc = BROKEN_POSTER_FULL;
-    if (r.media_type === 'manga' && r.external_id) {
+    if ((r.media_type === 'manga' || r.media_type === 'book') && r.cover_url) {
+      posterSrc = r.cover_url;
+    } else if (r.media_type === 'manga' && r.external_id) {
       posterSrc = `/api/poster/manga/${encodeURIComponent(r.external_id)}`;
     } else if (r.media_type === 'book' && r.external_id) {
       posterSrc = `/api/poster/book/${encodeURIComponent(r.external_id)}`;
