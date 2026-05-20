@@ -4,11 +4,12 @@ import json
 import time
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from flask import Flask, jsonify, Response, request, render_template
+from flask import Flask, jsonify, Response, request, render_template, g, redirect, url_for
+from flask_login import login_required, current_user
 from google import genai
 
 from db import (
-    init_db,
+    get_user_db_path, init_user_db,
     get_all_media, get_media_by_id, get_media_by_external_id,
     add_media_entry, update_media_entry, delete_media_entry,
     get_all_chats, get_chats_by_media_id, get_chat_by_id, get_chat_messages,
@@ -16,8 +17,15 @@ from db import (
     update_chat_spoiler_threshold, update_message_snap,
     get_all_memory,
 )
+from auth import auth_bp, login_manager
+from users_db import init_users_db
 
 app = Flask(__name__)
+app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-in-production")
+
+login_manager.init_app(app)
+login_manager.login_view = "auth.login_page"
+app.register_blueprint(auth_bp)
 
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
 
@@ -40,13 +48,18 @@ def _get_gemini_key() -> str | None:
 def _make_gemini(api_key: str):
     return genai.Client(api_key=api_key)
 
-init_db()
+# Shared across users — keyed by external IDs so safe to share
+poster_cache: dict[str, tuple[bytes, str]] = {}
+search_cache: dict[str, list]              = {}
 
-poster_cache:   dict[str, tuple[bytes, str]]  = {}
-search_cache:   dict[str, list]               = {}
-media_cache:    dict[int, dict]               = {}
-ai_card_cache:  dict[str, tuple[str, float]]  = {}
-memory_cache:   dict[str, str]                = {}
+# Per-user caches — keyed by user_id
+_user_media_cache:   dict[int, dict] = {}
+_user_ai_card_cache: dict[int, dict] = {}
+_user_memory_cache:  dict[int, dict] = {}
+
+# Lazy initialisation flags
+_app_initialized    = False
+_initialized_users: set[int] = set()
 
 MAX_CHAT_HISTORY = 12
 AI_CARD_TTL      = 600
@@ -54,6 +67,30 @@ MANGADEX_HEADERS = {"User-Agent": "CineVault/1.0"}
 
 
 SEARCH_CACHE_MAX = 100
+
+
+@app.before_request
+def setup_request():
+    global _app_initialized
+    if not _app_initialized:
+        init_users_db()
+        _app_initialized = True
+
+    # Redirect already-logged-in users away from the login page
+    if request.path == "/login" and current_user.is_authenticated:
+        return redirect(url_for("index"))
+
+    if current_user.is_authenticated:
+        uid = current_user.id
+        g.user_db_path = get_user_db_path(uid)
+        if uid not in _initialized_users:
+            init_user_db(uid)
+            _initialized_users.add(uid)
+
+    # All /api/* routes require authentication
+    if request.path.startswith("/api/") and not current_user.is_authenticated:
+        return jsonify({"error": "Unauthorized"}), 401
+
 
 SPOILER_CONSENT_PHRASES = [
     "spoil", "spoilers", "tell me everything",
@@ -67,22 +104,36 @@ def _cache_search(key: str, items: list) -> None:
     if len(search_cache) > SEARCH_CACHE_MAX:
         del search_cache[next(iter(search_cache))]
 
-try:
-    memory_cache = get_all_memory()
-except Exception:
-    memory_cache = {}
+def _media_cache() -> dict:
+    return _user_media_cache.setdefault(current_user.id, {})
+
+
+def _ai_cache() -> dict:
+    return _user_ai_card_cache.setdefault(current_user.id, {})
+
+
+def _mem_cache() -> dict:
+    uid = current_user.id
+    if uid not in _user_memory_cache:
+        try:
+            _user_memory_cache[uid] = get_all_memory()
+        except Exception:
+            _user_memory_cache[uid] = {}
+    return _user_memory_cache[uid]
 
 
 def _invalidate_media_cache(media_id: int):
-    media_cache.pop(media_id, None)
-    for k in [k for k in ai_card_cache if k.startswith(f"{media_id}_")]:
-        del ai_card_cache[k]
+    _media_cache().pop(media_id, None)
+    ac = _ai_cache()
+    for k in [k for k in ac if k.startswith(f"{media_id}_")]:
+        del ac[k]
 
 
 def cached_get_media(media_id: int):
-    if media_id not in media_cache:
-        media_cache[media_id] = get_media_by_id(media_id)
-    return media_cache[media_id]
+    mc = _media_cache()
+    if media_id not in mc:
+        mc[media_id] = get_media_by_id(media_id)
+    return mc[media_id]
 
 
 def _progress_str(media: dict) -> str:
@@ -166,6 +217,7 @@ def _generate_ai_content(prompt: str, gemini_client) -> str:
 
 
 @app.route("/")
+@login_required
 def index():
     return render_template("index.html")
 
@@ -1245,7 +1297,8 @@ def chat_message(chat_id):
         return jsonify({"error": "Chat not found"}), 404
 
     media      = cached_get_media(chat["media_id"]) if chat.get("media_id") else None
-    memory_str = "\n".join(f"- {k}: {v}" for k, v in memory_cache.items()) if memory_cache else "None"
+    _mem = _mem_cache()
+    memory_str = "\n".join(f"- {k}: {v}" for k, v in _mem.items()) if _mem else "None"
 
     effective_status = chat.get("context_tag") or (media["status"] if media else "finished")
     progress = _progress_str(media) if media else ""
@@ -1465,8 +1518,9 @@ def ai_card():
 
     cache_key = _ai_card_cache_key(media)
     now       = time.time()
-    if cache_key in ai_card_cache:
-        content, expiry = ai_card_cache[cache_key]
+    ac        = _ai_cache()
+    if cache_key in ac:
+        content, expiry = ac[cache_key]
         if now < expiry:
             return jsonify({"content": content})
 
@@ -1476,7 +1530,7 @@ def ai_card():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-    ai_card_cache[cache_key] = (content, now + AI_CARD_TTL)
+    ac[cache_key] = (content, now + AI_CARD_TTL)
     return jsonify({"content": content})
 
 
@@ -1496,8 +1550,9 @@ def ai_card_stream():
 
     cache_key = _ai_card_cache_key(media)
     now       = time.time()
-    if cache_key in ai_card_cache:
-        content, expiry = ai_card_cache[cache_key]
+    ac        = _ai_cache()
+    if cache_key in ac:
+        content, expiry = ac[cache_key]
         if now < expiry:
             def cached_stream():
                 yield f"data: {json.dumps({'token': content})}\n\n"
@@ -1514,7 +1569,7 @@ def ai_card_stream():
                 full.append(token)
                 yield f"data: {json.dumps({'token': token})}\n\n"
             content = "".join(full).strip()
-            ai_card_cache[cache_key] = (content, time.time() + AI_CARD_TTL)
+            ac[cache_key] = (content, time.time() + AI_CARD_TTL)
             yield f"data: {json.dumps({'done': True})}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
