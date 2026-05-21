@@ -175,7 +175,7 @@ def _validate_gemini_key(key: str) -> tuple[bool, str]:
         return False, f"Gemini validation failed (HTTP {resp.status_code}) — please try again."
     except requests.exceptions.Timeout:
         return False, "Gemini validation timed out — please try again."
-    except Exception as e:
+    except Exception:
         return False, "Could not reach Gemini to validate key — please try again."
 
 

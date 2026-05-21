@@ -159,7 +159,6 @@ def update_media_entry(media_id: int, **fields):
 
 def delete_media_entry(media_id: int):
     with get_conn() as conn:
-        conn.execute("DELETE FROM chats WHERE media_id = ?", (media_id,))
         conn.execute("DELETE FROM media WHERE id = ?", (media_id,))
 
 
