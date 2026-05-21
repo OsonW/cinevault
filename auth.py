@@ -146,18 +146,18 @@ def _validate_tmdb_key(key: str) -> tuple[bool, str]:
     try:
         resp = requests.get(
             "https://api.themoviedb.org/3/authentication",
-            headers={"Authorization": f"Bearer {key}"},
+            params={"api_key": key},
             timeout=10,
         )
         if resp.status_code == 200:
             return True, ""
         if resp.status_code == 401:
-            return False, "Invalid TMDB key — make sure you're using the Read Access Token, not the API key."
+            return False, "Invalid TMDB API key — please check and try again."
         return False, f"TMDB validation failed (HTTP {resp.status_code}) — please try again."
     except requests.exceptions.Timeout:
         return False, "TMDB validation timed out — please try again."
-    except Exception as e:
-        return False, f"Could not reach TMDB to validate key — please try again."
+    except Exception:
+        return False, "Could not reach TMDB to validate key — please try again."
 
 
 def _validate_gemini_key(key: str) -> tuple[bool, str]:

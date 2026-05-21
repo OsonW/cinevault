@@ -80,8 +80,8 @@ def _get_gemini_key() -> str | None:
     return None
 
 
-def _tmdb_headers(api_key: str) -> dict:
-    return {"Authorization": f"Bearer {api_key}"}
+def _tmdb_params(api_key: str) -> dict:
+    return {"api_key": api_key}
 
 
 def _make_gemini(api_key: str):
@@ -336,15 +336,15 @@ def index():
 # ═══════════════════════════════════════════════════
 
 def _fetch_tmdb_director(media_type: str, tmdb_id: int, api_key: str) -> str:
-    headers = _tmdb_headers(api_key)
+    params = _tmdb_params(api_key)
     try:
         if media_type == "movie":
             url = f"https://api.themoviedb.org/3/movie/{tmdb_id}/credits"
-            data = requests.get(url, headers=headers, timeout=3).json()
+            data = requests.get(url, params=params, timeout=3).json()
             names = [c["name"] for c in data.get("crew", []) if c.get("job") == "Director"]
         else:
             url = f"https://api.themoviedb.org/3/tv/{tmdb_id}"
-            data = requests.get(url, headers=headers, timeout=3).json()
+            data = requests.get(url, params=params, timeout=3).json()
             names = [c["name"] for c in data.get("created_by", [])]
         return ", ".join(names[:3])
     except Exception:
@@ -392,7 +392,7 @@ def fetch_item_overview(item_id):
         try:
             endpoint = "movie" if media_type == "movie" else "tv"
             url = f"https://api.themoviedb.org/3/{endpoint}/{tmdb_id}"
-            data = requests.get(url, headers=_tmdb_headers(tmdb_key), timeout=5).json()
+            data = requests.get(url, params=_tmdb_params(tmdb_key), timeout=5).json()
             overview = data.get("overview", "") or ""
         except Exception as e:
             print(f"Overview fetch error for {item_id}: {e}")
@@ -422,7 +422,7 @@ def search():
         if media_type == "movie":
             resp = requests.get(
                 "https://api.themoviedb.org/3/search/movie",
-                headers=_tmdb_headers(tmdb_key),
+                params=_tmdb_params(tmdb_key),
                 params={"query": query},
                 timeout=8,
             )
@@ -443,7 +443,7 @@ def search():
         else:
             resp = requests.get(
                 "https://api.themoviedb.org/3/search/tv",
-                headers=_tmdb_headers(tmdb_key),
+                params=_tmdb_params(tmdb_key),
                 params={"query": query},
                 timeout=8,
             )
@@ -720,7 +720,7 @@ def get_poster(media_type, item_id):
     endpoint = "movie" if media_type == "movie" else "tv"
     meta_url = f"https://api.themoviedb.org/3/{endpoint}/{item_id}"
     try:
-        meta = requests.get(meta_url, headers=_tmdb_headers(tmdb_key), timeout=5).json()
+        meta = requests.get(meta_url, params=_tmdb_params(tmdb_key), timeout=5).json()
         path = meta.get("poster_path")
         if not path:
             return "", 404
@@ -756,7 +756,7 @@ def tv_info(tmdb_id):
         return jsonify({"error": "TMDB API key required"}), 401
     try:
         url = f"https://api.themoviedb.org/3/tv/{tmdb_id}"
-        resp = requests.get(url, headers=_tmdb_headers(tmdb_key), timeout=8)
+        resp = requests.get(url, params=_tmdb_params(tmdb_key), timeout=8)
         resp.raise_for_status()
         data = resp.json()
         seasons = data.get("seasons", [])
@@ -1042,7 +1042,7 @@ def _enrich_one(rec: dict, tmdb_key: str) -> dict:
         try:
             resp = requests.get(
                 "https://api.themoviedb.org/3/search/movie",
-                headers=_tmdb_headers(tmdb_key),
+                params=_tmdb_params(tmdb_key),
                 params={"query": title},
                 timeout=5,
             )
@@ -1065,7 +1065,7 @@ def _enrich_one(rec: dict, tmdb_key: str) -> dict:
         try:
             resp = requests.get(
                 "https://api.themoviedb.org/3/search/tv",
-                headers=_tmdb_headers(tmdb_key),
+                params=_tmdb_params(tmdb_key),
                 params={"query": title},
                 timeout=5,
             )
