@@ -1366,33 +1366,35 @@ body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); 
   color: var(--accent);
   font-style: italic;
 }
-/* Fixed-position overlays shown only during the mandatory entry flow */
+/* Wrapper around the modal box that lets the greeting and cancel link
+   align to the modal's left/right edges in the entry (mandatory) flow. */
+.key-modal-stack {
+  display: flex;
+  flex-direction: column;
+  width: 760px;
+  max-width: 96vw;
+}
 .entry-greeting {
-  position: fixed;
-  top: 28px; left: 36px;
+  align-self: flex-start;
+  margin-bottom: 14px;
   font-family: 'Fraunces', serif;
   font-size: 2rem;
   font-weight: 300;
   color: var(--muted);
   letter-spacing: 0.01em;
-  z-index: 9300;
   display: none;
   pointer-events: none;
   user-select: none;
 }
-.entry-greeting strong {
-  color: var(--text);
-  font-weight: 400;
-}
+.entry-greeting strong { color: var(--text); font-weight: 400; }
 .entry-cancel-account {
-  position: fixed;
-  bottom: 24px; right: 28px;
+  align-self: flex-end;
+  margin-top: 12px;
   background: none; border: none; padding: 6px 10px;
   color: var(--muted); font-size: 12px;
   font-family: 'DM Sans', sans-serif;
   text-decoration: underline;
   cursor: pointer;
-  z-index: 9300;
   display: none;
   transition: color 0.15s;
 }
@@ -1745,12 +1747,10 @@ body.entry-active .entry-cancel-account { display: block; }
   </div>
 </div>
 
-<!-- ── Entry-mode overlays (top-left greeting + bottom-right cancel) ── -->
-<div class="entry-greeting" id="entryGreeting">Hello, <strong>{{ username|e }}</strong></div>
-<button class="entry-cancel-account" id="entryCancelAccount" onclick="openCancelAccountConfirm()">Cancel account creation</button>
-
 <!-- ── Key Modal ──────────────────────────────── -->
 <div class="key-modal-backdrop hidden" id="keyModalBackdrop">
+  <div class="key-modal-stack">
+    <div class="entry-greeting" id="entryGreeting">Hello, <strong>{{ username|e }}</strong></div>
   <div class="key-modal-box">
     <div class="key-modal-left">
       <div>
@@ -1809,6 +1809,8 @@ body.entry-active .entry-cancel-account { display: block; }
         </div>
       </div>
     </div>
+  </div>
+    <button class="entry-cancel-account" id="entryCancelAccount" onclick="openCancelAccountConfirm()">Cancel account creation</button>
   </div>
 </div>
 

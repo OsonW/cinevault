@@ -262,11 +262,14 @@ def cancel_registration():
     _user_memory_cache.pop(uid, None)
     _initialized_users.discard(uid)
     db_path = get_user_db_path(uid)
-    try:
-        if os.path.exists(db_path):
-            os.remove(db_path)
-    except OSError as e:
-        print(f"cancel-registration: failed to remove {db_path}: {e}")
+    # Remove the main DB file plus any SQLite sidecars (-journal/-wal/-shm)
+    # that may exist if a connection was open.
+    for path in (db_path, db_path + "-journal", db_path + "-wal", db_path + "-shm"):
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+        except OSError as e:
+            print(f"cancel-registration: failed to remove {path}: {e}")
     logout_user()
     delete_user(uid)
     return jsonify({"status": "ok"})
