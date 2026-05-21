@@ -6,8 +6,6 @@ from time import time as _now
 import requests
 from flask import Blueprint, request, jsonify, redirect, url_for, render_template
 from flask_login import LoginManager, UserMixin, login_user, logout_user, current_user, login_required
-from google import genai
-
 from users_db import (
     get_user_by_id, create_user, verify_password,
     get_user_keys, set_user_keys,
@@ -148,7 +146,7 @@ def _validate_tmdb_key(key: str) -> bool:
         resp = requests.get(
             "https://api.themoviedb.org/3/authentication",
             headers={"Authorization": f"Bearer {key}"},
-            timeout=6,
+            timeout=10,
         )
         return resp.status_code == 200
     except Exception:
@@ -157,10 +155,12 @@ def _validate_tmdb_key(key: str) -> bool:
 
 def _validate_gemini_key(key: str) -> bool:
     try:
-        client = genai.Client(api_key=key)
-        models_iter = client.models.list()
-        next(iter(models_iter), None)
-        return True
+        resp = requests.get(
+            "https://generativelanguage.googleapis.com/v1beta/models",
+            params={"key": key},
+            timeout=10,
+        )
+        return resp.status_code == 200
     except Exception:
         return False
 
