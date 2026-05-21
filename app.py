@@ -422,8 +422,7 @@ def search():
         if media_type == "movie":
             resp = requests.get(
                 "https://api.themoviedb.org/3/search/movie",
-                params=_tmdb_params(tmdb_key),
-                params={"query": query},
+                params={**_tmdb_params(tmdb_key), "query": query},
                 timeout=8,
             )
             resp.raise_for_status()
@@ -443,8 +442,7 @@ def search():
         else:
             resp = requests.get(
                 "https://api.themoviedb.org/3/search/tv",
-                params=_tmdb_params(tmdb_key),
-                params={"query": query},
+                params={**_tmdb_params(tmdb_key), "query": query},
                 timeout=8,
             )
             resp.raise_for_status()
@@ -1042,8 +1040,7 @@ def _enrich_one(rec: dict, tmdb_key: str) -> dict:
         try:
             resp = requests.get(
                 "https://api.themoviedb.org/3/search/movie",
-                params=_tmdb_params(tmdb_key),
-                params={"query": title},
+                params={**_tmdb_params(tmdb_key), "query": title},
                 timeout=5,
             )
             for r in resp.json().get("results", []):
@@ -1065,8 +1062,7 @@ def _enrich_one(rec: dict, tmdb_key: str) -> dict:
         try:
             resp = requests.get(
                 "https://api.themoviedb.org/3/search/tv",
-                params=_tmdb_params(tmdb_key),
-                params={"query": title},
+                params={**_tmdb_params(tmdb_key), "query": title},
                 timeout=5,
             )
             for r in resp.json().get("results", []):
