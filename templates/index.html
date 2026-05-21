@@ -2784,8 +2784,10 @@ function renderDetail(item) {
       .then(data => {
         if (!data.author) return;
         item.author = data.author;
-        const detailEl = document.getElementById('detailAuthor');
-        if (detailEl) { detailEl.textContent = `by ${data.author}`; detailEl.style.display = ''; }
+        if (selectedId === item.id) {
+          const detailEl = document.getElementById('detailAuthor');
+          if (detailEl) { detailEl.textContent = `by ${data.author}`; detailEl.style.display = ''; }
+        }
         const gridEl = document.getElementById(`pa-${item.id}`);
         if (gridEl) { gridEl.textContent = data.author; gridEl.style.display = ''; }
       })
@@ -3385,6 +3387,7 @@ async function changeStatus(id, status) {
   if (!item || item.status === status) return;
   statusChangePending = true;
   const prevStatus = item.status;
+  const tabAtStart = currentTab;
   item.status = status;
   const suffixMap = { watchlist: 'wl', watching: 'wa', finished: 'fi' };
   document.querySelectorAll('.status-pill').forEach(p => {
@@ -3397,12 +3400,12 @@ async function changeStatus(id, status) {
   } catch {
     showToast('Failed to update status — please try again.', 'error');
     item.status = prevStatus;
-    await loadList();
+    try { await loadList(); } catch {}
     statusChangePending = false;
     return;
   }
   statusChangePending = false;
-  switchTab(status, id);
+  if (currentTab === tabAtStart) switchTab(status, id);
 }
 
 let deleteItemPending = false;
