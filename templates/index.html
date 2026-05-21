@@ -1873,7 +1873,7 @@ body.entry-active .entry-cancel-account { display: block; }
       <button class="logout-delete-link" id="logoutDeleteAccountLink" onclick="showLogoutDeleteSection()">Delete account</button>
     </div>
     <div class="logout-delete-section hidden" id="logoutDeleteSection">
-      <div class="logout-delete-label">Type Username to Confirm Deletion</div>
+      <div class="logout-delete-label">Type username [<span style="color:var(--text)" id="logoutDeleteUsernameHint"></span>] to confirm deletion.</div>
       <div class="logout-delete-row">
         <input type="text" id="logoutDeleteUsernameInput" class="logout-delete-input" placeholder="Username" autocomplete="off" oninput="validateLogoutDelete()">
         <button class="key-confirm-delete" id="logoutDeleteConfirmBtn" onclick="doDeleteAccount()" disabled>Delete Permanently</button>
@@ -2078,6 +2078,7 @@ async function doLogout() {
 
 function showLogoutDeleteSection() {
   document.getElementById('logoutDeleteAccountLink').style.display = 'none';
+  document.getElementById('logoutDeleteUsernameHint').textContent = _currentUsername;
   document.getElementById('logoutDeleteSection').classList.remove('hidden');
   document.getElementById('logoutDeleteUsernameInput').focus();
 }
