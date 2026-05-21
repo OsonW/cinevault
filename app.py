@@ -135,7 +135,7 @@ def set_security_headers(response):
         "script-src 'self' 'unsafe-inline'; "
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
         "font-src https://fonts.gstatic.com; "
-        "img-src 'self' data: https://covers.openlibrary.org "
+        "img-src 'self' data: https://covers.openlibrary.org https://archive.org "
         "https://uploads.mangadex.org https://image.tmdb.org; "
         "connect-src 'self'; "
         "frame-ancestors 'none';"
@@ -673,20 +673,6 @@ def get_poster(media_type, item_id):
             hint = request.args.get("cover_url", "").strip()
             if hint and _is_safe_cover_url(hint):
                 cover_url = hint
-
-        if not cover_url:
-            try:
-                resp = requests.get(
-                    f"https://openlibrary.org/works/{item_id}.json",
-                    timeout=5
-                )
-                if resp.status_code == 200:
-                    data = resp.json()
-                    if data.get("covers"):
-                        cover_id = data["covers"][0]
-                        cover_url = f"https://covers.openlibrary.org/b/id/{cover_id}-L.jpg"
-            except Exception as e:
-                print(f"Open Library fetch error for {item_id}: {e}")
 
         if not cover_url or not _is_safe_cover_url(cover_url):
             return "", 404
