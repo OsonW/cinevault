@@ -141,28 +141,42 @@ def logout():
     return jsonify({"status": "ok"})
 
 
-def _validate_tmdb_key(key: str) -> bool:
+def _validate_tmdb_key(key: str) -> tuple[bool, str]:
+    """Returns (valid, error_message). error_message is empty string on success."""
     try:
         resp = requests.get(
             "https://api.themoviedb.org/3/authentication",
             headers={"Authorization": f"Bearer {key}"},
             timeout=10,
         )
-        return resp.status_code == 200
-    except Exception:
-        return False
+        if resp.status_code == 200:
+            return True, ""
+        if resp.status_code == 401:
+            return False, "Invalid TMDB key — make sure you're using the Read Access Token, not the API key."
+        return False, f"TMDB validation failed (HTTP {resp.status_code}) — please try again."
+    except requests.exceptions.Timeout:
+        return False, "TMDB validation timed out — please try again."
+    except Exception as e:
+        return False, f"Could not reach TMDB to validate key — please try again."
 
 
-def _validate_gemini_key(key: str) -> bool:
+def _validate_gemini_key(key: str) -> tuple[bool, str]:
+    """Returns (valid, error_message). error_message is empty string on success."""
     try:
         resp = requests.get(
             "https://generativelanguage.googleapis.com/v1beta/models",
             params={"key": key},
             timeout=10,
         )
-        return resp.status_code == 200
-    except Exception:
-        return False
+        if resp.status_code == 200:
+            return True, ""
+        if resp.status_code in (400, 403):
+            return False, "Invalid Gemini key — please check and try again."
+        return False, f"Gemini validation failed (HTTP {resp.status_code}) — please try again."
+    except requests.exceptions.Timeout:
+        return False, "Gemini validation timed out — please try again."
+    except Exception as e:
+        return False, "Could not reach Gemini to validate key — please try again."
 
 
 def _mask_key(key: str | None) -> str:
@@ -193,9 +207,11 @@ def save_keys():
     tmdb_key   = _as_str(data.get("tmdb_key"))
     if not gemini_key or not tmdb_key:
         return jsonify({"error": "Both keys required"}), 400
-    if not _validate_tmdb_key(tmdb_key):
-        return jsonify({"error": "invalid_keys", "which": "tmdb"}), 400
-    if not _validate_gemini_key(gemini_key):
-        return jsonify({"error": "invalid_keys", "which": "gemini"}), 400
+    tmdb_ok, tmdb_err = _validate_tmdb_key(tmdb_key)
+    if not tmdb_ok:
+        return jsonify({"error": tmdb_err, "which": "tmdb"}), 400
+    gemini_ok, gemini_err = _validate_gemini_key(gemini_key)
+    if not gemini_ok:
+        return jsonify({"error": gemini_err, "which": "gemini"}), 400
     set_user_keys(int(current_user.id), gemini_key, tmdb_key)
     return jsonify({"status": "ok"})

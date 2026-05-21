@@ -1945,7 +1945,7 @@ async function saveKeysFromModal() {
   saveBtn.textContent = 'Validating…';
 
   let ok = false;
-  let errWhich = null;
+  let errMsg = 'Something went wrong — please try again.';
   try {
     const res = await fetch('/auth/keys', {
       method:  'POST',
@@ -1954,9 +1954,18 @@ async function saveKeysFromModal() {
     });
     ok = res.ok;
     if (!ok) {
-      try { errWhich = (await res.json()).which; } catch {}
+      try {
+        const body = await res.json();
+        if (res.status === 429) {
+          errMsg = 'Too many attempts — please wait a moment and try again.';
+        } else {
+          errMsg = body.error || errMsg;
+        }
+      } catch {}
     }
-  } catch {}
+  } catch {
+    errMsg = 'Network error — please check your connection and try again.';
+  }
 
   if (ok) {
     await refreshKeys();
@@ -1965,17 +1974,13 @@ async function saveKeysFromModal() {
     showToast(_keyModalMode === 'update' ? 'Keys updated.' : 'Keys saved.');
   } else {
     if (_keyModalMode === 'update') {
-      // Keep the modal open so the user can correct their keys.
-      const errMsg = errWhich === 'tmdb'   ? 'Invalid TMDB key — please re-enter your full key.'   :
-                     errWhich === 'gemini' ? 'Invalid Gemini key — please re-enter your full key.' :
-                     'Invalid keys — please check and try again.';
       showToast(errMsg, 'error');
     } else {
       // Entry mode is mandatory — can't close. Clear the bad inputs instead.
       document.getElementById('keyInputGemini').value = '';
       document.getElementById('keyInputTmdb').value   = '';
       _resetKeyVisibility();
-      showToast('Invalid keys — please double-check and try again.', 'error');
+      showToast(errMsg, 'error');
     }
   }
 
