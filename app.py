@@ -222,12 +222,16 @@ def _fetch_mangadex_cover_url(manga_id: str) -> str:
     return ""
 
 
-def _async_fetch_manga_cover(media_id: int, external_id: str) -> None:
+def _async_fetch_manga_cover(media_id: int, external_id: str, db_path: str) -> None:
     """Fetch the MangaDex cover for a newly-added manga in a background thread."""
     try:
         cover_url = _fetch_mangadex_cover_url(external_id)
         if cover_url:
-            update_media_entry(media_id, cover_url=cover_url)
+            with get_conn(db_path) as conn:
+                conn.execute(
+                    "UPDATE media SET cover_url = ? WHERE id = ?",
+                    (cover_url, media_id),
+                )
     except Exception:
         pass
 
@@ -835,7 +839,7 @@ def add_media():
         if media_type == "manga" and not cover_url and external_id and new_id:
             threading.Thread(
                 target=_async_fetch_manga_cover,
-                args=(new_id, external_id),
+                args=(new_id, external_id, get_user_db_path(int(current_user.id))),
                 daemon=True,
             ).start()
     return jsonify({"status": "ok"})
