@@ -2472,32 +2472,28 @@ async function loadMangaCovers() {
     if (_mangaCoverFetching.has(item.id)) continue;
     _mangaCoverFetching.add(item.id);
     fetchOneMangaCover(item);
-    await new Promise(r => setTimeout(r, 200)); // stay under MangaDex 5 req/sec
+    await new Promise(r => setTimeout(r, 300)); // throttle server requests
   }
 }
 
 async function fetchOneMangaCover(item) {
+  // Use the server-side proxy so MangaDex is fetched from PythonAnywhere's
+  // network (where it works) rather than from the browser (where it fails).
   try {
-    const resp = await fetch(
-      `https://api.mangadex.org/manga/${encodeURIComponent(item.external_id)}?includes%5B%5D=cover_art`
-    );
+    const resp = await fetch(`/api/manga/cover/${encodeURIComponent(item.external_id)}`);
     if (!resp.ok) return;
     const json = await resp.json();
-    for (const rel of (json.data && json.data.relationships) || []) {
-      if (rel.type === 'cover_art' && rel.attributes && rel.attributes.fileName) {
-        const coverUrl = `https://uploads.mangadex.org/covers/${item.external_id}/${rel.attributes.fileName}.512.jpg`;
-        item.cover_url = coverUrl;
-        const card = document.getElementById(`pc-${item.id}`);
-        if (card) { const img = card.querySelector('img'); if (img) img.src = coverUrl; }
-        if (selectedId === item.id) {
-          const dImg = document.querySelector('.poster-wrap img');
-          if (dImg) dImg.src = coverUrl;
-        }
-        apiPost('/api/add', { id: item.id, cover_url: coverUrl }).catch(() => {});
-        break;
-      }
+    const coverUrl = json.cover_url;
+    if (!coverUrl) return;
+    item.cover_url = coverUrl;
+    const card = document.getElementById(`pc-${item.id}`);
+    if (card) { const img = card.querySelector('img'); if (img) img.src = coverUrl; }
+    if (selectedId === item.id) {
+      const dImg = document.querySelector('.poster-wrap img');
+      if (dImg) dImg.src = coverUrl;
     }
-  } catch (e) { /* network or rate-limit error, skip */ } finally {
+    apiPost('/api/add', { id: item.id, cover_url: coverUrl }).catch(() => {});
+  } catch (e) { /* network error, skip */ } finally {
     _mangaCoverFetching.delete(item.id);
   }
 }
