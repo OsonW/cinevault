@@ -2189,7 +2189,6 @@ function tmdbHeaders() {
 function posterUrl(item) {
   if (item.media_type === 'book' || item.media_type === 'manga') {
     if (item.cover_url) return item.cover_url;
-    if (item.media_type === 'manga') return BROKEN_POSTER_BLANK; // loaded async by loadMangaCovers()
     const ext = item.external_id || '';
     return ext ? `/api/poster/${item.media_type}/${encodeURIComponent(ext)}` : BROKEN_POSTER_FULL;
   }
@@ -2460,70 +2459,6 @@ function renderGrid() {
     highlightCard(selectedId);
   } else {
     autoSelectFirst();
-  }
-  loadMangaCovers();
-}
-
-const _mangaCoverFetching = new Set();
-
-async function loadMangaCovers() {
-  const missing = allItems.filter(i => i.media_type === 'manga' && !i.cover_url && i.external_id);
-  for (const item of missing) {
-    if (_mangaCoverFetching.has(item.id)) continue;
-    _mangaCoverFetching.add(item.id);
-    fetchOneMangaCover(item);
-    await new Promise(r => setTimeout(r, 300)); // throttle server requests
-  }
-}
-
-async function fetchOneMangaCover(item) {
-  // Use the server-side proxy so MangaDex is fetched from PythonAnywhere's
-  // network (where it works) rather than from the browser (where it fails).
-  try {
-    const resp = await fetch(`/api/manga/cover/${encodeURIComponent(item.external_id)}`);
-    if (!resp.ok) return;
-    const json = await resp.json();
-    const coverUrl = json.cover_url;
-    if (!coverUrl) return;
-    item.cover_url = coverUrl;
-    const card = document.getElementById(`pc-${item.id}`);
-    if (card) { const img = card.querySelector('img'); if (img) img.src = coverUrl; }
-    if (selectedId === item.id) {
-      const dImg = document.querySelector('.poster-wrap img');
-      if (dImg) dImg.src = coverUrl;
-    }
-    apiPost('/api/add', { id: item.id, cover_url: coverUrl }).catch(() => {});
-  } catch (e) { /* network error, skip */ } finally {
-    _mangaCoverFetching.delete(item.id);
-  }
-}
-
-// Enrich vibe-search manga results that have no external_id (server enrichment missed them).
-// Calls the server-side /api/search/manga endpoint, updates results in-place,
-// and refreshes any already-rendered card images.
-async function enrichVibeManga(results) {
-  const toEnrich = results.filter(r => r.media_type === 'manga' && !r.external_id && r.title);
-  for (const r of toEnrich) {
-    try {
-      const found = await fetch(`/api/search/manga?q=${encodeURIComponent(r.title)}`).then(res => res.json()).catch(() => []);
-      if (!found.length) continue;
-      const match = found[0];
-      r.external_id = match.external_id;
-      if (!r.cover_url && match.cover_url) r.cover_url = match.cover_url;
-      if (!r.author    && match.author)    r.author    = match.author;
-      // Keep tmdbResultMap in sync with the new key
-      const newKey = `${r.media_type}_${r.external_id}`;
-      tmdbResultMap[newKey] = r;
-      // Update any already-rendered card image
-      if (r.cover_url) {
-        const safeTitle = r.title.replace(/[^a-z0-9]/gi, '_');
-        const btnId = `vbtn-manga-${safeTitle}`;
-        const btn   = document.getElementById(btnId);
-        const img   = btn?.closest('.sm-card')?.querySelector('.sm-poster');
-        if (img) img.src = r.cover_url;
-      }
-    } catch (e) { /* skip */ }
-    await new Promise(res => setTimeout(res, 200));
   }
 }
 
@@ -4343,7 +4278,7 @@ async function showDropdownSuggestions(q) {
     fetch(`/api/search?q=${encodeURIComponent(q)}&type=movie`, _ddh).then(r => r.json()).catch(() => []),
     fetch(`/api/search?q=${encodeURIComponent(q)}&type=tv`, _ddh).then(r => r.json()).catch(() => []),
     fetch(`/api/search/books?q=${encodeURIComponent(q)}`).then(r => r.json()).catch(() => []),
-    fetch(`/api/search/manga?q=${encodeURIComponent(q)}`).then(r=>r.json()).catch(()=>[]),
+    fetch(`/api/search/manga?q=${encodeURIComponent(q)}`).then(r => r.json()).catch(() => []),
   ]);
   if (document.getElementById('searchInput').value.trim() !== q) return;
   [...movieRes, ...tvRes, ...bookRes, ...mangaRes].forEach(r => {
@@ -4511,7 +4446,7 @@ async function runModalSearch(q) {
       typesToSearch.includes('movie') ? fetch(`/api/search?q=${encodeURIComponent(q)}&type=movie`, _th).then(r=>r.json()).catch(()=>[]) : Promise.resolve([]),
       typesToSearch.includes('tv')    ? fetch(`/api/search?q=${encodeURIComponent(q)}&type=tv`, _th).then(r=>r.json()).catch(()=>[])    : Promise.resolve([]),
       typesToSearch.includes('book')  ? fetch(`/api/search/books?q=${encodeURIComponent(q)}`).then(r=>r.json()).catch(()=>[])            : Promise.resolve([]),
-      typesToSearch.includes('manga') ? fetch(`/api/search/manga?q=${encodeURIComponent(q)}`).then(r=>r.json()).catch(()=>[])             : Promise.resolve([]),
+      typesToSearch.includes('manga') ? fetch(`/api/search/manga?q=${encodeURIComponent(q)}`).then(r=>r.json()).catch(()=>[])            : Promise.resolve([]),
     ];
 
     const [movieData, tvData, bookData, mangaData] = await Promise.all(fetches);
@@ -4605,8 +4540,8 @@ function renderSmCard(r) {
   let posterSrc = BROKEN_POSTER_FULL;
   if (r.cover_url) {
     posterSrc = r.cover_url;
-  } else if (r.media_type === 'manga') {
-    posterSrc = BROKEN_POSTER_BLANK; // cover loaded async by loadMangaCovers() after adding
+  } else if (r.media_type === 'manga' && r.external_id) {
+    posterSrc = `/api/poster/manga/${encodeURIComponent(r.external_id)}`;
   } else if (r.poster_path) {
     posterSrc = `https://image.tmdb.org/t/p/w500${r.poster_path}`;
   }
@@ -4845,8 +4780,6 @@ async function _runVibeSearch(q, types) {
       tmdbResultMap[key] = r;
     });
     renderVibeResults(false);
-    // Enrich manga results that the server couldn't reach MangaDex for (PythonAnywhere)
-    enrichVibeManga(results).catch(() => {});
   } catch (e) {
     body.innerHTML = `<div class="sm-status">Something went wrong: ${esc(String(e))}</div>`;
   } finally {
@@ -4882,7 +4815,6 @@ async function showMoreVibeResults() {
     vibeShownResults = [...vibeShownResults, ...results];
     vibeLoadCount++;
     renderVibeResults(true);
-    enrichVibeManga(results).catch(() => {});
   } catch (e) {
     if (moreBtn) moreBtn.innerHTML = `<span style="color:var(--muted);font-size:12px">Failed to load more.</span>`;
   } finally {
@@ -4909,8 +4841,8 @@ function renderVibeResults(append) {
     let posterSrc = BROKEN_POSTER_FULL;
     if (r.cover_url) {
       posterSrc = r.cover_url;
-    } else if (r.media_type === 'manga') {
-      posterSrc = BROKEN_POSTER_BLANK; // enriched server-side; cover loads once added to library
+    } else if (r.media_type === 'manga' && r.external_id) {
+      posterSrc = `/api/poster/manga/${encodeURIComponent(r.external_id)}`;
     } else if (r.media_type === 'book' && r.external_id) {
       posterSrc = `/api/poster/book/${encodeURIComponent(r.external_id)}`;
     } else if (r.poster_path) {
