@@ -232,8 +232,8 @@ def _async_fetch_manga_cover(media_id: int, external_id: str, db_path: str) -> N
                     "UPDATE media SET cover_url = ? WHERE id = ?",
                     (cover_url, media_id),
                 )
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[manga-cover] async fetch failed for {external_id}: {e}")
 
 
 def _backfill_manga_covers(db_path: str) -> None:
@@ -836,12 +836,24 @@ def add_media():
             overview    = data.get("overview"),
             year        = data.get("year"),
         )
-        if media_type == "manga" and not cover_url and external_id and new_id:
-            threading.Thread(
-                target=_async_fetch_manga_cover,
-                args=(new_id, external_id, get_user_db_path(int(current_user.id))),
-                daemon=True,
-            ).start()
+        if media_type == "manga" and new_id:
+            if cover_url:
+                # INSERT OR IGNORE skips data for existing rows — patch cover_url
+                # conditionally so an existing manga with null cover gets updated.
+                with get_conn() as conn:
+                    conn.execute(
+                        "UPDATE media SET cover_url = ? "
+                        "WHERE id = ? AND (cover_url IS NULL OR cover_url = '')",
+                        (cover_url, new_id),
+                    )
+                _invalidate_media_cache(new_id)
+            elif external_id:
+                # No cover_url in request (rare) — fetch from MangaDex in background.
+                threading.Thread(
+                    target=_async_fetch_manga_cover,
+                    args=(new_id, external_id, get_user_db_path(int(current_user.id))),
+                    daemon=True,
+                ).start()
     return jsonify({"status": "ok"})
 
 
