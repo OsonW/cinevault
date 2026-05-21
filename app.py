@@ -669,54 +669,26 @@ def search_manga():
 @login_required
 def get_poster(media_type, item_id):
     if media_type == "book":
-        # This endpoint is only reached for books without a cover_url (those with
-        # cover_url are loaded directly by the browser via esc(item.cover_url)).
-        # Try Google Books to find a cover the server can actually proxy.
-        cache_key = f"book_{item_id}"
-        if cache_key in poster_cache:
-            img_bytes, content_type = poster_cache[cache_key]
-            return Response(
-                img_bytes, mimetype=content_type,
-                headers={"Cache-Control": "public, max-age=31536000, immutable"},
-            )
-
         row = get_media_by_external_id(item_id, media_type)
-        title  = (row or {}).get("title",  "")
-        author = (row or {}).get("author", "")
-        if title:
-            try:
-                q = title
-                if author:
-                    q += f" inauthor:{author.split(',')[0].strip()}"
-                gb_resp = requests.get(
-                    "https://www.googleapis.com/books/v1/volumes",
-                    params={"q": q, "maxResults": 1, "fields": "items/volumeInfo/imageLinks"},
-                    timeout=6,
-                )
-                if gb_resp.status_code == 200:
-                    gb_items = gb_resp.json().get("items", [])
-                    if gb_items:
-                        links = gb_items[0].get("volumeInfo", {}).get("imageLinks", {})
-                        thumb = links.get("thumbnail") or links.get("smallThumbnail")
-                        if thumb:
-                            thumb = thumb.replace("http://", "https://")
-                            img_resp = requests.get(
-                                thumb, timeout=8,
-                                headers={"User-Agent": "Mozilla/5.0 (compatible; CineVault/1.0)"},
-                                allow_redirects=True,
-                            )
-                            if img_resp.status_code == 200:
-                                content_type = img_resp.headers.get("Content-Type", "image/jpeg")
-                                img_bytes = img_resp.content
-                                poster_cache[cache_key] = (img_bytes, content_type)
-                                return Response(
-                                    img_bytes, mimetype=content_type,
-                                    headers={"Cache-Control": "public, max-age=31536000, immutable"},
-                                )
-            except Exception as e:
-                print(f"Book poster Google Books fetch failed for {item_id}: {e}")
+        cover_url = (row or {}).get("cover_url") or ""
 
-        return "", 404
+        if not cover_url:
+            try:
+                resp = requests.get(
+                    f"https://openlibrary.org/works/{item_id}.json",
+                    timeout=5,
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if data.get("covers"):
+                        cover_id = data["covers"][0]
+                        cover_url = f"https://covers.openlibrary.org/b/id/{cover_id}-L.jpg"
+            except Exception as e:
+                print(f"Open Library fetch error for {item_id}: {e}")
+
+        if not cover_url or not _is_safe_cover_url(cover_url):
+            return "", 404
+        return redirect(cover_url, code=302)
 
     if media_type == "manga":
         row = get_media_by_external_id(item_id, media_type)
