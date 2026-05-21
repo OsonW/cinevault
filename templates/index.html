@@ -2199,10 +2199,9 @@ function tmdbHeaders() {
 
 function posterUrl(item) {
   if (item.media_type === 'book') {
+    if (item.cover_url) return esc(item.cover_url);
     const ext = item.external_id || '';
-    if (!ext) return BROKEN_POSTER_FULL;
-    const qs = item.cover_url ? `?cover_url=${encodeURIComponent(item.cover_url)}` : '';
-    return `/api/poster/book/${encodeURIComponent(ext)}${qs}`;
+    return ext ? `/api/poster/book/${encodeURIComponent(ext)}` : BROKEN_POSTER_FULL;
   }
   if (item.media_type === 'manga') {
     const ext = item.external_id || '';
@@ -4558,9 +4557,9 @@ function renderSmCard(r) {
   const key      = `${r.media_type}_${r.external_id || r.tmdb_id}`;
   const already  = inLibrary.has(key);
   let posterSrc = BROKEN_POSTER_FULL;
-  if (r.media_type === 'book' && r.external_id) {
-    const qs = r.cover_url ? `?cover_url=${encodeURIComponent(r.cover_url)}` : '';
-    posterSrc = `/api/poster/book/${encodeURIComponent(r.external_id)}${qs}`;
+  if (r.media_type === 'book') {
+    if (r.cover_url) posterSrc = esc(r.cover_url);
+    else if (r.external_id) posterSrc = `/api/poster/book/${encodeURIComponent(r.external_id)}`;
   } else if (r.media_type === 'manga' && r.external_id) {
     posterSrc = `/api/poster/manga/${encodeURIComponent(r.external_id)}`;
   } else if (r.poster_path) {
@@ -4860,12 +4859,13 @@ function renderVibeResults(append) {
     const key     = `${r.media_type}_${r.external_id || r.tmdb_id || r.title}`;
     const already = inLibrary.has(key);
     let posterSrc = BROKEN_POSTER_FULL;
-    if (r.cover_url) {
-      posterSrc = r.cover_url;
+    if (r.media_type === 'book') {
+      if (r.cover_url) posterSrc = esc(r.cover_url);
+      else if (r.external_id) posterSrc = `/api/poster/book/${encodeURIComponent(r.external_id)}`;
     } else if (r.media_type === 'manga' && r.external_id) {
       posterSrc = `/api/poster/manga/${encodeURIComponent(r.external_id)}`;
-    } else if (r.media_type === 'book' && r.external_id) {
-      posterSrc = `/api/poster/book/${encodeURIComponent(r.external_id)}`;
+    } else if (r.cover_url) {
+      posterSrc = r.cover_url;
     } else if (r.poster_path) {
       posterSrc = `https://image.tmdb.org/t/p/w500${r.poster_path}`;
     }
