@@ -1578,6 +1578,38 @@ body.entry-active .entry-cancel-account { display: block; }
 .key-confirm-delete:hover { background: #c94040; }
 .key-confirm-delete:disabled { opacity: 0.6; cursor: default; }
 .key-confirm-delete:disabled:hover { background: var(--red); }
+
+/* ── Delete account section in logout popup ───── */
+.logout-delete-footer {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+  margin-top: 10px;
+}
+.logout-delete-link {
+  background: none; border: none; padding: 0;
+  font-size: 11px; color: var(--muted);
+  cursor: pointer; text-decoration: underline;
+  font-family: 'DM Sans', sans-serif;
+}
+.logout-delete-link:hover { color: var(--red); }
+.logout-delete-section { margin-top: 12px; }
+.logout-delete-section.hidden { display: none; }
+.logout-delete-label { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
+.logout-delete-row { display: flex; gap: 8px; align-items: center; }
+.logout-delete-input {
+  flex: 1; min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--border-md);
+  border-radius: var(--radius);
+  padding: 7px 10px;
+  color: var(--text); font-size: 12px;
+  font-family: 'DM Sans', sans-serif;
+  outline: none;
+}
+.logout-delete-input:focus { border-color: var(--red); }
+
+/* ── Current key hint in key modal ─────────────── */
+.key-current-hint { font-size: 11px; color: var(--muted); margin-top: 2px; }
 </style>
 </head>
 <body>
@@ -1750,7 +1782,7 @@ body.entry-active .entry-cancel-account { display: block; }
 <!-- ── Key Modal ──────────────────────────────── -->
 <div class="key-modal-backdrop hidden" id="keyModalBackdrop">
   <div class="key-modal-stack">
-    <div class="entry-greeting" id="entryGreeting">Hello, <strong>{{ username|e }}</strong></div>
+    <div class="entry-greeting" id="entryGreeting" data-username="{{ username|e }}">Hello, <strong>{{ username|e }}</strong></div>
   <div class="key-modal-box">
     <div class="key-modal-left">
       <div>
@@ -1769,6 +1801,7 @@ body.entry-active .entry-cancel-account { display: block; }
             <svg class="eye-off" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
           </button>
         </div>
+        <div class="key-current-hint" id="keyCurrentGemini"></div>
       </div>
       <div class="key-field">
         <div class="key-field-row">
@@ -1782,6 +1815,7 @@ body.entry-active .entry-cancel-account { display: block; }
             <svg class="eye-off" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
           </button>
         </div>
+        <div class="key-current-hint" id="keyCurrentTmdb"></div>
       </div>
       <div class="key-modal-actions">
         <button class="key-confirm-cancel" id="keyModalCancel" onclick="closeKeyModal()" style="display:none">Cancel</button>
@@ -1835,6 +1869,16 @@ body.entry-active .entry-cancel-account { display: block; }
       <button class="key-confirm-cancel" id="logoutCancelBtn" onclick="closeLogoutConfirm()">Cancel</button>
       <button class="key-confirm-delete" id="logoutConfirmBtn" onclick="doLogout()">Log out</button>
     </div>
+    <div class="logout-delete-footer">
+      <button class="logout-delete-link" id="logoutDeleteAccountLink" onclick="showLogoutDeleteSection()">Delete account</button>
+    </div>
+    <div class="logout-delete-section hidden" id="logoutDeleteSection">
+      <div class="logout-delete-label">Type Username to Confirm Deletion</div>
+      <div class="logout-delete-row">
+        <input type="text" id="logoutDeleteUsernameInput" class="logout-delete-input" placeholder="Username" autocomplete="off" oninput="validateLogoutDelete()">
+        <button class="key-confirm-delete" id="logoutDeleteConfirmBtn" onclick="doDeleteAccount()" disabled>Delete Permanently</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -1847,18 +1891,22 @@ body.entry-active .entry-cancel-account { display: block; }
 // ─────────────────────────────────────────────
 let _cachedKeys = { gemini_key: '', tmdb_key: '', has_keys: false };
 let _keyModalMode = 'entry';  // 'entry' = mandatory first-time, 'update' = optional
+const _currentUsername = document.getElementById('entryGreeting').dataset.username;
 
 // Kept for backwards compat with older call sites — keys now live server-side
 // and are looked up from the authenticated session, so request payloads can
 // safely omit them.
 function getKeys() { return { gemini_key: '', tmdb_key: '' }; }
 
+let _refreshKeysInflight = null;
 async function refreshKeys() {
-  try {
-    const res = await fetch('/auth/keys');
-    if (res.ok) _cachedKeys = await res.json();
-  } catch {}
-  return _cachedKeys;
+  if (_refreshKeysInflight) return _refreshKeysInflight;
+  _refreshKeysInflight = fetch('/auth/keys')
+    .then(res => res.ok ? res.json() : _cachedKeys)
+    .then(data => { _cachedKeys = data; return data; })
+    .catch(() => _cachedKeys)
+    .finally(() => { _refreshKeysInflight = null; });
+  return _refreshKeysInflight;
 }
 
 function showKeyModal(mode) {
@@ -1874,6 +1922,8 @@ function showKeyModal(mode) {
     cancelBtn.style.display = '';
     saveBtn.textContent = 'Update';
     sub.textContent = 'Update your API keys.';
+    document.getElementById('keyCurrentGemini').textContent = _cachedKeys.gemini_key ? `Current: ${_cachedKeys.gemini_key}` : '';
+    document.getElementById('keyCurrentTmdb').textContent   = _cachedKeys.tmdb_key   ? `Current: ${_cachedKeys.tmdb_key}`   : '';
   } else {
     backdrop.classList.add('solid');            // solid backdrop for mandatory entry
     document.body.classList.add('entry-active');
@@ -1882,6 +1932,8 @@ function showKeyModal(mode) {
     sub.textContent = 'Enter your API keys to get started.';
     document.getElementById('keyInputGemini').value = '';
     document.getElementById('keyInputTmdb').value   = '';
+    document.getElementById('keyCurrentGemini').textContent = '';
+    document.getElementById('keyCurrentTmdb').textContent   = '';
   }
   _resetKeyVisibility();
   validateKeyForm();
@@ -1984,9 +2036,13 @@ async function saveKeysFromModal() {
   validateKeyForm();
 }
 
-async function openKeyUpdate() {
-  await refreshKeys();
+function openKeyUpdate() {
   showKeyModal('update');
+  refreshKeys().then(keys => {
+    if (document.getElementById('keyModalBackdrop').classList.contains('hidden')) return;
+    document.getElementById('keyCurrentGemini').textContent = keys.gemini_key ? `Current: ${keys.gemini_key}` : '';
+    document.getElementById('keyCurrentTmdb').textContent   = keys.tmdb_key   ? `Current: ${keys.tmdb_key}`   : '';
+  });
 }
 
 // ─────────────────────────────────────────────
@@ -2000,6 +2056,12 @@ function openLogoutConfirm() {
 }
 function closeLogoutConfirm() {
   document.getElementById('logoutConfirmBackdrop').classList.add('hidden');
+  document.getElementById('logoutDeleteAccountLink').style.display = '';
+  document.getElementById('logoutDeleteSection').classList.add('hidden');
+  document.getElementById('logoutDeleteUsernameInput').value = '';
+  const dBtn = document.getElementById('logoutDeleteConfirmBtn');
+  dBtn.disabled = true;
+  dBtn.textContent = 'Delete Permanently';
 }
 async function doLogout() {
   const btn    = document.getElementById('logoutConfirmBtn');
@@ -2010,6 +2072,32 @@ async function doLogout() {
   btn.textContent = 'Logging out…';
   try {
     await fetch('/auth/logout', { method: 'POST' });
+  } catch {}
+  window.location.href = '/login';
+}
+
+function showLogoutDeleteSection() {
+  document.getElementById('logoutDeleteAccountLink').style.display = 'none';
+  document.getElementById('logoutDeleteSection').classList.remove('hidden');
+  document.getElementById('logoutDeleteUsernameInput').focus();
+}
+function validateLogoutDelete() {
+  const val = document.getElementById('logoutDeleteUsernameInput').value.trim();
+  document.getElementById('logoutDeleteConfirmBtn').disabled =
+    val.toLowerCase() !== _currentUsername.toLowerCase();
+}
+async function doDeleteAccount() {
+  const btn = document.getElementById('logoutDeleteConfirmBtn');
+  if (btn.disabled) return;
+  const username = document.getElementById('logoutDeleteUsernameInput').value.trim();
+  btn.disabled = true;
+  btn.textContent = 'Deleting…';
+  try {
+    await fetch('/auth/cancel-registration', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username }),
+    });
   } catch {}
   window.location.href = '/login';
 }
@@ -2199,9 +2287,12 @@ function tmdbHeaders() {
 
 function posterUrl(item) {
   if (item.media_type === 'book') {
-    if (item.cover_url) return esc(item.cover_url);
     const ext = item.external_id || '';
-    return ext ? `/api/poster/book/${encodeURIComponent(ext)}` : BROKEN_POSTER_FULL;
+    if (ext) {
+      const hint = item.cover_url ? `?cover_url=${encodeURIComponent(item.cover_url)}` : '';
+      return `/api/poster/book/${encodeURIComponent(ext)}${hint}`;
+    }
+    return item.cover_url ? esc(item.cover_url) : BROKEN_POSTER_FULL;
   }
   if (item.media_type === 'manga') {
     const ext = item.external_id || '';
@@ -4558,8 +4649,10 @@ function renderSmCard(r) {
   const already  = inLibrary.has(key);
   let posterSrc = BROKEN_POSTER_FULL;
   if (r.media_type === 'book') {
-    if (r.cover_url) posterSrc = esc(r.cover_url);
-    else if (r.external_id) posterSrc = `/api/poster/book/${encodeURIComponent(r.external_id)}`;
+    if (r.external_id) {
+      const hint = r.cover_url ? `?cover_url=${encodeURIComponent(r.cover_url)}` : '';
+      posterSrc = `/api/poster/book/${encodeURIComponent(r.external_id)}${hint}`;
+    } else if (r.cover_url) { posterSrc = esc(r.cover_url); }
   } else if (r.media_type === 'manga' && r.external_id) {
     posterSrc = `/api/poster/manga/${encodeURIComponent(r.external_id)}`;
   } else if (r.poster_path) {
@@ -4860,8 +4953,10 @@ function renderVibeResults(append) {
     const already = inLibrary.has(key);
     let posterSrc = BROKEN_POSTER_FULL;
     if (r.media_type === 'book') {
-      if (r.cover_url) posterSrc = esc(r.cover_url);
-      else if (r.external_id) posterSrc = `/api/poster/book/${encodeURIComponent(r.external_id)}`;
+      if (r.external_id) {
+        const hint = r.cover_url ? `?cover_url=${encodeURIComponent(r.cover_url)}` : '';
+        posterSrc = `/api/poster/book/${encodeURIComponent(r.external_id)}${hint}`;
+      } else if (r.cover_url) { posterSrc = esc(r.cover_url); }
     } else if (r.media_type === 'manga' && r.external_id) {
       posterSrc = `/api/poster/manga/${encodeURIComponent(r.external_id)}`;
     } else if (r.cover_url) {

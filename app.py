@@ -20,7 +20,7 @@ from db import (
     update_chat_spoiler_threshold, update_message_snap,
     get_all_memory,
 )
-from auth import auth_bp, login_manager, rate_limit
+from auth import auth_bp, login_manager, rate_limit, _as_str
 from users_db import init_users_db, get_user_keys, delete_user
 
 app = Flask(__name__)
@@ -299,6 +299,10 @@ def _generate_ai_content(prompt: str, gemini_client) -> str:
 @login_required
 @rate_limit(max_requests=5, window_seconds=3600)   # 5/hour per IP
 def cancel_registration():
+    data = request.get_json(silent=True) or {}
+    username_input = _as_str(data.get("username"))
+    if username_input and username_input.lower() != current_user.username.lower():
+        return jsonify({"error": "Username does not match"}), 400
     uid = int(current_user.id)
     # Drop per-user caches and the per-user SQLite file (if it was already created)
     _user_media_cache.pop(uid, None)
@@ -665,6 +669,14 @@ def search_manga():
 @login_required
 def get_poster(media_type, item_id):
     if media_type == "book":
+        cache_key = f"book_{item_id}"
+        if cache_key in poster_cache:
+            img_bytes, content_type = poster_cache[cache_key]
+            return Response(
+                img_bytes, mimetype=content_type,
+                headers={"Cache-Control": "public, max-age=31536000, immutable"},
+            )
+
         row = get_media_by_external_id(item_id, media_type)
         cover_url = (row or {}).get("cover_url", "")
 
@@ -674,9 +686,61 @@ def get_poster(media_type, item_id):
             if hint and _is_safe_cover_url(hint):
                 cover_url = hint
 
-        if not cover_url or not _is_safe_cover_url(cover_url):
-            return "", 404
-        return redirect(cover_url, code=302)
+        if cover_url and _is_safe_cover_url(cover_url):
+            try:
+                img_resp = requests.get(
+                    cover_url, timeout=8,
+                    headers={"User-Agent": "Mozilla/5.0 (compatible; CineVault/1.0)"},
+                    allow_redirects=True,
+                )
+                if img_resp.status_code == 200:
+                    content_type = img_resp.headers.get("Content-Type", "image/jpeg")
+                    img_bytes = img_resp.content
+                    poster_cache[cache_key] = (img_bytes, content_type)
+                    return Response(
+                        img_bytes, mimetype=content_type,
+                        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+                    )
+            except Exception:
+                pass
+
+        # Fallback: fetch cover from Google Books using title/author
+        title  = (row or {}).get("title",  "")
+        author = (row or {}).get("author", "")
+        if title:
+            try:
+                q = title
+                if author:
+                    q += f" inauthor:{author.split(',')[0].strip()}"
+                gb_resp = requests.get(
+                    "https://www.googleapis.com/books/v1/volumes",
+                    params={"q": q, "maxResults": 1, "fields": "items/volumeInfo/imageLinks"},
+                    timeout=6,
+                )
+                if gb_resp.status_code == 200:
+                    gb_items = gb_resp.json().get("items", [])
+                    if gb_items:
+                        links = gb_items[0].get("volumeInfo", {}).get("imageLinks", {})
+                        thumb = links.get("thumbnail") or links.get("smallThumbnail")
+                        if thumb:
+                            thumb = thumb.replace("http://", "https://")
+                            img_resp2 = requests.get(
+                                thumb, timeout=8,
+                                headers={"User-Agent": "Mozilla/5.0 (compatible; CineVault/1.0)"},
+                                allow_redirects=True,
+                            )
+                            if img_resp2.status_code == 200:
+                                content_type = img_resp2.headers.get("Content-Type", "image/jpeg")
+                                img_bytes = img_resp2.content
+                                poster_cache[cache_key] = (img_bytes, content_type)
+                                return Response(
+                                    img_bytes, mimetype=content_type,
+                                    headers={"Cache-Control": "public, max-age=31536000, immutable"},
+                                )
+            except Exception as e:
+                print(f"Book poster Google Books fallback failed for {item_id}: {e}")
+
+        return "", 404
 
     if media_type == "manga":
         row = get_media_by_external_id(item_id, media_type)
