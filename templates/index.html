@@ -3394,26 +3394,19 @@ async function changeStatus(id, status) {
   if (!item || item.status === status) return;
   statusChangePending = true;
   const prevStatus = item.status;
-  const tabAtStart = currentTab;
   aiCardController?.abort();
   item.status = status;
-  const suffixMap = { watchlist: 'wl', watching: 'wa', finished: 'fi' };
-  document.querySelectorAll('.status-pill').forEach(p => {
-    const pillStatus = p.textContent.trim().toLowerCase();
-    p.className = 'status-pill' + (pillStatus === status ? ` active-${suffixMap[status]}` : '');
-    p.disabled  = true;
-  });
+  switchTab(status, id);
   try {
     await apiPost('/api/add', { id, status });
   } catch {
     showToast('Failed to update status — please try again.', 'error');
     item.status = prevStatus;
-    try { await loadList(); } catch {}
+    switchTab(prevStatus, id);
     statusChangePending = false;
     return;
   }
   statusChangePending = false;
-  if (currentTab === tabAtStart) switchTab(status, id);
 }
 
 let deleteItemPending = false;
