@@ -668,6 +668,12 @@ def get_poster(media_type, item_id):
         row = get_media_by_external_id(item_id, media_type)
         cover_url = (row or {}).get("cover_url", "")
 
+        # Accept a cover_url hint from the frontend (e.g. search results not yet in DB)
+        if not cover_url:
+            hint = request.args.get("cover_url", "").strip()
+            if hint and _is_safe_cover_url(hint):
+                cover_url = hint
+
         if not cover_url:
             try:
                 resp = requests.get(
@@ -684,19 +690,7 @@ def get_poster(media_type, item_id):
 
         if not cover_url or not _is_safe_cover_url(cover_url):
             return "", 404
-
-        try:
-            img_resp = requests.get(cover_url, timeout=10)
-            img_resp.raise_for_status()
-            content_type = img_resp.headers.get("Content-Type", "image/jpeg")
-            return Response(
-                img_resp.content,
-                mimetype=content_type,
-                headers={"Cache-Control": "public, max-age=86400"},
-            )
-        except Exception as e:
-            print(f"Book cover proxy error for {item_id}: {e}")
-            return "", 404
+        return redirect(cover_url, code=302)
 
     if media_type == "manga":
         row = get_media_by_external_id(item_id, media_type)

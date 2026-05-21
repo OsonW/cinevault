@@ -1763,7 +1763,7 @@ body.entry-active .entry-cancel-account { display: block; }
           <button class="key-help-link" onclick="showKeyHelp('gemini')">How do I get this?</button>
         </div>
         <div class="key-input-wrap">
-          <input type="password" id="keyInputGemini" placeholder="Gemini Key..." autocomplete="one-time-code" data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" oninput="validateKeyForm()">
+          <input type="password" id="keyInputGemini" placeholder="New Gemini Key" autocomplete="one-time-code" data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" oninput="validateKeyForm()">
           <button type="button" class="key-eye-btn" id="keyEyeGemini" onclick="toggleKeyVisibility('Gemini')">
             <svg class="eye-on" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
             <svg class="eye-off" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
@@ -1776,7 +1776,7 @@ body.entry-active .entry-cancel-account { display: block; }
           <button class="key-help-link" onclick="showKeyHelp('tmdb')">How do I get this?</button>
         </div>
         <div class="key-input-wrap">
-          <input type="password" id="keyInputTmdb" placeholder="TMDB Key..." autocomplete="one-time-code" data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" oninput="validateKeyForm()">
+          <input type="password" id="keyInputTmdb" placeholder="New TMDB Key" autocomplete="one-time-code" data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" oninput="validateKeyForm()">
           <button type="button" class="key-eye-btn" id="keyEyeTmdb" onclick="toggleKeyVisibility('Tmdb')">
             <svg class="eye-on" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
             <svg class="eye-off" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
@@ -1874,14 +1874,6 @@ function showKeyModal(mode) {
     cancelBtn.style.display = '';
     saveBtn.textContent = 'Update';
     sub.textContent = 'Update your API keys.';
-    const geminiInput = document.getElementById('keyInputGemini');
-    const tmdbInput   = document.getElementById('keyInputTmdb');
-    // Pre-fill with masked values so users can see a key is saved.
-    // They must retype the full key to actually update it.
-    geminiInput.value       = _cachedKeys.gemini_key || '';
-    tmdbInput.value         = _cachedKeys.tmdb_key   || '';
-    geminiInput.placeholder = 'Enter full Gemini API key';
-    tmdbInput.placeholder   = 'Enter full TMDB API key';
   } else {
     backdrop.classList.add('solid');            // solid backdrop for mandatory entry
     document.body.classList.add('entry-active');
@@ -2206,9 +2198,15 @@ function tmdbHeaders() {
 }
 
 function posterUrl(item) {
-  if (item.media_type === 'book' || item.media_type === 'manga') {
+  if (item.media_type === 'book') {
     const ext = item.external_id || '';
-    return ext ? `/api/poster/${item.media_type}/${encodeURIComponent(ext)}` : BROKEN_POSTER_FULL;
+    if (!ext) return BROKEN_POSTER_FULL;
+    const qs = item.cover_url ? `?cover_url=${encodeURIComponent(item.cover_url)}` : '';
+    return `/api/poster/book/${encodeURIComponent(ext)}${qs}`;
+  }
+  if (item.media_type === 'manga') {
+    const ext = item.external_id || '';
+    return ext ? `/api/poster/manga/${encodeURIComponent(ext)}` : BROKEN_POSTER_FULL;
   }
   const id = item.tmdb_id || item.external_id || '';
   return id ? `/api/poster/${item.media_type}/${id}` : BROKEN_POSTER_FULL;
@@ -4560,8 +4558,9 @@ function renderSmCard(r) {
   const key      = `${r.media_type}_${r.external_id || r.tmdb_id}`;
   const already  = inLibrary.has(key);
   let posterSrc = BROKEN_POSTER_FULL;
-  if (r.cover_url) {
-    posterSrc = r.cover_url;
+  if (r.media_type === 'book' && r.external_id) {
+    const qs = r.cover_url ? `?cover_url=${encodeURIComponent(r.cover_url)}` : '';
+    posterSrc = `/api/poster/book/${encodeURIComponent(r.external_id)}${qs}`;
   } else if (r.media_type === 'manga' && r.external_id) {
     posterSrc = `/api/poster/manga/${encodeURIComponent(r.external_id)}`;
   } else if (r.poster_path) {
