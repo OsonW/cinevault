@@ -740,6 +740,10 @@ def get_poster(media_type, item_id):
             except Exception as e:
                 print(f"Book poster Google Books fallback failed for {item_id}: {e}")
 
+        # All server-side methods failed — redirect so the browser fetches directly
+        if cover_url and _is_safe_cover_url(cover_url):
+            return redirect(cover_url, code=302)
+
         return "", 404
 
     if media_type == "manga":
