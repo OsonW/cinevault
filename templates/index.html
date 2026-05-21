@@ -1874,8 +1874,12 @@ function showKeyModal(mode) {
     cancelBtn.style.display = '';
     saveBtn.textContent = 'Update';
     sub.textContent = 'Update your API keys.';
-    document.getElementById('keyInputGemini').value = _cachedKeys.gemini_key || '';
-    document.getElementById('keyInputTmdb').value   = _cachedKeys.tmdb_key   || '';
+    const geminiInput = document.getElementById('keyInputGemini');
+    const tmdbInput   = document.getElementById('keyInputTmdb');
+    geminiInput.value       = '';
+    tmdbInput.value         = '';
+    geminiInput.placeholder = _cachedKeys.gemini_key || 'Enter Gemini API key';
+    tmdbInput.placeholder   = _cachedKeys.tmdb_key   || 'Enter TMDB API key';
   } else {
     backdrop.classList.add('solid');            // solid backdrop for mandatory entry
     document.body.classList.add('entry-active');
@@ -1949,7 +1953,7 @@ async function saveKeysFromModal() {
   } catch {}
 
   if (ok) {
-    _cachedKeys = { has_keys: true, gemini_key: g, tmdb_key: t };
+    await refreshKeys();
     document.getElementById('keyModalBackdrop').classList.add('hidden');
     document.body.classList.remove('entry-active');
     showToast(_keyModalMode === 'update' ? 'Keys updated.' : 'Keys saved.');
@@ -2073,7 +2077,7 @@ let qaAutoChat   = null;
 let pendingSelectId = null;
 let searchTypeActive = new Set(['movie', 'tv', 'book', 'manga']);
 let modalActiveTypes = new Set(['movie', 'tv', 'book', 'manga']);
-let modalSearchPending = false;
+let _modalSearchController = null;
 
 const tabLastSelected = { watchlist: null, watching: null, finished: null };
 
@@ -2188,7 +2192,7 @@ function tmdbHeaders() {
 
 function posterUrl(item) {
   if (item.media_type === 'book' || item.media_type === 'manga') {
-    if (item.cover_url) return item.cover_url;
+    if (item.cover_url) return esc(item.cover_url);
     const ext = item.external_id || '';
     return ext ? `/api/poster/${item.media_type}/${encodeURIComponent(ext)}` : BROKEN_POSTER_FULL;
   }
@@ -4377,7 +4381,6 @@ async function addFromDropdown(key) {
 }
 
 function toggleModalType(type) {
-    if (modalSearchPending) return;
     if (modalActiveTypes.has(type)) {
         if (modalActiveTypes.size === 1) return;
         modalActiveTypes.delete(type);
@@ -4416,6 +4419,10 @@ async function openModal() {
 }
 
 function closeModal() {
+  if (_modalSearchController) {
+    _modalSearchController.abort();
+    _modalSearchController = null;
+  }
   document.getElementById('searchModalBackdrop').classList.remove('open');
   document.body.style.overflow = '';
 }
@@ -4426,8 +4433,12 @@ function onBackdropClick(e) {
 
 async function runModalSearch(q) {
     if (!q) return;
-    if (modalSearchPending) return;
-    modalSearchPending = true;
+
+    // Abort any in-flight search so stale results can never overwrite fresh ones.
+    if (_modalSearchController) _modalSearchController.abort();
+    _modalSearchController = new AbortController();
+    const { signal } = _modalSearchController;
+
     lastModalQuery = q;
     const smTitle = document.getElementById('smTitle');
     const smBody  = document.getElementById('smBody');
@@ -4437,22 +4448,21 @@ async function runModalSearch(q) {
     const typesToSearch = [...modalActiveTypes];
     if (typesToSearch.length === 0) {
         smBody.innerHTML = '<div class="sm-status">Select at least one media type.</div>';
-        modalSearchPending = false;
         return;
     }
 
-    const _th = { headers: tmdbHeaders() };
+    const _th = { headers: tmdbHeaders(), signal };
     const fetches = [
-      typesToSearch.includes('movie') ? fetch(`/api/search?q=${encodeURIComponent(q)}&type=movie`, _th).then(r=>r.json()).catch(()=>[]) : Promise.resolve([]),
-      typesToSearch.includes('tv')    ? fetch(`/api/search?q=${encodeURIComponent(q)}&type=tv`, _th).then(r=>r.json()).catch(()=>[])    : Promise.resolve([]),
-      typesToSearch.includes('book')  ? fetch(`/api/search/books?q=${encodeURIComponent(q)}`).then(r=>r.json()).catch(()=>[])            : Promise.resolve([]),
-      typesToSearch.includes('manga') ? fetch(`/api/search/manga?q=${encodeURIComponent(q)}`).then(r=>r.json()).catch(()=>[])            : Promise.resolve([]),
+      typesToSearch.includes('movie') ? fetch(`/api/search?q=${encodeURIComponent(q)}&type=movie`, _th).then(r=>r.json()).catch(e=>e.name==='AbortError'?null:[]) : Promise.resolve([]),
+      typesToSearch.includes('tv')    ? fetch(`/api/search?q=${encodeURIComponent(q)}&type=tv`, _th).then(r=>r.json()).catch(e=>e.name==='AbortError'?null:[])    : Promise.resolve([]),
+      typesToSearch.includes('book')  ? fetch(`/api/search/books?q=${encodeURIComponent(q)}`, { signal }).then(r=>r.json()).catch(e=>e.name==='AbortError'?null:[]) : Promise.resolve([]),
+      typesToSearch.includes('manga') ? fetch(`/api/search/manga?q=${encodeURIComponent(q)}`, { signal }).then(r=>r.json()).catch(e=>e.name==='AbortError'?null:[]) : Promise.resolve([]),
     ];
 
     const [movieData, tvData, bookData, mangaData] = await Promise.all(fetches);
 
-    modalSearchPending = false;
-    if (q !== lastModalQuery) return;
+    // null means this search was aborted — a newer search is already running.
+    if (movieData === null || tvData === null || bookData === null || mangaData === null) return;
 
     const allResults = [...movieData, ...tvData, ...bookData, ...mangaData];
     allResults.forEach(r => {
@@ -5012,6 +5022,8 @@ function esc(str) {
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+// SECURITY: must only be called with already-HTML-escaped text (via esc()).
+// Calling with raw user/AI input would allow XSS via the injected <strong> tags.
 function formatAI(text) {
   if (!text) return '';
   return text.replace(/\*(.*?)\*/g, '<strong>$1</strong>');
