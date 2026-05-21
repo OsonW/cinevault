@@ -2189,6 +2189,7 @@ function tmdbHeaders() {
 function posterUrl(item) {
   if (item.media_type === 'book' || item.media_type === 'manga') {
     if (item.cover_url) return item.cover_url;
+    if (item.media_type === 'manga') return BROKEN_POSTER_BLANK; // loaded async by loadMangaCovers()
     const ext = item.external_id || '';
     return ext ? `/api/poster/${item.media_type}/${encodeURIComponent(ext)}` : BROKEN_POSTER_FULL;
   }
@@ -2459,6 +2460,45 @@ function renderGrid() {
     highlightCard(selectedId);
   } else {
     autoSelectFirst();
+  }
+  loadMangaCovers();
+}
+
+const _mangaCoverFetching = new Set();
+
+async function loadMangaCovers() {
+  const missing = allItems.filter(i => i.media_type === 'manga' && !i.cover_url && i.external_id);
+  for (const item of missing) {
+    if (_mangaCoverFetching.has(item.id)) continue;
+    _mangaCoverFetching.add(item.id);
+    fetchOneMangaCover(item);
+    await new Promise(r => setTimeout(r, 200)); // stay under MangaDex 5 req/sec
+  }
+}
+
+async function fetchOneMangaCover(item) {
+  try {
+    const resp = await fetch(
+      `https://api.mangadex.org/manga/${encodeURIComponent(item.external_id)}?includes%5B%5D=cover_art`
+    );
+    if (!resp.ok) return;
+    const json = await resp.json();
+    for (const rel of (json.data && json.data.relationships) || []) {
+      if (rel.type === 'cover_art' && rel.attributes && rel.attributes.fileName) {
+        const coverUrl = `https://uploads.mangadex.org/covers/${item.external_id}/${rel.attributes.fileName}.512.jpg`;
+        item.cover_url = coverUrl;
+        const card = document.getElementById(`pc-${item.id}`);
+        if (card) { const img = card.querySelector('img'); if (img) img.src = coverUrl; }
+        if (selectedId === item.id) {
+          const dImg = document.querySelector('.poster-wrap img');
+          if (dImg) dImg.src = coverUrl;
+        }
+        apiPost('/api/add', { id: item.id, cover_url: coverUrl }).catch(() => {});
+        break;
+      }
+    }
+  } catch (e) { /* network or rate-limit error, skip */ } finally {
+    _mangaCoverFetching.delete(item.id);
   }
 }
 
@@ -4540,8 +4580,8 @@ function renderSmCard(r) {
   let posterSrc = BROKEN_POSTER_FULL;
   if (r.cover_url) {
     posterSrc = r.cover_url;
-  } else if (r.media_type === 'manga' && r.external_id) {
-    posterSrc = `/api/poster/manga/${encodeURIComponent(r.external_id)}`;
+  } else if (r.media_type === 'manga') {
+    posterSrc = BROKEN_POSTER_BLANK; // cover fetched client-side if added to library
   } else if (r.poster_path) {
     posterSrc = `https://image.tmdb.org/t/p/w500${r.poster_path}`;
   }
