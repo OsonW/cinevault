@@ -83,9 +83,6 @@ _user_memory_cache:  dict[int, dict] = {}
 # Lazy initialisation flags
 _app_initialized    = False
 _initialized_users: set[int] = set()
-# Tracks the per-user manga-cover backfill thread so cancel-registration can
-# wait for the SQLite handle to close before removing the file on Windows.
-_backfill_threads: dict[int, threading.Thread] = {}
 _init_lock = threading.Lock()
 
 MAX_CHAT_HISTORY = 12
@@ -117,13 +114,6 @@ def setup_request():
                 _initialized_users.add(uid)
         if not already_init:
             init_user_db(uid)
-            t = threading.Thread(
-                target=_backfill_manga_covers,
-                args=(g.user_db_path,),
-                daemon=True,
-            )
-            _backfill_threads[uid] = t
-            t.start()
 
     # All /api/* routes require authentication
     if request.path.startswith("/api/") and not current_user.is_authenticated:
@@ -222,34 +212,6 @@ def _fetch_mangadex_cover_url(manga_id: str) -> str:
     return ""
 
 
-def _backfill_manga_covers(db_path: str) -> None:
-    """Populate cover_url for manga rows missing one. Runs once per user per server start."""
-    try:
-        with get_conn(db_path) as conn:
-            rows = conn.execute(
-                "SELECT id, external_id FROM media "
-                "WHERE media_type = 'manga' "
-                "AND (cover_url IS NULL OR cover_url = '') "
-                "AND external_id IS NOT NULL"
-            ).fetchall()
-        if not rows:
-            return
-        print(f"Backfilling cover_url for {len(rows)} manga in {db_path}")
-        for row in rows:
-            try:
-                cover_url = _fetch_mangadex_cover_url(row["external_id"])
-                if cover_url:
-                    with get_conn(db_path) as conn:
-                        conn.execute(
-                            "UPDATE media SET cover_url = ? WHERE id = ?",
-                            (cover_url, row["id"]),
-                        )
-                time.sleep(0.25)  # stay under MangaDex 5 req/sec limit
-            except Exception as e:
-                print(f"Cover backfill error for manga {row['external_id']}: {e}")
-    except Exception as e:
-        print(f"Manga cover backfill failed for {db_path}: {e}")
-
 
 def _append_gemini_content(contents: list, role: str, text: str):
     if not text:
@@ -294,11 +256,6 @@ def cancel_registration():
     _user_memory_cache.pop(uid, None)
     with _init_lock:
         _initialized_users.discard(uid)
-    # Wait briefly for the manga-cover backfill thread (if any) to release the
-    # per-user SQLite handle; otherwise os.remove can fail on Windows.
-    bg = _backfill_threads.pop(uid, None)
-    if bg is not None and bg.is_alive():
-        bg.join(timeout=3)
     db_path = get_user_db_path(uid)
     # Remove the main DB file plus any SQLite sidecars (-journal/-wal/-shm)
     # that may exist if a connection was open.
