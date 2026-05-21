@@ -810,12 +810,6 @@ def add_media():
         cover_url = data.get("cover_url")
         media_type = data.get("media_type")
         external_id = data.get("external_id")
-        if media_type == "manga" and not cover_url and external_id:
-            try:
-                cover_url = _fetch_mangadex_cover_url(external_id)
-            except Exception:
-                cover_url = None
-        
         add_media_entry(
             title       = data["title"],
             media_type  = media_type,
@@ -1760,4 +1754,4 @@ def ask_ai():
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(debug=True, use_reloader=True, host="0.0.0.0", port=port)
+    app.run(debug=True, use_reloader=True, host="0.0.0.0", port=port, threaded=True)

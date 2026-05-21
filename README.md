@@ -24,13 +24,11 @@ When you open the app for the first time, a setup screen will prompt you for bot
 | **Gemini API Key** | [Google AI Studio](https://aistudio.google.com/apikey) → Create API key | 30 seconds |
 | **TMDB API Key** | [TMDB Settings](https://www.themoviedb.org/settings/api) → Request API key (personal use) | 2 minutes |
 
-## Roadmap
+## Added Features
 
-- [x] Add manga and book APIs  
-- [x] Gemini-powered Vibe Search  
-- [x] Spoiler-aware AI chat  
-- [x] Browser-side key management  
-- [x] Railway deployment
+- Browser-side key management  
+- Railway deployment
+- Log in system
 
 ## License
 

@@ -122,6 +122,26 @@ body {
 }
 .auth-submit:hover { background: var(--accent-hover); }
 .auth-submit:disabled { opacity: 0.5; cursor: default; }
+.pw-wrap { position: relative; }
+.pw-wrap input { padding-right: 38px !important; }
+.pw-eye-btn {
+  position: absolute;
+  right: 9px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  padding: 2px;
+  cursor: pointer;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  transition: color 0.15s;
+}
+.pw-eye-btn:hover { color: var(--text); }
+.pw-eye-btn .eye-off { display: none; }
+.pw-eye-btn.shown .eye-on  { display: none; }
+.pw-eye-btn.shown .eye-off { display: block; }
 </style>
 </head>
 <body>
@@ -139,13 +159,37 @@ body {
     </div>
     <div class="auth-field">
       <label>Password</label>
-      <input type="password" id="authPassword" placeholder="Password" autocomplete="current-password" minlength="4" maxlength="32" />
+      <div class="pw-wrap">
+        <input type="password" id="authPassword" placeholder="Password" autocomplete="current-password" minlength="4" maxlength="32" />
+        <button type="button" class="pw-eye-btn" id="eyePassword" onclick="togglePw('authPassword','eyePassword')" tabindex="-1" aria-label="Toggle password visibility">
+          <svg class="eye-on" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          <svg class="eye-off" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="auth-field" id="confirmField" style="display:none">
+      <label>Confirm Password</label>
+      <div class="pw-wrap">
+        <input type="password" id="authConfirm" placeholder="Confirm Password" autocomplete="new-password" minlength="4" maxlength="32" />
+        <button type="button" class="pw-eye-btn" id="eyeConfirm" onclick="togglePw('authConfirm','eyeConfirm')" tabindex="-1" aria-label="Toggle confirm password visibility">
+          <svg class="eye-on" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          <svg class="eye-off" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+        </button>
+      </div>
     </div>
     <button class="auth-submit" id="authSubmit" onclick="submit()">Sign In</button>
   </div>
 </div>
 <script>
 let mode = 'login';
+
+function togglePw(inputId, btnId) {
+  const inp = document.getElementById(inputId);
+  const btn = document.getElementById(btnId);
+  const show = inp.type === 'password';
+  inp.type = show ? 'text' : 'password';
+  btn.classList.toggle('shown', show);
+}
 
 function setMode(m) {
   mode = m;
@@ -154,7 +198,18 @@ function setMode(m) {
   document.getElementById('authSubmit').textContent = m === 'login' ? 'Sign In' : 'Create Account';
   document.getElementById('authPassword').autocomplete =
     m === 'login' ? 'current-password' : 'new-password';
+  const confirmField = document.getElementById('confirmField');
+  confirmField.style.display = m === 'register' ? 'block' : 'none';
+  document.getElementById('authConfirm').value = '';
   document.getElementById('authError').classList.remove('show');
+  ['authPassword','authConfirm'].forEach(id => {
+    const inp = document.getElementById(id);
+    if (inp) inp.type = 'password';
+  });
+  ['eyePassword','eyeConfirm'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (btn) btn.classList.remove('shown');
+  });
 }
 
 async function submit() {
@@ -174,6 +229,10 @@ async function submit() {
     }
     if (/\s/.test(password)) {
       showError('Password cannot contain spaces.'); return;
+    }
+    const confirm = document.getElementById('authConfirm').value;
+    if (password !== confirm) {
+      showError('Passwords do not match.'); return;
     }
   }
   btn.disabled = true;
