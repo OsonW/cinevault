@@ -1876,10 +1876,10 @@ function showKeyModal(mode) {
     sub.textContent = 'Update your API keys.';
     const geminiInput = document.getElementById('keyInputGemini');
     const tmdbInput   = document.getElementById('keyInputTmdb');
-    geminiInput.value       = '';
-    tmdbInput.value         = '';
-    geminiInput.placeholder = _cachedKeys.gemini_key || 'Enter Gemini API key';
-    tmdbInput.placeholder   = _cachedKeys.tmdb_key   || 'Enter TMDB API key';
+    geminiInput.value       = _cachedKeys.gemini_key || '';
+    tmdbInput.value         = _cachedKeys.tmdb_key   || '';
+    geminiInput.placeholder = 'Enter Gemini API key';
+    tmdbInput.placeholder   = 'Enter TMDB API key';
   } else {
     backdrop.classList.add('solid');            // solid backdrop for mandatory entry
     document.body.classList.add('entry-active');
@@ -1927,7 +1927,10 @@ function _resetKeyVisibility() {
 function validateKeyForm() {
   const g = document.getElementById('keyInputGemini').value.trim();
   const t = document.getElementById('keyInputTmdb').value.trim();
-  document.getElementById('keyModalSave').disabled = !(g && t);
+  const neitherChanged = _keyModalMode === 'update'
+    && g === (_cachedKeys.gemini_key || '')
+    && t === (_cachedKeys.tmdb_key   || '');
+  document.getElementById('keyModalSave').disabled = !(g && t) || neitherChanged;
 }
 
 async function saveKeysFromModal() {
@@ -1943,6 +1946,7 @@ async function saveKeysFromModal() {
   saveBtn.textContent = 'Validating…';
 
   let ok = false;
+  let errWhich = null;
   try {
     const res = await fetch('/auth/keys', {
       method:  'POST',
@@ -1950,6 +1954,9 @@ async function saveKeysFromModal() {
       body:    JSON.stringify({ gemini_key: g, tmdb_key: t }),
     });
     ok = res.ok;
+    if (!ok) {
+      try { errWhich = (await res.json()).which; } catch {}
+    }
   } catch {}
 
   if (ok) {
@@ -1959,10 +1966,11 @@ async function saveKeysFromModal() {
     showToast(_keyModalMode === 'update' ? 'Keys updated.' : 'Keys saved.');
   } else {
     if (_keyModalMode === 'update') {
-      // Close the modal so reopening shows the (unchanged) saved keys instead
-      // of the incorrect values the user just typed.
-      document.getElementById('keyModalBackdrop').classList.add('hidden');
-      showToast('Key update unsuccessful — keys remain unchanged.', 'error');
+      // Keep the modal open so the user can correct their keys.
+      const errMsg = errWhich === 'tmdb'   ? 'Invalid TMDB key — please re-enter your full key.'   :
+                     errWhich === 'gemini' ? 'Invalid Gemini key — please re-enter your full key.' :
+                     'Invalid keys — please check and try again.';
+      showToast(errMsg, 'error');
     } else {
       // Entry mode is mandatory — can't close. Clear the bad inputs instead.
       document.getElementById('keyInputGemini').value = '';
