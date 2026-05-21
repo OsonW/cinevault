@@ -169,6 +169,12 @@ async function submit() {
     if (password.length < 4 || password.length > 32) {
       showError('Password must be 4–32 characters.'); return;
     }
+    if (/\s/.test(username)) {
+      showError('Username cannot contain spaces.'); return;
+    }
+    if (/\s/.test(password)) {
+      showError('Password cannot contain spaces.'); return;
+    }
   }
   btn.disabled = true;
   btn.textContent = 'Please wait…';

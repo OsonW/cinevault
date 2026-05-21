@@ -1366,16 +1366,39 @@ body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); 
   color: var(--accent);
   font-style: italic;
 }
-.key-modal-greeting {
-  font-size: 12px;
+/* Fixed-position overlays shown only during the mandatory entry flow */
+.entry-greeting {
+  position: fixed;
+  top: 28px; left: 36px;
+  font-family: 'Fraunces', serif;
+  font-size: 2rem;
+  font-weight: 300;
   color: var(--muted);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  margin-bottom: 6px;
+  letter-spacing: 0.01em;
+  z-index: 9050;
+  display: none;
+  pointer-events: none;
+  user-select: none;
 }
-.key-modal-greeting span { color: var(--accent); text-transform: none; letter-spacing: 0; }
-/* Hide greeting in the update-keys flow */
-.key-modal-backdrop:not(.solid) .key-modal-greeting { display: none; }
+.entry-greeting strong {
+  color: var(--text);
+  font-weight: 400;
+}
+.entry-cancel-account {
+  position: fixed;
+  bottom: 24px; right: 28px;
+  background: none; border: none; padding: 6px 10px;
+  color: var(--muted); font-size: 12px;
+  font-family: 'DM Sans', sans-serif;
+  text-decoration: underline;
+  cursor: pointer;
+  z-index: 9050;
+  display: none;
+  transition: color 0.15s;
+}
+.entry-cancel-account:hover { color: var(--red); }
+body.entry-active .entry-greeting,
+body.entry-active .entry-cancel-account { display: block; }
 .key-modal-box {
   background: var(--card);
   border: 1px solid var(--border-md);
@@ -1386,20 +1409,6 @@ body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); 
   position: relative;
   box-shadow: 0 24px 64px rgba(0,0,0,0.6);
 }
-.key-cancel-account {
-  position: absolute;
-  bottom: 10px; right: 14px;
-  background: none; border: none; padding: 4px 6px;
-  color: var(--muted); font-size: 11px;
-  font-family: 'DM Sans', sans-serif;
-  text-decoration: underline;
-  cursor: pointer;
-  transition: color 0.15s;
-  z-index: 2;
-}
-.key-cancel-account:hover { color: var(--red); }
-/* Only visible during the mandatory entry flow */
-.key-modal-backdrop:not(.solid) .key-cancel-account { display: none; }
 .key-modal-left {
   flex: 0 0 360px;
   padding: 32px 28px;
@@ -1736,12 +1745,15 @@ body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); 
   </div>
 </div>
 
+<!-- ── Entry-mode overlays (top-left greeting + bottom-right cancel) ── -->
+<div class="entry-greeting" id="entryGreeting">Hello, <strong>{{ username|e }}</strong></div>
+<button class="entry-cancel-account" id="entryCancelAccount" onclick="openCancelAccountConfirm()">Cancel account creation</button>
+
 <!-- ── Key Modal ──────────────────────────────── -->
 <div class="key-modal-backdrop hidden" id="keyModalBackdrop">
   <div class="key-modal-box">
     <div class="key-modal-left">
       <div>
-        <div class="key-modal-greeting" id="keyModalGreeting">Hello, <span id="keyModalUsername">{{ username|e }}</span></div>
         <div class="key-modal-title" id="keyModalTitle">Cine<em>Vault</em></div>
         <div class="key-modal-sub" id="keyModalSub">Enter your API keys to get started.</div>
       </div>
@@ -1776,7 +1788,6 @@ body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); 
         <button class="key-modal-save" id="keyModalSave" onclick="saveKeysFromModal()" disabled>Save Keys</button>
       </div>
     </div>
-    <button class="key-cancel-account" onclick="openCancelAccountConfirm()">Cancel account creation</button>
     <div class="key-modal-right" id="keyHelpPanel">
       <div class="key-help-empty" id="keyHelpEmpty">Click "How do I get this?" next to a key field.</div>
       <div class="key-help-panel" id="keyHelpGemini">
@@ -1857,6 +1868,7 @@ function showKeyModal(mode) {
 
   if (_keyModalMode === 'update') {
     backdrop.classList.remove('solid');         // blurred backdrop for updates
+    document.body.classList.remove('entry-active');
     cancelBtn.style.display = '';
     saveBtn.textContent = 'Update';
     sub.textContent = 'Update your API keys.';
@@ -1864,6 +1876,7 @@ function showKeyModal(mode) {
     document.getElementById('keyInputTmdb').value   = _cachedKeys.tmdb_key   || '';
   } else {
     backdrop.classList.add('solid');            // solid backdrop for mandatory entry
+    document.body.classList.add('entry-active');
     cancelBtn.style.display = 'none';
     saveBtn.textContent = 'Save Keys';
     sub.textContent = 'Enter your API keys to get started.';
@@ -1936,6 +1949,7 @@ async function saveKeysFromModal() {
   if (ok) {
     _cachedKeys = { has_keys: true, gemini_key: g, tmdb_key: t };
     document.getElementById('keyModalBackdrop').classList.add('hidden');
+    document.body.classList.remove('entry-active');
     showToast(_keyModalMode === 'update' ? 'Keys updated.' : 'Keys saved.');
   } else {
     if (_keyModalMode === 'update') {

@@ -1,3 +1,4 @@
+import re
 import requests
 from flask import Blueprint, request, jsonify, redirect, url_for, render_template
 from flask_login import LoginManager, UserMixin, login_user, logout_user, current_user, login_required
@@ -10,6 +11,9 @@ from users_db import (
 
 auth_bp = Blueprint("auth", __name__)
 login_manager = LoginManager()
+
+# Any non-whitespace characters — letters, digits, symbols are fine; tabs/spaces/newlines are not.
+_NO_WHITESPACE_RE = re.compile(r"^\S+$")
 
 
 class User(UserMixin):
@@ -44,6 +48,10 @@ def register():
         return jsonify({"error": "Username must be 4–32 characters"}), 400
     if len(password) < 4 or len(password) > 32:
         return jsonify({"error": "Password must be 4–32 characters"}), 400
+    if not _NO_WHITESPACE_RE.match(username):
+        return jsonify({"error": "Username cannot contain spaces"}), 400
+    if not _NO_WHITESPACE_RE.match(password):
+        return jsonify({"error": "Password cannot contain spaces"}), 400
     user_id = create_user(username, password)
     if user_id is None:
         return jsonify({"error": "Username already taken"}), 409
