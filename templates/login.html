@@ -135,11 +135,11 @@ body {
     <div class="auth-error" id="authError"></div>
     <div class="auth-field">
       <label>Username</label>
-      <input type="text" id="authUsername" placeholder="your username" autocomplete="username" />
+      <input type="text" id="authUsername" placeholder="your username" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" minlength="4" maxlength="32" />
     </div>
     <div class="auth-field">
       <label>Password</label>
-      <input type="password" id="authPassword" placeholder="••••••••" autocomplete="current-password" />
+      <input type="password" id="authPassword" placeholder="••••••••" autocomplete="current-password" minlength="4" maxlength="32" />
     </div>
     <button class="auth-submit" id="authSubmit" onclick="submit()">Sign In</button>
   </div>
@@ -162,6 +162,14 @@ async function submit() {
   const password = document.getElementById('authPassword').value;
   const btn = document.getElementById('authSubmit');
   if (!username || !password) { showError('Please fill in all fields.'); return; }
+  if (mode === 'register') {
+    if (username.length < 4 || username.length > 32) {
+      showError('Username must be 4–32 characters.'); return;
+    }
+    if (password.length < 4 || password.length > 32) {
+      showError('Password must be 4–32 characters.'); return;
+    }
+  }
   btn.disabled = true;
   btn.textContent = 'Please wait…';
   try {

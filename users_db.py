@@ -57,6 +57,11 @@ def set_user_keys(user_id: int, gemini_key: str, tmdb_key: str) -> None:
         )
 
 
+def delete_user(user_id: int) -> None:
+    with _get_users_conn() as conn:
+        conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+
+
 def create_user(username: str, password: str) -> int | None:
     """Returns new user_id on success, None if username is taken."""
     pw_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()

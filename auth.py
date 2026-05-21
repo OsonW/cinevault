@@ -40,8 +40,10 @@ def register():
     password = (data.get("password") or "").strip()
     if not username or not password:
         return jsonify({"error": "Username and password required"}), 400
-    if len(password) < 6:
-        return jsonify({"error": "Password must be at least 6 characters"}), 400
+    if len(username) < 4 or len(username) > 32:
+        return jsonify({"error": "Username must be 4–32 characters"}), 400
+    if len(password) < 4 or len(password) > 32:
+        return jsonify({"error": "Password must be 4–32 characters"}), 400
     user_id = create_user(username, password)
     if user_id is None:
         return jsonify({"error": "Username already taken"}), 409

@@ -5,8 +5,8 @@ import time
 import threading
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from flask import Flask, jsonify, Response, request, render_template, g, redirect, url_for
-from flask_login import login_required, current_user
+from flask import Flask, jsonify, Response, request, render_template, g, redirect, url_for, make_response
+from flask_login import login_required, current_user, logout_user
 from google import genai
 
 from db import (
@@ -19,7 +19,7 @@ from db import (
     get_all_memory,
 )
 from auth import auth_bp, login_manager
-from users_db import init_users_db, get_user_keys
+from users_db import init_users_db, get_user_keys, delete_user
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-in-production")
@@ -252,10 +252,35 @@ def _generate_ai_content(prompt: str, gemini_client) -> str:
     return resp.text.strip()
 
 
+@app.route("/auth/cancel-registration", methods=["POST"])
+@login_required
+def cancel_registration():
+    uid = int(current_user.id)
+    # Drop per-user caches and the per-user SQLite file (if it was already created)
+    _user_media_cache.pop(uid, None)
+    _user_ai_card_cache.pop(uid, None)
+    _user_memory_cache.pop(uid, None)
+    _initialized_users.discard(uid)
+    db_path = get_user_db_path(uid)
+    try:
+        if os.path.exists(db_path):
+            os.remove(db_path)
+    except OSError as e:
+        print(f"cancel-registration: failed to remove {db_path}: {e}")
+    logout_user()
+    delete_user(uid)
+    return jsonify({"status": "ok"})
+
+
 @app.route("/")
 @login_required
 def index():
-    return render_template("index.html")
+    resp = make_response(render_template("index.html", username=current_user.username))
+    # Prevent the browser from restoring the authenticated page from cache
+    # after the user logs out (back-button hardening).
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    resp.headers["Pragma"]        = "no-cache"
+    return resp
 
 
 # ═══════════════════════════════════════════════════

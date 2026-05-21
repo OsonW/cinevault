@@ -1366,6 +1366,16 @@ body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); 
   color: var(--accent);
   font-style: italic;
 }
+.key-modal-greeting {
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.key-modal-greeting span { color: var(--accent); text-transform: none; letter-spacing: 0; }
+/* Hide greeting in the update-keys flow */
+.key-modal-backdrop:not(.solid) .key-modal-greeting { display: none; }
 .key-modal-box {
   background: var(--card);
   border: 1px solid var(--border-md);
@@ -1373,8 +1383,23 @@ body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); 
   width: 760px; max-width: 96vw;
   display: flex; gap: 0;
   overflow: hidden;
+  position: relative;
   box-shadow: 0 24px 64px rgba(0,0,0,0.6);
 }
+.key-cancel-account {
+  position: absolute;
+  bottom: 10px; right: 14px;
+  background: none; border: none; padding: 4px 6px;
+  color: var(--muted); font-size: 11px;
+  font-family: 'DM Sans', sans-serif;
+  text-decoration: underline;
+  cursor: pointer;
+  transition: color 0.15s;
+  z-index: 2;
+}
+.key-cancel-account:hover { color: var(--red); }
+/* Only visible during the mandatory entry flow */
+.key-modal-backdrop:not(.solid) .key-cancel-account { display: none; }
 .key-modal-left {
   flex: 0 0 360px;
   padding: 32px 28px;
@@ -1525,6 +1550,13 @@ body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); 
   transition: all 0.12s;
 }
 .key-confirm-cancel:hover { color: var(--text); border-color: var(--border-md); background: rgba(255,255,255,0.04); }
+.key-confirm-cancel:disabled {
+  opacity: 0.4; cursor: not-allowed;
+  color: var(--muted); background: none; border-color: var(--border);
+}
+.key-confirm-cancel:disabled:hover {
+  color: var(--muted); background: none; border-color: var(--border);
+}
 .key-confirm-delete {
   background: var(--red); border: none;
   border-radius: var(--radius); padding: 7px 14px;
@@ -1533,6 +1565,8 @@ body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); 
   transition: background 0.12s;
 }
 .key-confirm-delete:hover { background: #c94040; }
+.key-confirm-delete:disabled { opacity: 0.6; cursor: default; }
+.key-confirm-delete:disabled:hover { background: var(--red); }
 </style>
 </head>
 <body>
@@ -1707,6 +1741,7 @@ body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); 
   <div class="key-modal-box">
     <div class="key-modal-left">
       <div>
+        <div class="key-modal-greeting" id="keyModalGreeting">Hello, <span id="keyModalUsername">{{ username|e }}</span></div>
         <div class="key-modal-title" id="keyModalTitle">Cine<em>Vault</em></div>
         <div class="key-modal-sub" id="keyModalSub">Enter your API keys to get started.</div>
       </div>
@@ -1741,6 +1776,7 @@ body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); 
         <button class="key-modal-save" id="keyModalSave" onclick="saveKeysFromModal()" disabled>Save Keys</button>
       </div>
     </div>
+    <button class="key-cancel-account" onclick="openCancelAccountConfirm()">Cancel account creation</button>
     <div class="key-modal-right" id="keyHelpPanel">
       <div class="key-help-empty" id="keyHelpEmpty">Click "How do I get this?" next to a key field.</div>
       <div class="key-help-panel" id="keyHelpGemini">
@@ -1765,14 +1801,26 @@ body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); 
   </div>
 </div>
 
+<!-- ── Cancel Account Confirm ──────────────────── -->
+<div class="key-confirm-backdrop hidden" id="cancelAccountBackdrop" style="z-index:9200">
+  <div class="key-confirm-box">
+    <div class="key-confirm-title">Cancel account creation?</div>
+    <div class="key-confirm-body">Your account will be permanently deleted and you'll be returned to the sign-in screen. This cannot be undone.</div>
+    <div class="key-confirm-actions">
+      <button class="key-confirm-cancel" id="cancelAccountKeepBtn" onclick="closeCancelAccountConfirm()">Keep account</button>
+      <button class="key-confirm-delete" id="cancelAccountConfirmBtn" onclick="doCancelAccount()">Delete account</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── Logout Confirm ──────────────────────────── -->
 <div class="key-confirm-backdrop hidden" id="logoutConfirmBackdrop">
   <div class="key-confirm-box">
     <div class="key-confirm-title">Log out of CineVault?</div>
     <div class="key-confirm-body">You'll need to sign in again to access your library.</div>
     <div class="key-confirm-actions">
-      <button class="key-confirm-cancel" onclick="closeLogoutConfirm()">Cancel</button>
-      <button class="key-confirm-delete" onclick="doLogout()">Log out</button>
+      <button class="key-confirm-cancel" id="logoutCancelBtn" onclick="closeLogoutConfirm()">Cancel</button>
+      <button class="key-confirm-delete" id="logoutConfirmBtn" onclick="doLogout()">Log out</button>
     </div>
   </div>
 </div>
@@ -1918,13 +1966,47 @@ async function openKeyUpdate() {
 // Logout
 // ─────────────────────────────────────────────
 function openLogoutConfirm() {
+  document.getElementById('logoutConfirmBtn').disabled = false;
+  document.getElementById('logoutConfirmBtn').textContent = 'Log out';
+  document.getElementById('logoutCancelBtn').disabled = false;
   document.getElementById('logoutConfirmBackdrop').classList.remove('hidden');
 }
 function closeLogoutConfirm() {
   document.getElementById('logoutConfirmBackdrop').classList.add('hidden');
 }
 function doLogout() {
+  const btn    = document.getElementById('logoutConfirmBtn');
+  const cancel = document.getElementById('logoutCancelBtn');
+  if (btn.disabled) return;            // already triggered
+  btn.disabled = true;
+  cancel.disabled = true;
+  btn.textContent = 'Logging out…';
   window.location.href = '/auth/logout';
+}
+
+// ─────────────────────────────────────────────
+// Cancel account creation (entry/mandatory flow only)
+// ─────────────────────────────────────────────
+function openCancelAccountConfirm() {
+  document.getElementById('cancelAccountConfirmBtn').disabled = false;
+  document.getElementById('cancelAccountConfirmBtn').textContent = 'Delete account';
+  document.getElementById('cancelAccountKeepBtn').disabled = false;
+  document.getElementById('cancelAccountBackdrop').classList.remove('hidden');
+}
+function closeCancelAccountConfirm() {
+  document.getElementById('cancelAccountBackdrop').classList.add('hidden');
+}
+async function doCancelAccount() {
+  const btn    = document.getElementById('cancelAccountConfirmBtn');
+  const cancel = document.getElementById('cancelAccountKeepBtn');
+  if (btn.disabled) return;
+  btn.disabled = true;
+  cancel.disabled = true;
+  btn.textContent = 'Deleting…';
+  try {
+    await fetch('/auth/cancel-registration', { method: 'POST' });
+  } catch {}
+  window.location.href = '/login';
 }
 
 // On load: fetch key status; if missing, force the mandatory entry modal.
