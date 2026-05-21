@@ -736,6 +736,32 @@ def get_poster(media_type, item_id):
 
 
 # ═══════════════════════════════════════════════════
+# Manga cover proxy (server-side fetch — avoids browser CORS/fetch issues)
+# ═══════════════════════════════════════════════════
+
+@app.route("/api/manga/cover/<path:manga_id>")
+@login_required
+def get_manga_cover(manga_id):
+    """Return the MangaDex cover URL for a manga via a server-side fetch.
+
+    The browser calls this endpoint instead of hitting api.mangadex.org directly,
+    because client-side fetch to MangaDex silently fails on PythonAnywhere free
+    tier (likely a CORS/network restriction).  Server-side requests work fine.
+    """
+    row = get_media_by_external_id(manga_id, "manga")
+    cover_url = (row or {}).get("cover_url", "")
+    if not cover_url:
+        try:
+            cover_url = _fetch_mangadex_cover_url(manga_id)
+            if cover_url and row:
+                update_media_entry(row["id"], cover_url=cover_url)
+                _invalidate_media_cache(row["id"])
+        except Exception:
+            cover_url = ""
+    return jsonify({"cover_url": cover_url or None})
+
+
+# ═══════════════════════════════════════════════════
 # TV / Manga constraint info
 # ═══════════════════════════════════════════════════
 
