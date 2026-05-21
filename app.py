@@ -222,20 +222,6 @@ def _fetch_mangadex_cover_url(manga_id: str) -> str:
     return ""
 
 
-def _async_fetch_manga_cover(media_id: int, external_id: str, db_path: str) -> None:
-    """Fetch the MangaDex cover for a newly-added manga in a background thread."""
-    try:
-        cover_url = _fetch_mangadex_cover_url(external_id)
-        if cover_url:
-            with get_conn(db_path) as conn:
-                conn.execute(
-                    "UPDATE media SET cover_url = ? WHERE id = ?",
-                    (cover_url, media_id),
-                )
-    except Exception as e:
-        print(f"[manga-cover] async fetch failed for {external_id}: {e}")
-
-
 def _backfill_manga_covers(db_path: str) -> None:
     """Populate cover_url for manga rows missing one. Runs once per user per server start."""
     try:
@@ -736,35 +722,6 @@ def get_poster(media_type, item_id):
 
 
 # ═══════════════════════════════════════════════════
-# Manga cover proxy (server-side fetch — avoids browser CORS/fetch issues)
-# ═══════════════════════════════════════════════════
-
-@app.route("/api/manga/cover/<path:manga_id>")
-@login_required
-def get_manga_cover(manga_id):
-    """Return the MangaDex cover URL for a manga via a server-side fetch.
-
-    The browser calls this endpoint to get the cover CDN URL rather than calling
-    api.mangadex.org directly.  PythonAnywhere's outbound proxy blocks
-    uploads.mangadex.org (the image CDN), so images cannot be proxied
-    server-side; instead this endpoint returns the CDN URL as JSON and the
-    browser loads the image directly.  api.mangadex.org (metadata) is
-    accessible from PythonAnywhere's server and is used here.
-    """
-    row = get_media_by_external_id(manga_id, "manga")
-    cover_url = (row or {}).get("cover_url", "")
-    if not cover_url:
-        try:
-            cover_url = _fetch_mangadex_cover_url(manga_id)
-            if cover_url and row:
-                update_media_entry(row["id"], cover_url=cover_url)
-                _invalidate_media_cache(row["id"])
-        except Exception:
-            cover_url = ""
-    return jsonify({"cover_url": cover_url or None})
-
-
-# ═══════════════════════════════════════════════════
 # TV / Manga constraint info
 # ═══════════════════════════════════════════════════
 
@@ -853,7 +810,7 @@ def add_media():
         cover_url = data.get("cover_url")
         media_type = data.get("media_type")
         external_id = data.get("external_id")
-        new_id = add_media_entry(
+        add_media_entry(
             title       = data["title"],
             media_type  = media_type,
             status      = data.get("status", "watchlist"),
@@ -865,24 +822,6 @@ def add_media():
             overview    = data.get("overview"),
             year        = data.get("year"),
         )
-        if media_type == "manga" and new_id:
-            if cover_url:
-                # INSERT OR IGNORE skips data for existing rows — patch cover_url
-                # conditionally so an existing manga with null cover gets updated.
-                with get_conn() as conn:
-                    conn.execute(
-                        "UPDATE media SET cover_url = ? "
-                        "WHERE id = ? AND (cover_url IS NULL OR cover_url = '')",
-                        (cover_url, new_id),
-                    )
-                _invalidate_media_cache(new_id)
-            elif external_id:
-                # No cover_url in request (rare) — fetch from MangaDex in background.
-                threading.Thread(
-                    target=_async_fetch_manga_cover,
-                    args=(new_id, external_id, get_user_db_path(int(current_user.id))),
-                    daemon=True,
-                ).start()
     return jsonify({"status": "ok"})
 
 
