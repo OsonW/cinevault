@@ -2288,12 +2288,9 @@ function tmdbHeaders() {
 
 function posterUrl(item) {
   if (item.media_type === 'book') {
+    if (item.cover_url) return esc(item.cover_url);
     const ext = item.external_id || '';
-    if (ext) {
-      const hint = item.cover_url ? `?cover_url=${encodeURIComponent(item.cover_url)}` : '';
-      return `/api/poster/book/${encodeURIComponent(ext)}${hint}`;
-    }
-    return item.cover_url ? esc(item.cover_url) : BROKEN_POSTER_FULL;
+    return ext ? `/api/poster/book/${encodeURIComponent(ext)}` : BROKEN_POSTER_FULL;
   }
   if (item.media_type === 'manga') {
     const ext = item.external_id || '';
@@ -4650,10 +4647,8 @@ function renderSmCard(r) {
   const already  = inLibrary.has(key);
   let posterSrc = BROKEN_POSTER_FULL;
   if (r.media_type === 'book') {
-    if (r.external_id) {
-      const hint = r.cover_url ? `?cover_url=${encodeURIComponent(r.cover_url)}` : '';
-      posterSrc = `/api/poster/book/${encodeURIComponent(r.external_id)}${hint}`;
-    } else if (r.cover_url) { posterSrc = esc(r.cover_url); }
+    if (r.cover_url) posterSrc = esc(r.cover_url);
+    else if (r.external_id) posterSrc = `/api/poster/book/${encodeURIComponent(r.external_id)}`;
   } else if (r.media_type === 'manga' && r.external_id) {
     posterSrc = `/api/poster/manga/${encodeURIComponent(r.external_id)}`;
   } else if (r.poster_path) {
@@ -4954,10 +4949,8 @@ function renderVibeResults(append) {
     const already = inLibrary.has(key);
     let posterSrc = BROKEN_POSTER_FULL;
     if (r.media_type === 'book') {
-      if (r.external_id) {
-        const hint = r.cover_url ? `?cover_url=${encodeURIComponent(r.cover_url)}` : '';
-        posterSrc = `/api/poster/book/${encodeURIComponent(r.external_id)}${hint}`;
-      } else if (r.cover_url) { posterSrc = esc(r.cover_url); }
+      if (r.cover_url) posterSrc = esc(r.cover_url);
+      else if (r.external_id) posterSrc = `/api/poster/book/${encodeURIComponent(r.external_id)}`;
     } else if (r.media_type === 'manga' && r.external_id) {
       posterSrc = `/api/poster/manga/${encodeURIComponent(r.external_id)}`;
     } else if (r.cover_url) {

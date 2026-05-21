@@ -669,6 +669,9 @@ def search_manga():
 @login_required
 def get_poster(media_type, item_id):
     if media_type == "book":
+        # This endpoint is only reached for books without a cover_url (those with
+        # cover_url are loaded directly by the browser via esc(item.cover_url)).
+        # Try Google Books to find a cover the server can actually proxy.
         cache_key = f"book_{item_id}"
         if cache_key in poster_cache:
             img_bytes, content_type = poster_cache[cache_key]
@@ -678,33 +681,6 @@ def get_poster(media_type, item_id):
             )
 
         row = get_media_by_external_id(item_id, media_type)
-        cover_url = (row or {}).get("cover_url", "")
-
-        # Accept a cover_url hint from the frontend (e.g. search results not yet in DB)
-        if not cover_url:
-            hint = request.args.get("cover_url", "").strip()
-            if hint and _is_safe_cover_url(hint):
-                cover_url = hint
-
-        if cover_url and _is_safe_cover_url(cover_url):
-            try:
-                img_resp = requests.get(
-                    cover_url, timeout=8,
-                    headers={"User-Agent": "Mozilla/5.0 (compatible; CineVault/1.0)"},
-                    allow_redirects=True,
-                )
-                if img_resp.status_code == 200:
-                    content_type = img_resp.headers.get("Content-Type", "image/jpeg")
-                    img_bytes = img_resp.content
-                    poster_cache[cache_key] = (img_bytes, content_type)
-                    return Response(
-                        img_bytes, mimetype=content_type,
-                        headers={"Cache-Control": "public, max-age=31536000, immutable"},
-                    )
-            except Exception:
-                pass
-
-        # Fallback: fetch cover from Google Books using title/author
         title  = (row or {}).get("title",  "")
         author = (row or {}).get("author", "")
         if title:
@@ -724,25 +700,21 @@ def get_poster(media_type, item_id):
                         thumb = links.get("thumbnail") or links.get("smallThumbnail")
                         if thumb:
                             thumb = thumb.replace("http://", "https://")
-                            img_resp2 = requests.get(
+                            img_resp = requests.get(
                                 thumb, timeout=8,
                                 headers={"User-Agent": "Mozilla/5.0 (compatible; CineVault/1.0)"},
                                 allow_redirects=True,
                             )
-                            if img_resp2.status_code == 200:
-                                content_type = img_resp2.headers.get("Content-Type", "image/jpeg")
-                                img_bytes = img_resp2.content
+                            if img_resp.status_code == 200:
+                                content_type = img_resp.headers.get("Content-Type", "image/jpeg")
+                                img_bytes = img_resp.content
                                 poster_cache[cache_key] = (img_bytes, content_type)
                                 return Response(
                                     img_bytes, mimetype=content_type,
                                     headers={"Cache-Control": "public, max-age=31536000, immutable"},
                                 )
             except Exception as e:
-                print(f"Book poster Google Books fallback failed for {item_id}: {e}")
-
-        # All server-side methods failed — redirect so the browser fetches directly
-        if cover_url and _is_safe_cover_url(cover_url):
-            return redirect(cover_url, code=302)
+                print(f"Book poster Google Books fetch failed for {item_id}: {e}")
 
         return "", 404
 
