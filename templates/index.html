@@ -1876,10 +1876,10 @@ function showKeyModal(mode) {
     sub.textContent = 'Update your API keys.';
     const geminiInput = document.getElementById('keyInputGemini');
     const tmdbInput   = document.getElementById('keyInputTmdb');
-    // Always clear inputs — never pre-fill with masked/truncated keys.
-    // The user must type their full keys each time they update.
-    geminiInput.value       = '';
-    tmdbInput.value         = '';
+    // Pre-fill with masked values so users can see a key is saved.
+    // They must retype the full key to actually update it.
+    geminiInput.value       = _cachedKeys.gemini_key || '';
+    tmdbInput.value         = _cachedKeys.tmdb_key   || '';
     geminiInput.placeholder = 'Enter full Gemini API key';
     tmdbInput.placeholder   = 'Enter full TMDB API key';
   } else {
@@ -1929,7 +1929,10 @@ function _resetKeyVisibility() {
 function validateKeyForm() {
   const g = document.getElementById('keyInputGemini').value.trim();
   const t = document.getElementById('keyInputTmdb').value.trim();
-  document.getElementById('keyModalSave').disabled = !(g && t);
+  const neitherChanged = _keyModalMode === 'update'
+    && g === (_cachedKeys.gemini_key || '')
+    && t === (_cachedKeys.tmdb_key   || '');
+  document.getElementById('keyModalSave').disabled = !(g && t) || neitherChanged;
 }
 
 async function saveKeysFromModal() {
