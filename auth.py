@@ -147,7 +147,7 @@ def _validate_tmdb_key(key: str) -> bool:
     try:
         resp = requests.get(
             "https://api.themoviedb.org/3/authentication",
-            params={"api_key": key},
+            headers={"Authorization": f"Bearer {key}"},
             timeout=6,
         )
         return resp.status_code == 200
@@ -165,14 +165,22 @@ def _validate_gemini_key(key: str) -> bool:
         return False
 
 
+def _mask_key(key: str | None) -> str:
+    if not key:
+        return ""
+    if len(key) < 8:
+        return "***"
+    return key[:6] + "..." + key[-4:]
+
+
 @auth_bp.route("/auth/keys", methods=["GET"])
 @login_required
 def get_keys():
     keys = get_user_keys(int(current_user.id))
     return jsonify({
         "has_keys":   bool(keys["gemini_key"] and keys["tmdb_key"]),
-        "gemini_key": keys["gemini_key"],
-        "tmdb_key":   keys["tmdb_key"],
+        "gemini_key": _mask_key(keys["gemini_key"]),
+        "tmdb_key":   _mask_key(keys["tmdb_key"]),
     })
 
 

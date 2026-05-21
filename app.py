@@ -5,6 +5,7 @@ import time
 import secrets
 import threading
 import requests
+from urllib.parse import urlparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import Flask, jsonify, Response, request, render_template, g, redirect, url_for, make_response
 from flask_login import login_required, current_user, logout_user
@@ -39,6 +40,17 @@ if not _secret:
     )
 app.secret_key = _secret
 
+# Cookie security: Secure flag only in production (when SECRET_KEY is explicitly
+# set), so local HTTP dev sessions still work. SameSite=Strict is safe everywhere
+# and is the primary CSRF defence — it blocks cross-site form POSTs and fetches.
+_production = bool(os.environ.get("SECRET_KEY"))
+app.config["SESSION_COOKIE_SECURE"]    = _production
+app.config["SESSION_COOKIE_HTTPONLY"]  = True
+app.config["SESSION_COOKIE_SAMESITE"]  = "Strict"
+app.config["REMEMBER_COOKIE_SECURE"]   = _production
+app.config["REMEMBER_COOKIE_HTTPONLY"] = True
+app.config["REMEMBER_COOKIE_SAMESITE"] = "Strict"
+
 # Reject request bodies larger than 256 KB. Every endpoint in this app deals
 # in small JSON payloads — credentials, key strings, library updates, chat
 # messages. A megabyte-plus body is almost certainly abuse, and refusing
@@ -68,6 +80,10 @@ def _get_gemini_key() -> str | None:
     return None
 
 
+def _tmdb_headers(api_key: str) -> dict:
+    return {"Authorization": f"Bearer {api_key}"}
+
+
 def _make_gemini(api_key: str):
     return genai.Client(api_key=api_key)
 
@@ -89,8 +105,42 @@ MAX_CHAT_HISTORY = 12
 AI_CARD_TTL      = 600
 MANGADEX_HEADERS = {"User-Agent": "CineVault/1.0"}
 
+_COVER_URL_ALLOWED_HOSTS = frozenset({
+    "covers.openlibrary.org",
+    "uploads.mangadex.org",
+    "image.tmdb.org",
+})
+
+
+def _is_safe_cover_url(url: str | None) -> bool:
+    if not url:
+        return True
+    try:
+        p = urlparse(url)
+        return p.scheme == "https" and p.hostname in _COVER_URL_ALLOWED_HOSTS
+    except Exception:
+        return False
+
 
 SEARCH_CACHE_MAX = 100
+
+
+@app.after_request
+def set_security_headers(response):
+    response.headers["X-Frame-Options"]       = "DENY"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"]        = "strict-origin-when-cross-origin"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src https://fonts.gstatic.com; "
+        "img-src 'self' data: https://covers.openlibrary.org "
+        "https://uploads.mangadex.org https://image.tmdb.org; "
+        "connect-src 'self'; "
+        "frame-ancestors 'none';"
+    )
+    return response
 
 
 @app.before_request
@@ -286,14 +336,15 @@ def index():
 # ═══════════════════════════════════════════════════
 
 def _fetch_tmdb_director(media_type: str, tmdb_id: int, api_key: str) -> str:
+    headers = _tmdb_headers(api_key)
     try:
         if media_type == "movie":
-            url = f"https://api.themoviedb.org/3/movie/{tmdb_id}/credits?api_key={api_key}"
-            data = requests.get(url, timeout=3).json()
+            url = f"https://api.themoviedb.org/3/movie/{tmdb_id}/credits"
+            data = requests.get(url, headers=headers, timeout=3).json()
             names = [c["name"] for c in data.get("crew", []) if c.get("job") == "Director"]
         else:
-            url = f"https://api.themoviedb.org/3/tv/{tmdb_id}?api_key={api_key}"
-            data = requests.get(url, timeout=3).json()
+            url = f"https://api.themoviedb.org/3/tv/{tmdb_id}"
+            data = requests.get(url, headers=headers, timeout=3).json()
             names = [c["name"] for c in data.get("created_by", [])]
         return ", ".join(names[:3])
     except Exception:
@@ -301,6 +352,7 @@ def _fetch_tmdb_director(media_type: str, tmdb_id: int, api_key: str) -> str:
 
 
 @app.route("/api/item/<int:item_id>/fetch_director")
+@login_required
 def fetch_item_director(item_id):
     item = cached_get_media(item_id)
     if not item:
@@ -323,6 +375,7 @@ def fetch_item_director(item_id):
 
 
 @app.route("/api/item/<int:item_id>/overview")
+@login_required
 def fetch_item_overview(item_id):
     item = cached_get_media(item_id)
     if not item:
@@ -338,8 +391,8 @@ def fetch_item_overview(item_id):
             return jsonify({"error": "TMDB API key required"}), 401
         try:
             endpoint = "movie" if media_type == "movie" else "tv"
-            url = f"https://api.themoviedb.org/3/{endpoint}/{tmdb_id}?api_key={tmdb_key}"
-            data = requests.get(url, timeout=5).json()
+            url = f"https://api.themoviedb.org/3/{endpoint}/{tmdb_id}"
+            data = requests.get(url, headers=_tmdb_headers(tmdb_key), timeout=5).json()
             overview = data.get("overview", "") or ""
         except Exception as e:
             print(f"Overview fetch error for {item_id}: {e}")
@@ -350,6 +403,7 @@ def fetch_item_overview(item_id):
 
 
 @app.route("/api/search")
+@login_required
 def search():
     query      = request.args.get("q", "").strip()
     media_type = request.args.get("type", "movie")
@@ -368,7 +422,8 @@ def search():
         if media_type == "movie":
             resp = requests.get(
                 "https://api.themoviedb.org/3/search/movie",
-                params={"api_key": tmdb_key, "query": query},
+                headers=_tmdb_headers(tmdb_key),
+                params={"query": query},
                 timeout=8,
             )
             resp.raise_for_status()
@@ -388,7 +443,8 @@ def search():
         else:
             resp = requests.get(
                 "https://api.themoviedb.org/3/search/tv",
-                params={"api_key": tmdb_key, "query": query},
+                headers=_tmdb_headers(tmdb_key),
+                params={"query": query},
                 timeout=8,
             )
             resp.raise_for_status()
@@ -424,6 +480,7 @@ def search():
 
 
 @app.route("/api/search/books")
+@login_required
 def search_books():
     query = request.args.get("q", "").strip()
     if not query or len(query) < 2:
@@ -484,6 +541,7 @@ def search_books():
 
 
 @app.route("/api/book/isbn/<isbn>")
+@login_required
 def get_book_by_isbn(isbn):
     cache_key = f"isbn:{isbn}"
     if cache_key in search_cache:
@@ -523,10 +581,11 @@ def get_book_by_isbn(isbn):
 
     except Exception as e:
         print(f"ISBN lookup error: {e}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "An internal error occurred."}), 500
 
 
 @app.route("/api/search/manga")
+@login_required
 def search_manga():
     query = request.args.get("q", "").strip()
     if not query:
@@ -605,6 +664,7 @@ def search_manga():
 # ═══════════════════════════════════════════════════
 
 @app.route("/api/poster/<string:media_type>/<path:item_id>")
+@login_required
 def get_poster(media_type, item_id):
     if media_type == "book":
         row = get_media_by_external_id(item_id, media_type)
@@ -624,7 +684,7 @@ def get_poster(media_type, item_id):
             except Exception as e:
                 print(f"Open Library fetch error for {item_id}: {e}")
 
-        if not cover_url:
+        if not cover_url or not _is_safe_cover_url(cover_url):
             return "", 404
         return redirect(cover_url, code=302)
 
@@ -640,7 +700,7 @@ def get_poster(media_type, item_id):
             except Exception:
                 cover_url = ""
 
-        if not cover_url:
+        if not cover_url or not _is_safe_cover_url(cover_url):
             return "", 404
         return redirect(cover_url, code=302)
 
@@ -658,9 +718,9 @@ def get_poster(media_type, item_id):
         return "", 401
 
     endpoint = "movie" if media_type == "movie" else "tv"
-    meta_url = f"https://api.themoviedb.org/3/{endpoint}/{item_id}?api_key={tmdb_key}"
+    meta_url = f"https://api.themoviedb.org/3/{endpoint}/{item_id}"
     try:
-        meta = requests.get(meta_url, timeout=5).json()
+        meta = requests.get(meta_url, headers=_tmdb_headers(tmdb_key), timeout=5).json()
         path = meta.get("poster_path")
         if not path:
             return "", 404
@@ -686,6 +746,7 @@ tv_info_cache:    dict[str, dict] = {}
 manga_info_cache: dict[str, dict] = {}
 
 @app.route("/api/tv-info/<int:tmdb_id>")
+@login_required
 def tv_info(tmdb_id):
     key = str(tmdb_id)
     if key in tv_info_cache:
@@ -694,8 +755,8 @@ def tv_info(tmdb_id):
     if not tmdb_key:
         return jsonify({"error": "TMDB API key required"}), 401
     try:
-        url = f"https://api.themoviedb.org/3/tv/{tmdb_id}?api_key={tmdb_key}"
-        resp = requests.get(url, timeout=8)
+        url = f"https://api.themoviedb.org/3/tv/{tmdb_id}"
+        resp = requests.get(url, headers=_tmdb_headers(tmdb_key), timeout=8)
         resp.raise_for_status()
         data = resp.json()
         seasons = data.get("seasons", [])
@@ -713,10 +774,11 @@ def tv_info(tmdb_id):
         return jsonify(info)
     except Exception as e:
         print(f"TV info error for {tmdb_id}: {e}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "An internal error occurred."}), 500
 
 
 @app.route("/api/manga-info/<path:manga_id>")
+@login_required
 def manga_info(manga_id):
     if manga_id in manga_info_cache:
         return jsonify(manga_info_cache[manga_id])
@@ -737,7 +799,7 @@ def manga_info(manga_id):
         return jsonify(info)
     except Exception as e:
         print(f"Manga info error for {manga_id}: {e}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "An internal error occurred."}), 500
 
 
 # ═══════════════════════════════════════════════════
@@ -745,11 +807,13 @@ def manga_info(manga_id):
 # ═══════════════════════════════════════════════════
 
 @app.route("/api/list")
+@login_required
 def list_media():
     return jsonify(get_all_media())
 
 
 @app.route("/api/add", methods=["POST"])
+@login_required
 def add_media():
     data = request.get_json(silent=True) or {}
     if "id" in data:
@@ -761,10 +825,14 @@ def add_media():
             "notes", "cover_url", "author",
         }
         fields = {k: data[k] for k in allowed if k in data}
+        if not _is_safe_cover_url(fields.get("cover_url")):
+            fields.pop("cover_url", None)
         update_media_entry(data["id"], **fields)
         _invalidate_media_cache(data["id"])
     else:
         cover_url = data.get("cover_url")
+        if not _is_safe_cover_url(cover_url):
+            cover_url = None
         media_type = data.get("media_type")
         external_id = data.get("external_id")
         add_media_entry(
@@ -783,6 +851,7 @@ def add_media():
 
 
 @app.route("/api/delete/<int:media_id>", methods=["DELETE"])
+@login_required
 def delete_media(media_id):
     item = cached_get_media(media_id)
     if not item:
@@ -797,6 +866,7 @@ def delete_media(media_id):
 
 
 @app.route("/api/media-with-chats/<int:media_id>")
+@login_required
 def media_with_chats(media_id):
     media = cached_get_media(media_id)
     if not media:
@@ -809,6 +879,7 @@ def media_with_chats(media_id):
 
 
 @app.route("/api/restore-media-chats", methods=["POST"])
+@login_required
 def restore_media_chats():
     data       = request.get_json(silent=True) or {}
     media_data = data.get("media")
@@ -816,13 +887,14 @@ def restore_media_chats():
     if not media_data:
         return jsonify({"error": "Missing media data"}), 400
 
+    restore_cover = media_data.get("cover_url")
     new_media_id = add_media_entry(
         title       = media_data["title"],
         media_type  = media_data["media_type"],
         status      = media_data["status"],
         tmdb_id     = media_data.get("tmdb_id"),
         external_id = media_data.get("external_id"),
-        cover_url   = media_data.get("cover_url"),
+        cover_url   = restore_cover if _is_safe_cover_url(restore_cover) else None,
         author      = media_data.get("author"),
         total_pages = media_data.get("total_pages"),
     )
@@ -853,6 +925,7 @@ def restore_media_chats():
 # ═══════════════════════════════════════════════════
 
 @app.route("/api/vibe-search/types", methods=["POST"])
+@login_required
 def vibe_search_types():
     data  = request.get_json(silent=True) or {}
     query = data.get("query", "").strip()
@@ -969,7 +1042,8 @@ def _enrich_one(rec: dict, tmdb_key: str) -> dict:
         try:
             resp = requests.get(
                 "https://api.themoviedb.org/3/search/movie",
-                params={"api_key": tmdb_key, "query": title},
+                headers=_tmdb_headers(tmdb_key),
+                params={"query": title},
                 timeout=5,
             )
             for r in resp.json().get("results", []):
@@ -991,7 +1065,8 @@ def _enrich_one(rec: dict, tmdb_key: str) -> dict:
         try:
             resp = requests.get(
                 "https://api.themoviedb.org/3/search/tv",
-                params={"api_key": tmdb_key, "query": title},
+                headers=_tmdb_headers(tmdb_key),
+                params={"query": title},
                 timeout=5,
             )
             for r in resp.json().get("results", []):
@@ -1086,6 +1161,7 @@ def _enrich_results(recs: list, tmdb_key: str) -> list:
 
 
 @app.route("/api/vibe-search", methods=["POST"])
+@login_required
 def vibe_search():
     data           = request.get_json(silent=True) or {}
     query          = data.get("query", "").strip()
@@ -1110,7 +1186,8 @@ def vibe_search():
         raw  = re.sub(r"^```[a-z]*\n?", "", resp.text.strip()).rstrip("` \n")
         recs = json.loads(raw)
     except Exception as e:
-        return jsonify({"error": f"AI error: {e}"}), 500
+        print(f"Vibe search AI error: {e}")
+        return jsonify({"error": "An internal error occurred."}), 500
 
     return jsonify(_enrich_results(recs[:5], tmdb_key))
 
@@ -1120,11 +1197,13 @@ def vibe_search():
 # ═══════════════════════════════════════════════════
 
 @app.route("/api/chats")
+@login_required
 def list_chats():
     return jsonify(get_all_chats())
 
 
 @app.route("/api/chats/<int:chat_id>")
+@login_required
 def get_chat(chat_id):
     chat = get_chat_by_id(chat_id)
     if not chat:
@@ -1134,6 +1213,7 @@ def get_chat(chat_id):
 
 
 @app.route("/api/chats/new", methods=["POST"])
+@login_required
 def new_chat():
     data        = request.get_json(silent=True) or {}
     media_id    = data.get("media_id")
@@ -1308,6 +1388,7 @@ def _detect_spoiler(snap: dict, media: dict, user_message: str) -> bool:
 
 
 @app.route("/api/chats/<int:chat_id>/message", methods=["POST"])
+@login_required
 def chat_message(chat_id):
     data    = request.get_json(silent=True) or {}
     content = data.get("content", "").strip()
@@ -1445,12 +1526,14 @@ def chat_message(chat_id):
 
 
 @app.route("/api/chats/<int:chat_id>", methods=["DELETE"])
+@login_required
 def del_chat(chat_id):
     delete_chat(chat_id)
     return jsonify({"status": "deleted"})
 
 
 @app.route("/api/chats/<int:chat_id>/reset", methods=["POST"])
+@login_required
 def reset_chat(chat_id):
     if not get_chat_by_id(chat_id):
         return jsonify({"error": "Chat not found"}), 404
@@ -1459,6 +1542,7 @@ def reset_chat(chat_id):
 
 
 @app.route("/api/chats/<int:chat_id>/spoiler-threshold", methods=["POST"])
+@login_required
 def update_chat_spoiler(chat_id):
     data    = request.get_json(silent=True) or {}
     season  = data.get("season")
@@ -1530,6 +1614,7 @@ def _ai_card_prompt(media: dict) -> str:
 
 
 @app.route("/api/ai-card", methods=["POST"])
+@login_required
 def ai_card():
     data     = request.get_json(silent=True) or {}
     media_id = data.get("media_id")
@@ -1555,13 +1640,15 @@ def ai_card():
     try:
         content = _generate_ai_content(prompt, gemini_client)
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        print(f"AI card error for media {media_id}: {e}")
+        return jsonify({"error": "An internal error occurred."}), 500
 
     ac[cache_key] = (content, now + AI_CARD_TTL)
     return jsonify({"content": content})
 
 
 @app.route("/api/ai-card/stream", methods=["POST"])
+@login_required
 def ai_card_stream():
     data     = request.get_json(silent=True) or {}
     media_id = data.get("media_id")
@@ -1606,6 +1693,7 @@ def ai_card_stream():
 
 
 @app.route("/api/ask", methods=["POST"])
+@login_required
 def ask_ai():
     data          = request.get_json(silent=True) or {}
     question      = data.get("question", "").strip()
@@ -1665,7 +1753,8 @@ def ask_ai():
         resp    = gemini_client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
         raw     = resp.text.strip()
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        print(f"Ask AI error for media {media_id}: {e}")
+        return jsonify({"error": "An internal error occurred."}), 500
 
     if uses_structured:
         answer, snap = _parse_structured_response(raw, media)
@@ -1711,4 +1800,4 @@ def ask_ai():
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(debug=True, use_reloader=True, host="0.0.0.0", port=port, threaded=True)
+    app.run(debug=os.environ.get("FLASK_DEBUG", "0") == "1", use_reloader=True, host="0.0.0.0", port=port, threaded=True)
