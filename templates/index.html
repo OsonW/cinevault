@@ -2351,6 +2351,7 @@ function onSearchMainClick() {
 // Tabs
 // ─────────────────────────────────────────────
 function switchTab(tab, selectId = null) {
+  aiCardController?.abort();
   const prevTab = currentTab;
   if (prevTab !== 'chats' && selectedId !== null) {
     tabLastSelected[prevTab] = selectedId;
@@ -3179,6 +3180,7 @@ async function saveMangaProgressConstrained(id, rawValue) {
 // ─────────────────────────────────────────────
 
 let aiCardGeneration = 0;
+let aiCardController = null;
 
 function aiCacheKey(item) {
   if (item.status === 'watchlist') return `${item.id}_watchlist`;
@@ -3191,6 +3193,9 @@ function aiCacheKey(item) {
 
 async function loadAICard(item) {
   const key        = aiCacheKey(item);
+  aiCardController?.abort();
+  const controller = new AbortController();
+  aiCardController = controller;
   const myGen      = ++aiCardGeneration;
 
   if (aiCache[key]) {
@@ -3211,6 +3216,7 @@ async function loadAICard(item) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ media_id: item.id }),
+      signal: controller.signal,
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
@@ -3243,7 +3249,8 @@ async function loadAICard(item) {
         } catch (_) {}
       }
     }
-  } catch {
+  } catch (err) {
+    if (err?.name === 'AbortError') return;
     if (aiCardGeneration === myGen) {
       if (bodyEl) bodyEl.textContent = 'Unable to load.';
     }
@@ -3388,6 +3395,7 @@ async function changeStatus(id, status) {
   statusChangePending = true;
   const prevStatus = item.status;
   const tabAtStart = currentTab;
+  aiCardController?.abort();
   item.status = status;
   const suffixMap = { watchlist: 'wl', watching: 'wa', finished: 'fi' };
   document.querySelectorAll('.status-pill').forEach(p => {
