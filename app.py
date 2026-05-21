@@ -222,6 +222,16 @@ def _fetch_mangadex_cover_url(manga_id: str) -> str:
     return ""
 
 
+def _async_fetch_manga_cover(media_id: int, external_id: str) -> None:
+    """Fetch the MangaDex cover for a newly-added manga in a background thread."""
+    try:
+        cover_url = _fetch_mangadex_cover_url(external_id)
+        if cover_url:
+            update_media_entry(media_id, cover_url=cover_url)
+    except Exception:
+        pass
+
+
 def _backfill_manga_covers(db_path: str) -> None:
     """Populate cover_url for manga rows missing one. Runs once per user per server start."""
     try:
@@ -810,7 +820,7 @@ def add_media():
         cover_url = data.get("cover_url")
         media_type = data.get("media_type")
         external_id = data.get("external_id")
-        add_media_entry(
+        new_id = add_media_entry(
             title       = data["title"],
             media_type  = media_type,
             status      = data.get("status", "watchlist"),
@@ -822,6 +832,12 @@ def add_media():
             overview    = data.get("overview"),
             year        = data.get("year"),
         )
+        if media_type == "manga" and not cover_url and external_id and new_id:
+            threading.Thread(
+                target=_async_fetch_manga_cover,
+                args=(new_id, external_id),
+                daemon=True,
+            ).start()
     return jsonify({"status": "ok"})
 
 
