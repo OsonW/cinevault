@@ -744,9 +744,12 @@ def get_poster(media_type, item_id):
 def get_manga_cover(manga_id):
     """Return the MangaDex cover URL for a manga via a server-side fetch.
 
-    The browser calls this endpoint instead of hitting api.mangadex.org directly,
-    because client-side fetch to MangaDex silently fails on PythonAnywhere free
-    tier (likely a CORS/network restriction).  Server-side requests work fine.
+    The browser calls this endpoint to get the cover CDN URL rather than calling
+    api.mangadex.org directly.  PythonAnywhere's outbound proxy blocks
+    uploads.mangadex.org (the image CDN), so images cannot be proxied
+    server-side; instead this endpoint returns the CDN URL as JSON and the
+    browser loads the image directly.  api.mangadex.org (metadata) is
+    accessible from PythonAnywhere's server and is used here.
     """
     row = get_media_by_external_id(manga_id, "manga")
     cover_url = (row or {}).get("cover_url", "")
