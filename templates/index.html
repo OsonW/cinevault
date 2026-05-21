@@ -1609,7 +1609,7 @@ body.entry-active .entry-cancel-account { display: block; }
     </div>
 
     <div style="display:flex;flex-direction:column;gap:3px;margin-left:8px">
-      <span id="searchTypeLabel" style="font-size:10px;letter-spacing:0.04em;color:var(--muted)">FILTER BY TYPE</span>
+      <span id="searchTypeLabel" style="font-size:10px;letter-spacing:0.04em;color:var(--muted)">FILTER SEARCH BY TYPE</span>
       <div class="search-type-btns" id="searchTypeBtns" style="margin-left:0">
       <button class="search-type-btn active" data-stype="movie" onclick="toggleSearchType('movie')">
         <svg class="icon-svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/></svg>
@@ -1763,8 +1763,8 @@ body.entry-active .entry-cancel-account { display: block; }
           <button class="key-help-link" onclick="showKeyHelp('gemini')">How do I get this?</button>
         </div>
         <div class="key-input-wrap">
-          <input type="password" id="keyInputGemini" placeholder="Gemini Key..." autocomplete="one-time-code" data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" oninput="validateKeyForm()">
-          <button type="button" class="key-eye-btn" id="keyEyeGemini" onclick="toggleKeyVisibility('Gemini')" title="Show / hide key">
+          <input type="password" id="keyInputGemini" placeholder="Gemini Key" autocomplete="one-time-code" data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" oninput="validateKeyForm()">
+          <button type="button" class="key-eye-btn" id="keyEyeGemini" onclick="toggleKeyVisibility('Gemini')">
             <svg class="eye-on" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
             <svg class="eye-off" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
           </button>
@@ -1776,8 +1776,8 @@ body.entry-active .entry-cancel-account { display: block; }
           <button class="key-help-link" onclick="showKeyHelp('tmdb')">How do I get this?</button>
         </div>
         <div class="key-input-wrap">
-          <input type="password" id="keyInputTmdb" placeholder="TMDB Key..." autocomplete="one-time-code" data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" oninput="validateKeyForm()">
-          <button type="button" class="key-eye-btn" id="keyEyeTmdb" onclick="toggleKeyVisibility('Tmdb')" title="Show / hide key">
+          <input type="password" id="keyInputTmdb" placeholder="TMDB Key" autocomplete="one-time-code" data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" oninput="validateKeyForm()">
+          <button type="button" class="key-eye-btn" id="keyEyeTmdb" onclick="toggleKeyVisibility('Tmdb')">
             <svg class="eye-on" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
             <svg class="eye-off" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
           </button>
@@ -1880,8 +1880,8 @@ function showKeyModal(mode) {
     // They must retype the full key to actually update it.
     geminiInput.value       = _cachedKeys.gemini_key || '';
     tmdbInput.value         = _cachedKeys.tmdb_key   || '';
-    geminiInput.placeholder = 'Enter full Gemini API key';
-    tmdbInput.placeholder   = 'Enter full TMDB API key';
+    geminiInput.placeholder = 'New Gemini API key';
+    tmdbInput.placeholder   = 'New TMDB API key';
   } else {
     backdrop.classList.add('solid');            // solid backdrop for mandatory entry
     document.body.classList.add('entry-active');
