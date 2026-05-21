@@ -481,7 +481,7 @@ def search():
 @login_required
 def search_books():
     query = request.args.get("q", "").strip()
-    if not query or len(query) < 2:
+    if not query or len(query) < 3:
         return jsonify([])
 
     cache_key = f"book:{query.lower()}"
@@ -684,7 +684,19 @@ def get_poster(media_type, item_id):
 
         if not cover_url or not _is_safe_cover_url(cover_url):
             return "", 404
-        return redirect(cover_url, code=302)
+
+        try:
+            img_resp = requests.get(cover_url, timeout=10)
+            img_resp.raise_for_status()
+            content_type = img_resp.headers.get("Content-Type", "image/jpeg")
+            return Response(
+                img_resp.content,
+                mimetype=content_type,
+                headers={"Cache-Control": "public, max-age=86400"},
+            )
+        except Exception as e:
+            print(f"Book cover proxy error for {item_id}: {e}")
+            return "", 404
 
     if media_type == "manga":
         row = get_media_by_external_id(item_id, media_type)
