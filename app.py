@@ -136,7 +136,7 @@ def set_security_headers(response):
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
         "font-src https://fonts.gstatic.com; "
         "img-src 'self' data: https://covers.openlibrary.org https://archive.org "
-        "https://uploads.mangadex.org https://image.tmdb.org; "
+        "https://*.archive.org https://uploads.mangadex.org https://image.tmdb.org; "
         "connect-src 'self'; "
         "frame-ancestors 'none';"
     )
