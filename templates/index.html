@@ -1222,6 +1222,11 @@ body[data-tab="chats"] .detail-body { display: none !important; }
   pointer-events: none; z-index: 9500;
 }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.toast.toast-error {
+  color: var(--red);
+  border-color: rgba(224,82,82,0.45);
+  background: rgba(28,18,18,0.98);
+}
 .toast.toast-action {
   display: flex; align-items: center; gap: 14px;
   pointer-events: auto;
@@ -1412,7 +1417,8 @@ body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); 
 .key-field input:focus { border-color: var(--accent); }
 .key-field-row { display: flex; align-items: center; justify-content: space-between; }
 .key-input-wrap { position: relative; }
-.key-input-wrap input { padding-right: 36px; }
+.key-input-wrap input[type="password"],
+.key-input-wrap input[type="text"] { padding-right: 38px; }
 .key-eye-btn {
   position: absolute; top: 50%; right: 6px;
   transform: translateY(-50%);
@@ -1884,11 +1890,18 @@ async function saveKeysFromModal() {
     document.getElementById('keyModalBackdrop').classList.add('hidden');
     showToast(_keyModalMode === 'update' ? 'Keys updated.' : 'Keys saved.');
   } else {
-    showToast(
-      _keyModalMode === 'update'
-        ? 'Key update unsuccessful — keys remain unchanged.'
-        : 'Invalid keys — please double-check and try again.'
-    );
+    if (_keyModalMode === 'update') {
+      // Close the modal so reopening shows the (unchanged) saved keys instead
+      // of the incorrect values the user just typed.
+      document.getElementById('keyModalBackdrop').classList.add('hidden');
+      showToast('Key update unsuccessful — keys remain unchanged.', 'error');
+    } else {
+      // Entry mode is mandatory — can't close. Clear the bad inputs instead.
+      document.getElementById('keyInputGemini').value = '';
+      document.getElementById('keyInputTmdb').value   = '';
+      _resetKeyVisibility();
+      showToast('Invalid keys — please double-check and try again.', 'error');
+    }
   }
 
   saveBtn.textContent = origLabel;
@@ -2614,7 +2627,7 @@ async function saveBookProgress(id, rawValue) {
     item.current_page = val;
     invalidateProgressCache(id);
   } catch {
-    showToast('Failed to update page');
+    showToast('Failed to update page', 'error');
     const cInput = document.querySelector(`[placeholder="Page number"][onchange*="${id}"]`);
     if (cInput) cInput.value = oldCur || '';
   }
@@ -2728,7 +2741,7 @@ async function saveTVProgress(mediaId, chatId) {
     reapplySpoilerBlurs(chatId);
     showToast('Spoiler threshold updated');
   } catch {
-    showToast('Failed to update spoiler threshold');
+    showToast('Failed to update spoiler threshold', 'error');
     label.innerHTML = `S${chat.spoiler_season||'?'} E${chat.spoiler_episode||'?'}`;
     label.classList.add('spoiler-threshold-value');
   }
@@ -2810,7 +2823,7 @@ async function saveMangaProgressFromWidget(mediaId, chatId) {
     reapplySpoilerBlurs(chatId);
     showToast('Spoiler threshold updated');
   } catch {
-    showToast('Failed to update spoiler threshold');
+    showToast('Failed to update spoiler threshold', 'error');
     label.innerHTML = `CH${chat.spoiler_chapter || item.last_chapter || '?'}`;
     label.classList.add('spoiler-threshold-value');
   }
@@ -2934,7 +2947,7 @@ async function saveEpisodeConstrained(id, field, rawValue) {
     invalidateProgressCache(id);
     if (activeChatId) reapplySpoilerBlurs(activeChatId);
   } catch {
-    showToast('Failed to update progress');
+    showToast('Failed to update progress', 'error');
     item.last_season  = oldSeason;
     item.last_episode = oldEpisode;
     if (sInput) sInput.value = oldSeason || 1;
@@ -2963,7 +2976,7 @@ async function saveMangaProgressConstrained(id, rawValue) {
     invalidateProgressCache(id);
     if (activeChatId) reapplySpoilerBlurs(activeChatId);
   } catch {
-    showToast('Failed to update chapter');
+    showToast('Failed to update chapter', 'error');
     item.last_chapter = oldChap;
     if (input) input.value = oldChap || 1;
   }
@@ -3192,7 +3205,7 @@ async function changeStatus(id, status) {
   try {
     await apiPost('/api/add', { id, status });
   } catch {
-    showToast('Failed to update status — please try again.');
+    showToast('Failed to update status — please try again.', 'error');
     item.status = prevStatus;
     await loadList();
     statusChangePending = false;
@@ -3239,7 +3252,7 @@ async function _deleteItemImpl(id) {
     try {
         await fetch(`/api/delete/${id}`, { method: 'DELETE' });
     } catch (e) {
-        showToast("Failed to delete – please try again.");
+        showToast("Failed to delete – please try again.", 'error');
         await loadList();
         if (wasSelected && allItems.find(i => i.id === id)) selectItem(id);
         return;
@@ -3270,7 +3283,7 @@ async function undoMediaDelete() {
     dismissUndoToast();
 
     if (!backup) {
-        showToast("Could not restore – missing data.");
+        showToast("Could not restore – missing data.", 'error');
         return;
     }
 
@@ -3286,7 +3299,7 @@ async function undoMediaDelete() {
         switchTab(backup.media.status, new_media_id);
         showToast(`Restored "${backup.media.title}"`);
     } catch (e) {
-        showToast("Restore failed – please add manually.");
+        showToast("Restore failed – please add manually.", 'error');
         await loadList();
     }
 }
@@ -3999,7 +4012,7 @@ async function confirmResetChat() {
     selectChat(chatId);
     showToast('Chat reset — start a new conversation');
   } catch {
-    showToast('Failed to reset chat — please try again.');
+    showToast('Failed to reset chat — please try again.', 'error');
   } finally {
     if (confirmBtn) confirmBtn.disabled = false;
   }
@@ -4016,7 +4029,7 @@ async function flushPendingChatDelete() {
   try {
     await fetch(`/api/chats/${chatId}`, { method: 'DELETE' });
   } catch {
-    showToast('Failed to delete chat — please try again.');
+    showToast('Failed to delete chat — please try again.', 'error');
   }
 }
 
@@ -4257,7 +4270,7 @@ async function addFromDropdown(key) {
     switchTab('watchlist', newItem ? newItem.id : null);
   } catch {
     inLibrary.delete(key);
-    showToast('Failed to add — please try again.');
+    showToast('Failed to add — please try again.', 'error');
     return;
   }
 }
@@ -4492,7 +4505,7 @@ async function addFromModal(key) {
       btn.onclick     = () => addFromModal(key);
       btn.closest('.sm-card').classList.remove('in-library');
     }
-    showToast('Failed to add — please try again.');
+    showToast('Failed to add — please try again.', 'error');
     return;
   }
 }
@@ -4527,7 +4540,7 @@ async function removeFromModal(key) {
       btn.onclick = () => removeFromModal(key);
       btn.closest('.sm-card').classList.add('in-library');
     }
-    showToast('Failed to remove — please try again.');
+    showToast('Failed to remove — please try again.', 'error');
   }
 }
 
@@ -4816,7 +4829,7 @@ async function addVibeResult(key) {
       btn.onclick     = () => addVibeResult(key);
       btn.closest('.sm-card').classList.remove('in-library');
     }
-    showToast('Failed to add — please try again.');
+    showToast('Failed to add — please try again.', 'error');
   }
 }
 
@@ -4850,7 +4863,7 @@ async function removeVibeResult(key) {
       btn.onclick = () => removeVibeResult(key);
       btn.closest('.sm-card').classList.add('in-library');
     }
-    showToast('Failed to remove — please try again.');
+    showToast('Failed to remove — please try again.', 'error');
   }
 }
 
@@ -4878,11 +4891,12 @@ function showUndoToast(msg, onUndo) {
   el.classList.add('show', 'toast-action');
 }
 
-function showToast(msg) {
+function showToast(msg, variant) {
   if (chatUndoState) return;
   dismissUndoToast();
   const el = document.getElementById('toast');
   el.textContent = msg;
+  el.classList.toggle('toast-error', variant === 'error');
   el.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.classList.remove('show'), 2500);
