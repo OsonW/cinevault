@@ -1893,11 +1893,6 @@ let _cachedKeys = { gemini_key: '', tmdb_key: '', has_keys: false };
 let _keyModalMode = 'entry';  // 'entry' = mandatory first-time, 'update' = optional
 const _currentUsername = document.getElementById('entryGreeting').dataset.username;
 
-// Kept for backwards compat with older call sites — keys now live server-side
-// and are looked up from the authenticated session, so request payloads can
-// safely omit them.
-function getKeys() { return { gemini_key: '', tmdb_key: '' }; }
-
 let _refreshKeysInflight = null;
 async function refreshKeys() {
   if (_refreshKeysInflight) return _refreshKeysInflight;
@@ -2150,7 +2145,6 @@ const tabFilter = {
   watching:  { query: '', types: new Set(_ALL_TYPES) },
   finished:  { query: '', types: new Set(_ALL_TYPES) },
 };
-const SIZE_COLS = { small: '180px', medium: '180px', large: '180px' };
 const _VALID_SIZES = new Set(['small','medium','large']);
 const tabSize = {
   watchlist: _VALID_SIZES.has(localStorage.getItem('tabSize_watchlist')) ? localStorage.getItem('tabSize_watchlist') : 'medium',
@@ -2266,13 +2260,12 @@ function rebuildLibrarySet() {
 async function apiPost(path, body, timeoutMs = 60000) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-  const keys = getKeys();
   let res;
   try {
     res = await fetch(path, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...body, gemini_key: keys.gemini_key, tmdb_key: keys.tmdb_key }),
+      body: JSON.stringify(body),
       signal: controller.signal,
     });
   } finally {
@@ -2280,10 +2273,6 @@ async function apiPost(path, body, timeoutMs = 60000) {
   }
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
-}
-
-function tmdbHeaders() {
-  return { 'X-TMDB-Key': getKeys().tmdb_key };
 }
 
 function posterUrl(item) {
@@ -2586,7 +2575,7 @@ async function toggleDescription(itemId) {
   btn.textContent = 'Loading…';
   btn.disabled = true;
   try {
-    const data = await fetch(`/api/item/${itemId}/overview`, { headers: tmdbHeaders() }).then(r => r.json());
+    const data = await fetch(`/api/item/${itemId}/overview`).then(r => r.json());
     const ov = data.overview || '';
     if (item) item.overview = ov;
     if (ov) {
@@ -2789,9 +2778,8 @@ function renderDetail(item) {
 
   loadAICard(item);
 
-  // Lazy-fetch director/creator for movie/TV items that don't have one yet
   if (!item.author && (item.media_type === 'movie' || item.media_type === 'tv')) {
-    fetch(`/api/item/${item.id}/fetch_director`, { headers: tmdbHeaders() })
+    fetch(`/api/item/${item.id}/fetch_director`)
       .then(r => r.json())
       .then(data => {
         if (!data.author) return;
@@ -2852,7 +2840,7 @@ async function editTVProgress(mediaId, chatId) {
   const tmdbId = item.tmdb_id || item.external_id;
   if (tmdbId && !tvInfoCache[String(tmdbId)]) {
     try {
-      const data = await fetch(`/api/tv-info/${tmdbId}`, { headers: tmdbHeaders() }).then(r => r.json());
+      const data = await fetch(`/api/tv-info/${tmdbId}`).then(r => r.json());
       if (data && !data.error) tvInfoCache[String(tmdbId)] = data;
     } catch { /* ignore */ }
   }
@@ -3052,13 +3040,12 @@ async function loadTVConstraints(mediaId, tmdbId) {
   const cacheKey = String(tmdbId);
   if (!tvInfoCache[cacheKey]) {
     try {
-      const data = await fetch(`/api/tv-info/${tmdbId}`, { headers: tmdbHeaders() }).then(r => r.json());
+      const data = await fetch(`/api/tv-info/${tmdbId}`).then(r => r.json());
       if (data && !data.error) tvInfoCache[cacheKey] = data;
     } catch { return; }
   }
   const info = tvInfoCache[cacheKey];
   if (!info) return;
-  // Set max season
   const sInput = document.getElementById(`tvSeasonInput_${mediaId}`);
   const eInput = document.getElementById(`tvEpisodeInput_${mediaId}`);
   if (sInput) {
@@ -3221,7 +3208,7 @@ async function loadAICard(item) {
     const response = await fetch('/api/ai-card/stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ media_id: item.id, ...getKeys() }),
+      body: JSON.stringify({ media_id: item.id }),
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
@@ -4073,7 +4060,7 @@ async function sendChatMessage(chatId) {
     const response = await fetch(`/api/chats/${chatId}/message`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content, ...getKeys() }),
+      body: JSON.stringify({ content }),
     });
     if (!response.ok) throw new Error('Network response was not ok');
     const reader = response.body.getReader();
@@ -4375,10 +4362,9 @@ async function showDropdownSuggestions(q) {
   const lower          = q.toLowerCase();
   const libraryMatches = allItems.filter(i => i.title.toLowerCase().includes(lower)).slice(0, 4);
   const dd             = document.getElementById('searchDropdown');
-  const _ddh = { headers: tmdbHeaders() };
   const [movieRes, tvRes, bookRes, mangaRes] = await Promise.all([
-    fetch(`/api/search?q=${encodeURIComponent(q)}&type=movie`, _ddh).then(r => r.json()).catch(() => []),
-    fetch(`/api/search?q=${encodeURIComponent(q)}&type=tv`, _ddh).then(r => r.json()).catch(() => []),
+    fetch(`/api/search?q=${encodeURIComponent(q)}&type=movie`).then(r => r.json()).catch(() => []),
+    fetch(`/api/search?q=${encodeURIComponent(q)}&type=tv`).then(r => r.json()).catch(() => []),
     fetch(`/api/search/books?q=${encodeURIComponent(q)}`).then(r => r.json()).catch(() => []),
     fetch(`/api/search/manga?q=${encodeURIComponent(q)}`).then(r => r.json()).catch(() => []),
   ]);
@@ -4549,7 +4535,7 @@ async function runModalSearch(q) {
         return;
     }
 
-    const _th = { headers: tmdbHeaders(), signal };
+    const _th = { signal };
     const fetches = [
       typesToSearch.includes('movie') ? fetch(`/api/search?q=${encodeURIComponent(q)}&type=movie`, _th).then(r=>r.json()).catch(e=>e.name==='AbortError'?null:[]) : Promise.resolve([]),
       typesToSearch.includes('tv')    ? fetch(`/api/search?q=${encodeURIComponent(q)}&type=tv`, _th).then(r=>r.json()).catch(e=>e.name==='AbortError'?null:[])    : Promise.resolve([]),
@@ -4953,8 +4939,6 @@ function renderVibeResults(append) {
       else if (r.external_id) posterSrc = `/api/poster/book/${encodeURIComponent(r.external_id)}`;
     } else if (r.media_type === 'manga' && r.external_id) {
       posterSrc = `/api/poster/manga/${encodeURIComponent(r.external_id)}`;
-    } else if (r.cover_url) {
-      posterSrc = r.cover_url;
     } else if (r.poster_path) {
       posterSrc = `https://image.tmdb.org/t/p/w500${r.poster_path}`;
     }

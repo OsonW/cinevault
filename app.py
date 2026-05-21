@@ -87,16 +87,15 @@ def _tmdb_params(api_key: str) -> dict:
 def _make_gemini(api_key: str):
     return genai.Client(api_key=api_key)
 
+
 # Shared across users — keyed by external IDs so safe to share
 poster_cache: dict[str, tuple[bytes, str]] = {}
 search_cache: dict[str, list]              = {}
 
-# Per-user caches — keyed by user_id
 _user_media_cache:   dict[int, dict] = {}
 _user_ai_card_cache: dict[int, dict] = {}
 _user_memory_cache:  dict[int, dict] = {}
 
-# Lazy initialisation flags
 _app_initialized    = False
 _initialized_users: set[int] = set()
 _init_lock = threading.Lock()
@@ -150,14 +149,12 @@ def setup_request():
         init_users_db()
         _app_initialized = True
 
-    # Redirect already-logged-in users away from the login page
     if request.path == "/login" and current_user.is_authenticated:
         return redirect(url_for("index"))
 
     if current_user.is_authenticated:
         uid = current_user.id
         g.user_db_path = get_user_db_path(uid)
-        # Guarded so concurrent first-requests don't both spawn the backfill.
         with _init_lock:
             already_init = uid in _initialized_users
             if not already_init:
@@ -165,7 +162,6 @@ def setup_request():
         if not already_init:
             init_user_db(uid)
 
-    # All /api/* routes require authentication
     if request.path.startswith("/api/") and not current_user.is_authenticated:
         return jsonify({"error": "Unauthorized"}), 401
 
@@ -181,6 +177,7 @@ def _cache_search(key: str, items: list) -> None:
     search_cache[key] = items
     if len(search_cache) > SEARCH_CACHE_MAX:
         del search_cache[next(iter(search_cache))]
+
 
 def _media_cache() -> dict:
     return _user_media_cache.setdefault(current_user.id, {})
@@ -262,7 +259,6 @@ def _fetch_mangadex_cover_url(manga_id: str) -> str:
     return ""
 
 
-
 def _append_gemini_content(contents: list, role: str, text: str):
     if not text:
         return
@@ -304,7 +300,6 @@ def cancel_registration():
     if username_input and username_input.lower() != current_user.username.lower():
         return jsonify({"error": "Username does not match"}), 400
     uid = int(current_user.id)
-    # Drop per-user caches and the per-user SQLite file (if it was already created)
     _user_media_cache.pop(uid, None)
     _user_ai_card_cache.pop(uid, None)
     _user_memory_cache.pop(uid, None)
@@ -470,7 +465,6 @@ def search():
 
     items = items[:10]
 
-    # Fetch director/creator for each result in parallel
     if items:
         with ThreadPoolExecutor(max_workers=len(items)) as pool:
             futs = {pool.submit(_fetch_tmdb_director, i["media_type"], i["tmdb_id"], tmdb_key): i for i in items}
