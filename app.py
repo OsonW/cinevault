@@ -2,6 +2,7 @@ import os
 import re
 import json
 import time
+import secrets
 import threading
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -18,11 +19,31 @@ from db import (
     update_chat_spoiler_threshold, update_message_snap,
     get_all_memory,
 )
-from auth import auth_bp, login_manager
+from auth import auth_bp, login_manager, rate_limit
 from users_db import init_users_db, get_user_keys, delete_user
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-in-production")
+
+# SECRET_KEY: must be set explicitly in production. In dev (no env var set)
+# we generate an ephemeral random key per process so sessions are still
+# secure — they just don't survive a server restart. Never fall back to a
+# hardcoded default, because that would mean anyone reading the source can
+# forge session cookies.
+_secret = os.environ.get("SECRET_KEY")
+if not _secret:
+    _secret = secrets.token_hex(32)
+    print(
+        "WARNING: SECRET_KEY not set; generated an ephemeral random key for "
+        "this process. Sessions will be invalidated when the server restarts. "
+        "Set SECRET_KEY in your environment for production deployments."
+    )
+app.secret_key = _secret
+
+# Reject request bodies larger than 256 KB. Every endpoint in this app deals
+# in small JSON payloads — credentials, key strings, library updates, chat
+# messages. A megabyte-plus body is almost certainly abuse, and refusing
+# early stops a slow client from tying up a worker.
+app.config["MAX_CONTENT_LENGTH"] = 256 * 1024
 
 login_manager.init_app(app)
 login_manager.login_view = "auth.login_page"
@@ -62,6 +83,10 @@ _user_memory_cache:  dict[int, dict] = {}
 # Lazy initialisation flags
 _app_initialized    = False
 _initialized_users: set[int] = set()
+# Tracks the per-user manga-cover backfill thread so cancel-registration can
+# wait for the SQLite handle to close before removing the file on Windows.
+_backfill_threads: dict[int, threading.Thread] = {}
+_init_lock = threading.Lock()
 
 MAX_CHAT_HISTORY = 12
 AI_CARD_TTL      = 600
@@ -85,14 +110,20 @@ def setup_request():
     if current_user.is_authenticated:
         uid = current_user.id
         g.user_db_path = get_user_db_path(uid)
-        if uid not in _initialized_users:
+        # Guarded so concurrent first-requests don't both spawn the backfill.
+        with _init_lock:
+            already_init = uid in _initialized_users
+            if not already_init:
+                _initialized_users.add(uid)
+        if not already_init:
             init_user_db(uid)
-            _initialized_users.add(uid)
-            threading.Thread(
+            t = threading.Thread(
                 target=_backfill_manga_covers,
                 args=(g.user_db_path,),
                 daemon=True,
-            ).start()
+            )
+            _backfill_threads[uid] = t
+            t.start()
 
     # All /api/* routes require authentication
     if request.path.startswith("/api/") and not current_user.is_authenticated:
@@ -254,13 +285,20 @@ def _generate_ai_content(prompt: str, gemini_client) -> str:
 
 @app.route("/auth/cancel-registration", methods=["POST"])
 @login_required
+@rate_limit(max_requests=5, window_seconds=3600)   # 5/hour per IP
 def cancel_registration():
     uid = int(current_user.id)
     # Drop per-user caches and the per-user SQLite file (if it was already created)
     _user_media_cache.pop(uid, None)
     _user_ai_card_cache.pop(uid, None)
     _user_memory_cache.pop(uid, None)
-    _initialized_users.discard(uid)
+    with _init_lock:
+        _initialized_users.discard(uid)
+    # Wait briefly for the manga-cover backfill thread (if any) to release the
+    # per-user SQLite handle; otherwise os.remove can fail on Windows.
+    bg = _backfill_threads.pop(uid, None)
+    if bg is not None and bg.is_alive():
+        bg.join(timeout=3)
     db_path = get_user_db_path(uid)
     # Remove the main DB file plus any SQLite sidecars (-journal/-wal/-shm)
     # that may exist if a connection was open.
@@ -756,7 +794,7 @@ def list_media():
 
 @app.route("/api/add", methods=["POST"])
 def add_media():
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     if "id" in data:
         allowed = {
             "status", "rating", "last_timestamp",
@@ -821,7 +859,7 @@ def media_with_chats(media_id):
 
 @app.route("/api/restore-media-chats", methods=["POST"])
 def restore_media_chats():
-    data       = request.json or {}
+    data       = request.get_json(silent=True) or {}
     media_data = data.get("media")
     chats_data = data.get("chats", [])
     if not media_data:
@@ -865,7 +903,7 @@ def restore_media_chats():
 
 @app.route("/api/vibe-search/types", methods=["POST"])
 def vibe_search_types():
-    data  = request.json or {}
+    data  = request.get_json(silent=True) or {}
     query = data.get("query", "").strip()
     if not query:
         return jsonify({"types": ["movie", "tv"]}), 400
@@ -1098,7 +1136,7 @@ def _enrich_results(recs: list, tmdb_key: str) -> list:
 
 @app.route("/api/vibe-search", methods=["POST"])
 def vibe_search():
-    data           = request.json or {}
+    data           = request.get_json(silent=True) or {}
     query          = data.get("query", "").strip()
     types          = data.get("types", ["movie", "tv"])
     exclude_titles = data.get("exclude_titles", [])
@@ -1146,7 +1184,7 @@ def get_chat(chat_id):
 
 @app.route("/api/chats/new", methods=["POST"])
 def new_chat():
-    data        = request.json or {}
+    data        = request.get_json(silent=True) or {}
     media_id    = data.get("media_id")
     context_tag = data.get("context_tag")
 
@@ -1320,7 +1358,7 @@ def _detect_spoiler(snap: dict, media: dict, user_message: str) -> bool:
 
 @app.route("/api/chats/<int:chat_id>/message", methods=["POST"])
 def chat_message(chat_id):
-    data    = request.json or {}
+    data    = request.get_json(silent=True) or {}
     content = data.get("content", "").strip()
     if not content:
         return jsonify({"error": "Empty message"}), 400
@@ -1471,7 +1509,7 @@ def reset_chat(chat_id):
 
 @app.route("/api/chats/<int:chat_id>/spoiler-threshold", methods=["POST"])
 def update_chat_spoiler(chat_id):
-    data    = request.json or {}
+    data    = request.get_json(silent=True) or {}
     season  = data.get("season")
     episode = data.get("episode")
     chapter = data.get("chapter")
@@ -1542,7 +1580,7 @@ def _ai_card_prompt(media: dict) -> str:
 
 @app.route("/api/ai-card", methods=["POST"])
 def ai_card():
-    data     = request.json or {}
+    data     = request.get_json(silent=True) or {}
     media_id = data.get("media_id")
 
     gemini_key = _get_gemini_key()
@@ -1574,7 +1612,7 @@ def ai_card():
 
 @app.route("/api/ai-card/stream", methods=["POST"])
 def ai_card_stream():
-    data     = request.json or {}
+    data     = request.get_json(silent=True) or {}
     media_id = data.get("media_id")
 
     gemini_key = _get_gemini_key()
@@ -1618,7 +1656,7 @@ def ai_card_stream():
 
 @app.route("/api/ask", methods=["POST"])
 def ask_ai():
-    data          = request.json or {}
+    data          = request.get_json(silent=True) or {}
     question      = data.get("question", "").strip()
     media_id      = data.get("media_id")
     chat_id       = data.get("chat_id")

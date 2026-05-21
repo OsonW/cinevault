@@ -1990,14 +1990,17 @@ function openLogoutConfirm() {
 function closeLogoutConfirm() {
   document.getElementById('logoutConfirmBackdrop').classList.add('hidden');
 }
-function doLogout() {
+async function doLogout() {
   const btn    = document.getElementById('logoutConfirmBtn');
   const cancel = document.getElementById('logoutCancelBtn');
   if (btn.disabled) return;            // already triggered
   btn.disabled = true;
   cancel.disabled = true;
   btn.textContent = 'Logging out…';
-  window.location.href = '/auth/logout';
+  try {
+    await fetch('/auth/logout', { method: 'POST' });
+  } catch {}
+  window.location.href = '/login';
 }
 
 // ─────────────────────────────────────────────

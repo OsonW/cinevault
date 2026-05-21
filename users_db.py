@@ -92,11 +92,24 @@ def get_user_by_username(username: str) -> dict | None:
     return dict(row) if row else None
 
 
+# Precomputed once at import time. Used as a constant-time decoy when a
+# login is attempted against a username that doesn't exist, so the response
+# time doesn't leak whether the account exists.
+_DUMMY_PASSWORD_HASH = bcrypt.hashpw(b"_no_such_user_", bcrypt.gensalt())
+
+
 def verify_password(username: str, password: str) -> dict | None:
-    """Returns the user dict if credentials are valid, else None."""
+    """Returns the user dict if credentials are valid, else None.
+
+    Runs a bcrypt comparison on both code paths (missing user vs wrong
+    password) so attackers can't enumerate usernames by timing.
+    """
     user = get_user_by_username(username)
+    pw_bytes = password.encode() if isinstance(password, str) else b""
     if not user:
+        # Decoy compare; result is intentionally discarded.
+        bcrypt.checkpw(pw_bytes, _DUMMY_PASSWORD_HASH)
         return None
-    if bcrypt.checkpw(password.encode(), user["password_hash"].encode()):
+    if bcrypt.checkpw(pw_bytes, user["password_hash"].encode()):
         return user
     return None
