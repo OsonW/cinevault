@@ -2065,9 +2065,10 @@ async function doLogout() {
   btn.disabled = true;
   cancel.disabled = true;
   btn.textContent = 'Logging out…';
-  try {
-    await fetch('/auth/logout', { method: 'POST' });
-  } catch {}
+  // Abort any in-flight AI streams so they don't linger after navigation
+  aiCardController?.abort();
+  // Fire-and-forget — don't await so pending fetches can't delay redirect
+  fetch('/auth/logout', { method: 'POST' }).catch(() => {});
   window.location.href = '/login';
 }
 
@@ -3417,6 +3418,14 @@ async function changeStatus(id, status) {
 
   const prevStatus = item.status;
   item.status = status;
+
+  // Invalidate ALL AI card cache entries for this item — status change means
+  // every cached insight (watchlist pitch, watching recap, finished recs) is
+  // now potentially wrong context for the new status.
+  Object.keys(aiCache).forEach(k => {
+    if (k.startsWith(`${id}_`)) delete aiCache[k];
+  });
+
   switchTab(status, id);
 
   try {
