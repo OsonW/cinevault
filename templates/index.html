@@ -2134,7 +2134,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 // ─────────────────────────────────────────────
 let allItems     = [];
 let allChats     = [];
-let currentTab   = 'finished';
+let currentTab   = 'watchlist';
 let selectedId   = null;
 let currentSort  = 'name';
 let searchMode   = 'standard';
@@ -2455,9 +2455,9 @@ function renderGrid() {
     ${_ALL_TYPES.map(t => `<button class="grid-type-btn${f.types.has(t)?' active':''}" data-gtype="${t}" onclick="toggleGridType('${t}')">${TYPE_SVG[t]} ${TYPE_LABEL[t]}</button>`).join('')}
     <button class="grid-filter-clear${hasFilter?'':' hidden'}" onclick="clearGridFilter()">Clear</button>
     <div class="grid-right-group">
-      <button class="sort-btn ${currentSort==='name'?'active':''}" onclick="setSort('name')">A–Z</button>
+      <button class="sort-btn ${currentSort==='name'?'active':''}" onclick="setSort('name')">Alphabetical</button>
       ${ratingSortBtn}
-      <button class="sort-btn ${currentSort==='added'?'active':''}" onclick="setSort('added')">Recent</button>
+      <button class="sort-btn ${currentSort==='added'?'active':''}" onclick="setSort('added')">Recently Added</button>
       <div class="size-dd-wrap">
         <button class="size-dd-btn" onclick="toggleSizeDropdown(event)">${sizeLabels[curSize]} <span style="font-size:9px;opacity:0.7">▾</span></button>
         <div class="size-dd-menu" id="sizeDropdownMenu">
