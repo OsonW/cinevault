@@ -31,14 +31,13 @@ def _as_str(value) -> str:
 # if you ever run multiple workers.
 _RATE_LOCK = threading.Lock()
 _RATE_BUCKETS: dict[str, deque] = {}
+_RATE_BUCKETS_MAX = 10_000
 
 
 def _client_ip() -> str:
-    # Honour the leftmost X-Forwarded-For entry if a proxy added one,
-    # otherwise fall back to remote_addr.
-    xff = request.headers.get("X-Forwarded-For", "")
-    if xff:
-        return xff.split(",")[0].strip()
+    # ProxyFix (applied in app.py in production) already resolved the real
+    # client IP into remote_addr, so we never need to read X-Forwarded-For
+    # here. Reading it directly would let a client spoof their IP.
     return request.remote_addr or "-"
 
 
@@ -51,7 +50,11 @@ def rate_limit(max_requests: int, window_seconds: int):
             now    = _now()
             cutoff = now - window_seconds
             with _RATE_LOCK:
-                bucket = _RATE_BUCKETS.setdefault(key, deque())
+                if key not in _RATE_BUCKETS:
+                    if len(_RATE_BUCKETS) >= _RATE_BUCKETS_MAX:
+                        _RATE_BUCKETS.pop(next(iter(_RATE_BUCKETS)))
+                    _RATE_BUCKETS[key] = deque()
+                bucket = _RATE_BUCKETS[key]
                 while bucket and bucket[0] < cutoff:
                     bucket.popleft()
                 if len(bucket) >= max_requests:

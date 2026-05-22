@@ -5,6 +5,7 @@ import time
 import secrets
 import threading
 import requests
+from collections import OrderedDict
 from urllib.parse import urlparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import Flask, jsonify, Response, request, render_template, g, redirect, url_for, make_response
@@ -12,7 +13,7 @@ from flask_login import login_required, current_user, logout_user
 from google import genai
 
 from db import (
-    get_user_db_path, init_user_db, get_conn,
+    get_user_db_path, init_user_db,
     get_all_media, get_media_by_id, get_media_by_external_id,
     add_media_entry, update_media_entry, delete_media_entry,
     get_all_chats, get_chats_by_media_id, get_chat_by_id, get_chat_messages,
@@ -22,6 +23,27 @@ from db import (
 )
 from auth import auth_bp, login_manager, rate_limit, _as_str
 from users_db import init_users_db, get_user_keys, delete_user
+
+
+class _BoundedCache(OrderedDict):
+    """OrderedDict capped at maxsize entries; evicts the oldest when full."""
+    def __init__(self, maxsize: int):
+        super().__init__()
+        self._maxsize = maxsize
+        self._lock = threading.Lock()
+
+    def __setitem__(self, key, value):
+        with self._lock:
+            if key in self:
+                self.move_to_end(key)
+            super().__setitem__(key, value)
+            while len(self) > self._maxsize:
+                self.popitem(last=False)
+
+    def pop(self, key, *args):
+        with self._lock:
+            return super().pop(key, *args)
+
 
 app = Flask(__name__)
 
@@ -44,6 +66,14 @@ app.secret_key = _secret
 # set), so local HTTP dev sessions still work. SameSite=Strict is safe everywhere
 # and is the primary CSRF defence — it blocks cross-site form POSTs and fetches.
 _production = bool(os.environ.get("SECRET_KEY"))
+
+# In production the app runs behind a reverse proxy (PythonAnywhere). ProxyFix
+# reads exactly one trusted X-Forwarded-For hop and writes the real client IP
+# into request.remote_addr, so _client_ip() never has to touch XFF directly.
+# Skipped in dev so a missing proxy doesn't silently break local testing.
+if _production:
+    from werkzeug.middleware.proxy_fix import ProxyFix
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 app.config["SESSION_COOKIE_SECURE"]    = _production
 app.config["SESSION_COOKIE_HTTPONLY"]  = True
 app.config["SESSION_COOKIE_SAMESITE"]  = "Strict"
@@ -89,8 +119,8 @@ def _make_gemini(api_key: str):
 
 
 # Shared across users — keyed by external IDs so safe to share
-poster_cache: dict[str, tuple[bytes, str]] = {}
-search_cache: dict[str, list]              = {}
+poster_cache: _BoundedCache = _BoundedCache(500)   # ~100 MB max at avg 200 KB/poster
+search_cache: dict[str, list] = {}
 
 _user_media_cache:   dict[int, dict] = {}
 _user_ai_card_cache: dict[int, dict] = {}
@@ -738,8 +768,8 @@ def get_poster(media_type, item_id):
 # TV / Manga constraint info
 # ═══════════════════════════════════════════════════
 
-tv_info_cache:    dict[str, dict] = {}
-manga_info_cache: dict[str, dict] = {}
+tv_info_cache:    _BoundedCache = _BoundedCache(500)
+manga_info_cache: _BoundedCache = _BoundedCache(500)
 
 @app.route("/api/tv-info/<int:tmdb_id>")
 @login_required
@@ -922,6 +952,7 @@ def restore_media_chats():
 
 @app.route("/api/vibe-search/types", methods=["POST"])
 @login_required
+@rate_limit(max_requests=30, window_seconds=60)
 def vibe_search_types():
     data  = request.get_json(silent=True) or {}
     query = data.get("query", "").strip()
@@ -1156,6 +1187,7 @@ def _enrich_results(recs: list, tmdb_key: str) -> list:
 
 @app.route("/api/vibe-search", methods=["POST"])
 @login_required
+@rate_limit(max_requests=20, window_seconds=60)
 def vibe_search():
     data           = request.get_json(silent=True) or {}
     query          = data.get("query", "").strip()
@@ -1383,6 +1415,7 @@ def _detect_spoiler(snap: dict, media: dict, user_message: str) -> bool:
 
 @app.route("/api/chats/<int:chat_id>/message", methods=["POST"])
 @login_required
+@rate_limit(max_requests=30, window_seconds=60)
 def chat_message(chat_id):
     data    = request.get_json(silent=True) or {}
     content = data.get("content", "").strip()
@@ -1510,7 +1543,7 @@ def chat_message(chat_id):
 
             yield f"data: {json.dumps({'done': True})}\n\n"
         except Exception as e:
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            yield f"data: {json.dumps({'error': 'An error occurred. Please try again.'})}\n\n"
 
     return Response(
         generate(),
@@ -1643,6 +1676,7 @@ def ai_card():
 
 @app.route("/api/ai-card/stream", methods=["POST"])
 @login_required
+@rate_limit(max_requests=60, window_seconds=60)
 def ai_card_stream():
     data     = request.get_json(silent=True) or {}
     media_id = data.get("media_id")
@@ -1680,7 +1714,7 @@ def ai_card_stream():
             ac[cache_key] = (content, time.time() + AI_CARD_TTL)
             yield f"data: {json.dumps({'done': True})}\n\n"
         except Exception as e:
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            yield f"data: {json.dumps({'error': 'An error occurred. Please try again.'})}\n\n"
 
     return Response(generate(), mimetype="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
@@ -1688,6 +1722,7 @@ def ai_card_stream():
 
 @app.route("/api/ask", methods=["POST"])
 @login_required
+@rate_limit(max_requests=30, window_seconds=60)
 def ask_ai():
     data          = request.get_json(silent=True) or {}
     question      = data.get("question", "").strip()
