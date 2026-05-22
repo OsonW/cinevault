@@ -2257,9 +2257,13 @@ function rebuildLibrarySet() {
   });
 }
 
-async function apiPost(path, body, timeoutMs = 60000) {
+async function apiPost(path, body, timeoutMs = 60000, externalSignal = null) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  if (externalSignal) {
+    if (externalSignal.aborted) { clearTimeout(timeoutId); throw externalSignal.reason; }
+    externalSignal.addEventListener('abort', () => controller.abort(externalSignal.reason), { once: true });
+  }
   let res;
   try {
     res = await fetch(path, {
@@ -3386,27 +3390,31 @@ async function saveField(id, field, value) {
   if (field === 'rating') renderGrid();
 }
 
-let statusChangePending = false;
+const statusChangePending = new Map();
 
 async function changeStatus(id, status) {
-  if (statusChangePending) return;
   const item = allItems.find(i => i.id === id);
   if (!item || item.status === status) return;
-  statusChangePending = true;
+
+  statusChangePending.get(id)?.abort();
+  const controller = new AbortController();
+  statusChangePending.set(id, controller);
+
   const prevStatus = item.status;
   aiCardController?.abort();
   item.status = status;
   switchTab(status, id);
+
   try {
-    await apiPost('/api/add', { id, status });
-  } catch {
+    await apiPost('/api/add', { id, status }, 60000, controller.signal);
+  } catch (err) {
+    if (controller.signal.aborted) return;
     showToast('Failed to update status — please try again.', 'error');
     item.status = prevStatus;
     switchTab(prevStatus, id);
-    statusChangePending = false;
-    return;
+  } finally {
+    if (statusChangePending.get(id) === controller) statusChangePending.delete(id);
   }
-  statusChangePending = false;
 }
 
 let deleteItemPending = false;
