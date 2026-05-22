@@ -2065,10 +2065,8 @@ async function doLogout() {
   btn.disabled = true;
   cancel.disabled = true;
   btn.textContent = 'Logging out…';
-  // Abort any in-flight AI streams so they don't linger after navigation
-  aiCardController?.abort();
-  // Fire-and-forget — don't await so pending fetches can't delay redirect
-  fetch('/auth/logout', { method: 'POST' }).catch(() => {});
+  aiCardController?.abort();           // free the connection before awaiting logout
+  try { await fetch('/auth/logout', { method: 'POST' }); } catch {}
   window.location.href = '/login';
 }
 
@@ -2366,7 +2364,6 @@ function onSearchMainClick() {
 // ─────────────────────────────────────────────
 function switchTab(tab, selectId = null) {
   aiCardController?.abort();
-  aiCardGeneration++;  // invalidate any in-flight stream immediately
   const prevTab = currentTab;
   if (prevTab !== 'chats' && selectedId !== null) {
     tabLastSelected[prevTab] = selectedId;
@@ -3208,7 +3205,6 @@ async function saveMangaProgressConstrained(id, rawValue) {
 // ─────────────────────────────────────────────
 
 let aiCardController = null;
-let aiCardGeneration = 0;
 
 function aiCacheKey(item) {
   if (item.status === 'watchlist') return `${item.id}_watchlist`;
@@ -3224,7 +3220,6 @@ async function loadAICard(item) {
   aiCardController?.abort();
   const controller = new AbortController();
   aiCardController = controller;
-  const myGen      = ++aiCardGeneration;
 
   if (aiCache[key]) {
     renderAICard(document.getElementById('aiCard'), aiCache[key], item.status, item.media_type);
@@ -3265,18 +3260,18 @@ async function loadAICard(item) {
           const obj = JSON.parse(payload);
           if (obj.token) {
             full += obj.token;
-            if (myGen === aiCardGeneration && bodyEl) bodyEl.innerHTML = formatAI(esc(full));
+            if (bodyEl) bodyEl.innerHTML = formatAI(esc(full));
           } else if (obj.done) {
-            if (myGen === aiCardGeneration) aiCache[key] = full;
+            aiCache[key] = full;
           } else if (obj.error) {
-            if (myGen === aiCardGeneration && bodyEl) bodyEl.textContent = 'Unable to load.';
+            if (bodyEl) bodyEl.textContent = 'Unable to load.';
           }
         } catch (_) {}
       }
     }
   } catch (err) {
     if (err?.name === 'AbortError') return;
-    if (myGen === aiCardGeneration && bodyEl) bodyEl.textContent = 'Unable to load.';
+    if (bodyEl) bodyEl.textContent = 'Unable to load.';
   }
 }
 
