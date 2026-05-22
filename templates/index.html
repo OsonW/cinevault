@@ -767,16 +767,6 @@ input[type="range"]::-webkit-slider-thumb {
 .field input, .field textarea { width: 100%; padding: 8px 10px; }
 .field textarea { resize: vertical; min-height: 64px; }
 .episode-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.triple-row  { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
-
-.progress-bar-wrap { margin-bottom: 14px; }
-.progress-bar-track {
-  height: 4px; border-radius: 99px; background: var(--card); overflow: hidden; margin: 6px 0 4px;
-}
-.progress-bar-fill {
-  height: 100%; background: var(--amber); border-radius: 99px; transition: width 0.4s;
-}
-.progress-pct { font-size: 10px; color: var(--amber); }
 
 .ai-card {
   background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
@@ -787,17 +777,6 @@ input[type="range"]::-webkit-slider-thumb {
   color: var(--accent); font-weight: 500; margin-bottom: 6px; display: flex; align-items: center; gap: 5px;
 }
 .ai-card-body { color: var(--text-dim); }
-
-
-.open-chat-btn {
-  display: inline-flex; align-items: center; gap: 5px;
-  padding: 5px 10px;
-  border-radius: var(--radius); border: 1px solid var(--amber-dim);
-  background: var(--amber-glow); color: var(--amber);
-  font-size: 11px; font-family: 'DM Sans', sans-serif; cursor: pointer;
-  transition: all 0.15s; letter-spacing: 0.01em;
-}
-.open-chat-btn:hover { border-color: var(--amber); background: rgba(244,162,97,0.2); }
 
 .qa-wrap { margin-bottom: 16px; }
 .qa-input-row { display: flex; gap: 6px; margin-bottom: 8px; }
@@ -1170,7 +1149,6 @@ body[data-tab="chats"] .detail-body { display: none !important; }
 .poster-overview-full {
   font-size: 0.917em; color: var(--muted); line-height: 1.45; margin-top: 5px;
 }
-.poster-meta-row { display: flex; align-items: center; gap: 5px; margin-bottom: 4px; flex-wrap: wrap; }
 .poster-badge-row { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; flex-wrap: wrap; }
 .poster-type-badge {
   display: inline-flex; align-items: center; gap: 3px;
@@ -1626,7 +1604,7 @@ body.entry-active .entry-cancel-account { display: block; }
       </div>
       <div class="search-btn-group">
         <button class="btn-search-main" id="searchMainBtn" onclick="onSearchMainClick()">Search</button>
-        <button class="btn-search-caret" id="searchCaretBtn" onclick="toggleSearchMenu(event)">▾</button>
+        <button class="btn-search-caret" onclick="toggleSearchMenu(event)">▾</button>
         <div class="search-mode-menu" id="searchModeMenu">
           <div class="smm-item active" data-mode="standard" onclick="setSearchMode('standard')">
             <span class="smm-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
@@ -1786,7 +1764,7 @@ body.entry-active .entry-cancel-account { display: block; }
   <div class="key-modal-box">
     <div class="key-modal-left">
       <div>
-        <div class="key-modal-title" id="keyModalTitle">Cine<em>Vault</em></div>
+        <div class="key-modal-title">Cine<em>Vault</em></div>
         <div class="key-modal-sub" id="keyModalSub">Enter your API keys to get started.</div>
       </div>
       <div class="key-field">
@@ -1822,7 +1800,7 @@ body.entry-active .entry-cancel-account { display: block; }
         <button class="key-modal-save" id="keyModalSave" onclick="saveKeysFromModal()" disabled>Save Keys</button>
       </div>
     </div>
-    <div class="key-modal-right" id="keyHelpPanel">
+    <div class="key-modal-right">
       <div class="key-help-empty" id="keyHelpEmpty">Click "How do I get this?" next to a key field.</div>
       <div class="key-help-panel" id="keyHelpGemini">
         <div class="key-help-header">Getting a Gemini API Key</div>
@@ -1844,7 +1822,7 @@ body.entry-active .entry-cancel-account { display: block; }
       </div>
     </div>
   </div>
-    <button class="entry-cancel-account" id="entryCancelAccount" onclick="openCancelAccountConfirm()">Cancel account creation</button>
+    <button class="entry-cancel-account" onclick="openCancelAccountConfirm()">Cancel account creation</button>
   </div>
 </div>
 
@@ -4657,7 +4635,7 @@ function renderModalResults(libMatches, tmdbResults, q) {
   }
   if (tmdbResults.length) {
     html += `<div class="sm-section-label" style="margin-top:${libMatches.length?'8px':'0'}">Add from search</div>
-      <div class="sm-grid" id="smGrid">`;
+      <div class="sm-grid">`;
     html += tmdbResults.map(r => renderSmCard(r)).join('');
     html += `</div>`;
   } else if (!libMatches.length) {

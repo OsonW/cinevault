@@ -525,7 +525,6 @@ def search_books():
         resp.raise_for_status()
         data = resp.json()
         items = []
-        
         for doc in data.get("docs", []):
             cover_id = doc.get("cover_i")
             cover_url = None
@@ -572,7 +571,7 @@ def get_book_by_isbn(isbn):
     cache_key = f"isbn:{isbn}"
     if cache_key in search_cache:
         return jsonify(search_cache[cache_key])
-    
+
     try:
         resp = requests.get(f"https://openlibrary.org/isbn/{isbn}.json", timeout=8)
         if resp.status_code != 200:
