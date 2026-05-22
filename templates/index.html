@@ -3183,7 +3183,6 @@ async function saveMangaProgressConstrained(id, rawValue) {
 // AI card
 // ─────────────────────────────────────────────
 
-let aiCardGeneration = 0;
 let aiCardController = null;
 
 function aiCacheKey(item) {
@@ -3200,17 +3199,14 @@ async function loadAICard(item) {
   aiCardController?.abort();
   const controller = new AbortController();
   aiCardController = controller;
-  const myGen      = ++aiCardGeneration;
 
   if (aiCache[key]) {
-    if (aiCardGeneration === myGen) {
-      renderAICard(document.getElementById('aiCard'), aiCache[key], item.status, item.media_type);
-    }
+    renderAICard(document.getElementById('aiCard'), aiCache[key], item.status, item.media_type);
     return;
   }
 
   const card = document.getElementById('aiCard');
-  if (!card || aiCardGeneration !== myGen) return;
+  if (!card) return;
 
   renderAICardShell(card, item.status, item.media_type);
   const bodyEl = card.querySelector('.ai-card-body');
@@ -3241,7 +3237,6 @@ async function loadAICard(item) {
         if (!payload) continue;
         try {
           const obj = JSON.parse(payload);
-          if (aiCardGeneration !== myGen) { reader.cancel(); return; }
           if (obj.token) {
             full += obj.token;
             if (bodyEl) bodyEl.innerHTML = formatAI(esc(full));
@@ -3255,9 +3250,7 @@ async function loadAICard(item) {
     }
   } catch (err) {
     if (err?.name === 'AbortError') return;
-    if (aiCardGeneration === myGen) {
-      if (bodyEl) bodyEl.textContent = 'Unable to load.';
-    }
+    if (bodyEl) bodyEl.textContent = 'Unable to load.';
   }
 }
 
@@ -3401,7 +3394,6 @@ async function changeStatus(id, status) {
   statusChangePending.set(id, controller);
 
   const prevStatus = item.status;
-  aiCardController?.abort();
   item.status = status;
   switchTab(status, id);
 
