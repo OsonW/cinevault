@@ -2065,8 +2065,8 @@ async function doLogout() {
   btn.disabled = true;
   cancel.disabled = true;
   btn.textContent = 'Logging out…';
-  aiCardController?.abort();           // free the connection before awaiting logout
-  try { await fetch('/auth/logout', { method: 'POST' }); } catch {}
+  aiCardController?.abort();
+  fetch('/auth/logout', { method: 'POST', keepalive: true }).catch(() => {});
   window.location.href = '/login';
 }
 
@@ -3216,13 +3216,16 @@ function aiCacheKey(item) {
 }
 
 async function loadAICard(item) {
-  const key        = aiCacheKey(item);
+  const key    = aiCacheKey(item);
+  const itemId = item.id;
   aiCardController?.abort();
   const controller = new AbortController();
   aiCardController = controller;
 
   if (aiCache[key]) {
-    renderAICard(document.getElementById('aiCard'), aiCache[key], item.status, item.media_type);
+    if (selectedId === itemId) {
+      renderAICard(document.getElementById('aiCard'), aiCache[key], item.status, item.media_type);
+    }
     return;
   }
 
@@ -3260,18 +3263,18 @@ async function loadAICard(item) {
           const obj = JSON.parse(payload);
           if (obj.token) {
             full += obj.token;
-            if (bodyEl) bodyEl.innerHTML = formatAI(esc(full));
+            if (selectedId === itemId && bodyEl) bodyEl.innerHTML = formatAI(esc(full));
           } else if (obj.done) {
             aiCache[key] = full;
           } else if (obj.error) {
-            if (bodyEl) bodyEl.textContent = 'Unable to load.';
+            if (selectedId === itemId && bodyEl) bodyEl.textContent = 'Unable to load.';
           }
         } catch (_) {}
       }
     }
   } catch (err) {
     if (err?.name === 'AbortError') return;
-    if (bodyEl) bodyEl.textContent = 'Unable to load.';
+    if (selectedId === itemId && bodyEl) bodyEl.textContent = 'Unable to load.';
   }
 }
 
