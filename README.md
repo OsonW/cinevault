@@ -27,7 +27,7 @@ Browser (SPA)  ──►  Flask (app.py)  ──►  per-user SQLite (movie_trac
 
 | Layer | Tech |
 |-------|------|
-| Backend | Flask, Flask-Login, gunicorn |
+| Backend | Flask, Flask-Login |
 | Auth | Username/password, bcrypt hashing, `SameSite=Strict` session cookies |
 | Storage | SQLite — one global `users.db` plus a `movie_tracker_<id>.db` per user |
 | AI | Google Gemini (`google-genai`) |
@@ -91,10 +91,7 @@ python -m pytest
 
 ## Deployment
 
-The repo is ready for two hosts:
-
-- **Railway** — uses `railway.json` (NIXPACKS builder) and the `Procfile` to run gunicorn. Set `SECRET_KEY` (and optionally `DB_DIR`, `GEMINI_MODEL`) in the project's variables.
-- **PythonAnywhere** — point the web app's WSGI file at `pythonanywhere_wsgi.py` and fill in `DB_DIR` and `SECRET_KEY`. See `pythonanywhere_setup.md` for the full walkthrough.
+Deployed on **PythonAnywhere** — point the web app's WSGI file at `pythonanywhere_wsgi.py` and set `DB_DIR` and `SECRET_KEY`. See `pythonanywhere_setup.md` for the full walkthrough.
 
 In production, always set a fixed `SECRET_KEY` and a writable `DB_DIR` outside the code directory.
 

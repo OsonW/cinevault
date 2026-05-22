@@ -3,5 +3,4 @@ flask-login
 bcrypt
 requests
 google-genai
-gunicorn
 pytest

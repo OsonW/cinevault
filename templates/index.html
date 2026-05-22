@@ -2036,9 +2036,9 @@ function closeLogoutConfirm() {
   dBtn.disabled = true;
   dBtn.textContent = 'Delete Permanently';
 }
-// Abort every in-flight request that holds (or queues behind) a gunicorn
-// worker. The deployment runs only 2 sync workers, and each SSE stream pins
-// one for the whole Gemini generation — so without this, a logout/redirect
+// Abort every in-flight request that holds (or queues behind) a server
+// worker. The deployment runs only a few sync workers, and each SSE stream
+// pins one for the whole Gemini generation — so without this, a logout/redirect
 // request can find no free worker and stall.
 function abortInFlightRequests() {
   aiCardController?.abort();
