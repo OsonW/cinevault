@@ -1583,6 +1583,33 @@ def update_chat_spoiler(chat_id):
 # AI card + quick Q&A
 # ═══════════════════════════════════════════════════
 
+_CARD_STATUSES = frozenset({"watchlist", "watching", "finished"})
+_CARD_PROGRESS_FIELDS = (
+    "last_season", "last_episode", "last_volume", "last_chapter", "current_page",
+)
+
+
+def _card_context(media: dict, data: dict) -> dict:
+    """Return a copy of `media` with status/progress overridden by what the
+    client says it is currently showing.
+
+    The AI insight must match the state the user is looking at right now. The
+    status-change persist (/api/add) and this insight request are two separate
+    requests that race, so the DB row may still hold the old status when the
+    insight is generated. Trusting the client-supplied context (the user's own
+    data) makes the insight a pure function of that context and removes the race
+    entirely. Falls back to the DB values when the client omits them.
+    """
+    ctx = dict(media)
+    status = data.get("status")
+    if status in _CARD_STATUSES:
+        ctx["status"] = status
+    for field in _CARD_PROGRESS_FIELDS:
+        if data.get(field) is not None:
+            ctx[field] = data[field]
+    return ctx
+
+
 def _ai_card_cache_key(media: dict) -> str:
     if media["status"] == "watchlist":
         return f"{media['id']}_watchlist"
@@ -1655,6 +1682,7 @@ def ai_card():
     if not media:
         return jsonify({"error": "Media not found"}), 404
 
+    media     = _card_context(media, data)
     cache_key = _ai_card_cache_key(media)
     now       = time.time()
     ac        = _ai_cache()
@@ -1690,6 +1718,7 @@ def ai_card_stream():
     if not media:
         return jsonify({"error": "Media not found"}), 404
 
+    media     = _card_context(media, data)
     cache_key = _ai_card_cache_key(media)
     now       = time.time()
     ac        = _ai_cache()

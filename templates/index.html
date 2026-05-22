@@ -3236,7 +3236,18 @@ async function loadAICard(item) {
     const response = await fetch('/api/ai-card/stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ media_id: item.id }),
+      // Send the exact context the user is looking at. The status-change
+      // persist races this request, so the server must generate from what we
+      // send — not from the DB row, which may not be updated yet.
+      body: JSON.stringify({
+        media_id:     item.id,
+        status:       item.status,
+        last_season:  item.last_season,
+        last_episode: item.last_episode,
+        last_volume:  item.last_volume,
+        last_chapter: item.last_chapter,
+        current_page: item.current_page,
+      }),
       signal: controller.signal,
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
