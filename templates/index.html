@@ -2225,7 +2225,7 @@ function fmtDate(dateStr) {
   const month = months[parseInt(parts[1],10)-1];
   const day   = parseInt(parts[2],10);
   const yr    = parts[0].slice(2);
-  return `${month} ${day}, '${yr}`;
+  return `Added on ${month} ${day}, '${yr}`;
 }
 
 function toggleSizeDropdown(e) {
@@ -2462,7 +2462,7 @@ function renderGrid() {
   const hasFilter = !!(f.query || f.types.size < _ALL_TYPES.length);
 
   const ratingSortBtn = currentTab === 'finished'
-    ? `<button class="sort-btn ${currentSort==='rating'?'active':''}" onclick="setSort('rating')">Rating</button>` : '';
+    ? `<button class="sort-btn ${currentSort==='rating'?'active':''}" onclick="setSort('rating')">Top Rated</button>` : '';
 
   const sizeOpts   = ['small','medium','large'];
   const sizeLabels = { small:'Compact', medium:'Default', large:'Large' };
