@@ -2058,16 +2058,29 @@ function closeLogoutConfirm() {
   dBtn.disabled = true;
   dBtn.textContent = 'Delete Permanently';
 }
-async function doLogout() {
+// Abort every in-flight request that holds (or queues behind) a gunicorn
+// worker. The deployment runs only 2 sync workers, and each SSE stream pins
+// one for the whole Gemini generation — so without this, a logout/redirect
+// request can find no free worker and stall.
+function abortInFlightRequests() {
+  aiCardController?.abort();
+  chatStreamController?.abort();
+  _modalSearchController?.abort();
+  statusChangePending.forEach(c => c?.abort());
+}
+
+function doLogout() {
   const btn    = document.getElementById('logoutConfirmBtn');
   const cancel = document.getElementById('logoutCancelBtn');
   if (btn.disabled) return;            // already triggered
   btn.disabled = true;
   cancel.disabled = true;
   btn.textContent = 'Logging out…';
-  aiCardController?.abort();           // free the connection before awaiting logout
-  try { await fetch('/auth/logout', { method: 'POST' }); } catch {}
-  window.location.href = '/login';
+  abortInFlightRequests();             // free a worker so logout isn't queued
+  // Top-level navigation: the server clears the session and redirects to
+  // /login in one request, so we never land on a page while still
+  // authenticated (which would bounce us back to the library).
+  window.location.href = '/auth/logout';
 }
 
 function showLogoutDeleteSection() {
@@ -2087,6 +2100,7 @@ async function doDeleteAccount() {
   const username = document.getElementById('logoutDeleteUsernameInput').value.trim();
   btn.disabled = true;
   btn.textContent = 'Deleting…';
+  abortInFlightRequests();             // free a worker so the delete isn't queued
   try {
     await fetch('/auth/cancel-registration', {
       method: 'POST',
@@ -2094,6 +2108,7 @@ async function doDeleteAccount() {
       body: JSON.stringify({ username }),
     });
   } catch {}
+  // cancel_registration logs the user out server-side, so /login won't bounce.
   window.location.href = '/login';
 }
 
@@ -2200,6 +2215,12 @@ const TYPE_SVG = {
 // Boot
 // ─────────────────────────────────────────────
 document.body.dataset.tab = currentTab;
+// Apply the persisted sort for the initial tab. The boot path renders the grid
+// directly without going through switchTab (which is what normally syncs
+// currentSort from tabSort), so without this the saved preference is ignored
+// until the user switches tabs.
+currentSort = tabSort[currentTab] || 'name';
+if (currentSort === 'rating' && currentTab !== 'finished') currentSort = 'name';
 loadList().then(() => loadChats());
 
 document.addEventListener('keydown', e => {
@@ -4031,6 +4052,7 @@ function scrollChatBottom() {
 
 let streamingChatId   = null;
 let streamingContent  = '';
+let chatStreamController = null;
 
 function setChatSendingState(isSending) {
   chatSendPending = isSending;
@@ -4100,11 +4122,13 @@ async function sendChatMessage(chatId) {
   wrap.appendChild(asstBubble);
   scrollChatBottom();
 
+  chatStreamController = new AbortController();
   try {
     const response = await fetch(`/api/chats/${chatId}/message`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ content }),
+      signal: chatStreamController.signal,
     });
     if (!response.ok) throw new Error('Network response was not ok');
     const reader = response.body.getReader();
@@ -4202,8 +4226,10 @@ async function sendChatMessage(chatId) {
       }
     }
   } catch (err) {
+    if (err?.name === 'AbortError') return;   // navigating away (e.g. logout)
     contentArea.innerHTML = `<span style="color:var(--red)">Failed to send — try again.</span>`;
   } finally {
+    chatStreamController = null;
     setChatSendingState(false);
     if (input) input.focus();
     loadChats(false).then(() => {

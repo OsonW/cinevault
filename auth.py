@@ -135,12 +135,19 @@ def login():
     return jsonify({"status": "ok", "username": username})
 
 
-@auth_bp.route("/auth/logout", methods=["POST"])
+@auth_bp.route("/auth/logout", methods=["GET", "POST"])
 @rate_limit(max_requests=30, window_seconds=60)    # generous; just blocks runaway loops
 def logout():
-    # POST-only so a cross-origin <img src="/auth/logout"> can't kick a
-    # logged-in user out without their consent.
+    # GET is a top-level browser navigation: clear the session and redirect to
+    # /login in the SAME request, so the client never lands on a page while
+    # still authenticated (which would bounce it back to the library). POST
+    # remains for any programmatic JSON caller.
+    # CSRF is not a concern: the session/remember cookies are SameSite=Strict,
+    # so a cross-site request to this route carries no auth cookie and is a
+    # no-op for the victim.
     logout_user()
+    if request.method == "GET":
+        return redirect(url_for("auth.login_page"))
     return jsonify({"status": "ok"})
 
 
