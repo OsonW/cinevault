@@ -1641,7 +1641,7 @@ body.entry-active .entry-cancel-account { display: block; }
     </div>
 
     <div style="display:flex;flex-direction:column;gap:3px;margin-left:8px">
-      <span id="searchTypeLabel" style="font-size:10px;letter-spacing:0.04em;color:var(--muted)">FILTER BY TYPE</span>
+      <span id="searchTypeLabel" style="font-size:10px;letter-spacing:0.04em;color:var(--muted)">FILTER SEARCH BY TYPE</span>
       <div class="search-type-btns" id="searchTypeBtns" style="margin-left:0">
       <button class="search-type-btn active" data-stype="movie" onclick="toggleSearchType('movie')">
         <svg class="icon-svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/></svg>
@@ -2225,7 +2225,7 @@ function fmtDate(dateStr) {
   const month = months[parseInt(parts[1],10)-1];
   const day   = parseInt(parts[2],10);
   const yr    = parts[0].slice(2);
-  return `Added on ${month} ${day}, '${yr}`;
+  return `Added ${month} ${day}, '${yr}`;
 }
 
 function toggleSizeDropdown(e) {
@@ -2330,7 +2330,7 @@ function setSearchMode(mode) {
     typeLabel.style.color = 'var(--purple)';
   } else {
     typeBtns.classList.remove('hidden');
-    typeLabel.textContent = 'FILTER BY TYPE';
+    typeLabel.textContent = 'FILTER SEARCH BY TYPE';
     typeLabel.style.color = 'var(--muted)';
   }
 }
