@@ -1663,9 +1663,9 @@ body.entry-active .entry-cancel-account { display: block; }
     </div>
 
     <nav class="tabs">
-      <button class="tab" data-tab="watchlist" onclick="switchTab('watchlist')">Watchlist</button>
+      <button class="tab active" data-tab="watchlist" onclick="switchTab('watchlist')">Watchlist</button>
       <button class="tab" data-tab="watching"  onclick="switchTab('watching')">Watching</button>
-      <button class="tab active" data-tab="finished" onclick="switchTab('finished')">Finished</button>
+      <button class="tab" data-tab="finished" onclick="switchTab('finished')">Finished</button>
       <button class="tab" data-tab="chats"     onclick="switchTab('chats')">Chats</button>
     </nav>
     <div class="settings-cluster">
@@ -2134,7 +2134,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 // ─────────────────────────────────────────────
 let allItems     = [];
 let allChats     = [];
-let currentTab   = 'finished';
+let currentTab   = 'watchlist';
 let selectedId   = null;
 let currentSort  = 'name';
 let searchMode   = 'standard';
@@ -2150,6 +2150,12 @@ const tabSize = {
   watchlist: _VALID_SIZES.has(localStorage.getItem('tabSize_watchlist')) ? localStorage.getItem('tabSize_watchlist') : 'medium',
   watching:  _VALID_SIZES.has(localStorage.getItem('tabSize_watching'))  ? localStorage.getItem('tabSize_watching')  : 'medium',
   finished:  _VALID_SIZES.has(localStorage.getItem('tabSize_finished'))  ? localStorage.getItem('tabSize_finished')  : 'medium',
+};
+const _VALID_SORTS = new Set(['name','added','rating']);
+const tabSort = {
+  watchlist: _VALID_SORTS.has(localStorage.getItem('tabSort_watchlist')) ? localStorage.getItem('tabSort_watchlist') : 'name',
+  watching:  _VALID_SORTS.has(localStorage.getItem('tabSort_watching'))  ? localStorage.getItem('tabSort_watching')  : 'name',
+  finished:  _VALID_SORTS.has(localStorage.getItem('tabSort_finished'))  ? localStorage.getItem('tabSort_finished')  : 'name',
 };
 const CARD_WIDTH_MIN = 120, CARD_WIDTH_MAX = 220, CARD_WIDTH_DEFAULT = 160;
 function _clampCardWidth(n) { return Math.max(CARD_WIDTH_MIN, Math.min(CARD_WIDTH_MAX, n || CARD_WIDTH_DEFAULT)); }
@@ -2215,7 +2221,10 @@ function fmtDate(dateStr) {
   if (!dateStr) return '';
   const parts = dateStr.split('-');
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  return `${months[parseInt(parts[1],10)-1]} '${parts[0].slice(2)}`;
+  const month = months[parseInt(parts[1],10)-1];
+  const day   = parseInt(parts[2],10);
+  const yr    = parts[0].slice(2);
+  return `${month} ${day}, '${yr}`;
 }
 
 function toggleSizeDropdown(e) {
@@ -2360,7 +2369,11 @@ function switchTab(tab, selectId = null) {
   if (prevTab !== 'chats' && selectedId !== null) {
     tabLastSelected[prevTab] = selectedId;
   }
-  if (currentSort === 'rating' && tab !== 'finished') currentSort = 'name';
+  // Save current sort for the tab we're leaving
+  if (prevTab !== 'chats') {
+    tabSort[prevTab] = currentSort;
+    localStorage.setItem(`tabSort_${prevTab}`, currentSort);
+  }
 
   if (tab === 'chats') {
     if (selectId != null) activeChatId = selectId;
@@ -2381,6 +2394,10 @@ function switchTab(tab, selectId = null) {
   document.querySelectorAll('.tab').forEach(t =>
     t.classList.toggle('active', t.dataset.tab === tab)
   );
+  // Restore sort preference for the tab we're entering
+  currentSort = tabSort[tab] || 'name';
+  // rating sort only valid on finished tab
+  if (currentSort === 'rating' && tab !== 'finished') currentSort = 'name';
 
   if (selectId != null) {
     pendingSelectId = selectId;
@@ -2596,7 +2613,12 @@ async function toggleDescription(itemId) {
   btn.disabled = false;
 }
 
-function setSort(s) { currentSort = s; renderGrid(); }
+function setSort(s) {
+  currentSort = s;
+  tabSort[currentTab] = s;
+  localStorage.setItem(`tabSort_${currentTab}`, s);
+  renderGrid();
+}
 
 function applyCardWidth(w) {
   w = _clampCardWidth(w);
