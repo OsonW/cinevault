@@ -8,7 +8,7 @@ import requests
 from collections import OrderedDict
 from urllib.parse import urlparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from flask import Flask, jsonify, Response, request, render_template, g, redirect, url_for, make_response
+from flask import Flask, jsonify, Response, request, render_template, g, redirect, url_for, make_response, stream_with_context
 from flask_login import login_required, current_user, logout_user
 from google import genai
 
@@ -1541,11 +1541,15 @@ def chat_message(chat_id):
                     yield f"data: {json.dumps({'meta': meta})}\n\n"
 
             yield f"data: {json.dumps({'done': True})}\n\n"
-        except Exception as e:
+        except Exception:
+            app.logger.exception("chat_message stream failed for chat %s", chat_id)
             yield f"data: {json.dumps({'error': 'An error occurred. Please try again.'})}\n\n"
 
+    # stream_with_context keeps the request context (and g.user_db_path) alive
+    # while the generator streams — without it the db writes below blow up with
+    # "Working outside of application context" once Flask tears the request down.
     return Response(
-        generate(),
+        stream_with_context(generate()),
         mimetype="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
@@ -1741,10 +1745,13 @@ def ai_card_stream():
             content = "".join(full).strip()
             ac[cache_key] = (content, time.time() + AI_CARD_TTL)
             yield f"data: {json.dumps({'done': True})}\n\n"
-        except Exception as e:
+        except Exception:
+            app.logger.exception("ai_card_stream failed for media %s", media_id)
             yield f"data: {json.dumps({'error': 'An error occurred. Please try again.'})}\n\n"
 
-    return Response(generate(), mimetype="text/event-stream",
+    # stream_with_context so the generator can safely touch request-bound state
+    # (same pattern as the chat stream — keeps this from regressing later).
+    return Response(stream_with_context(generate()), mimetype="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 

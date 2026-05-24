@@ -3719,10 +3719,13 @@ async function selectChat(chatId) {
   try {
     data = await fetch(`/api/chats/${chatId}`).then(r => r.json());
   } catch {
-    if (detail && activeChatId === chatId) detail.innerHTML = chatEmptyDetailHtml();
+    if (detail && activeChatId === chatId && currentTab === 'chats') detail.innerHTML = chatEmptyDetailHtml();
     return;
   }
-  if (activeChatId !== chatId) return;
+  // Bail if the selection changed OR the user navigated to another tab while the
+  // fetch was in flight — otherwise we'd clobber that tab's media detail panel
+  // (detailPanel is shared) with this chat's content.
+  if (activeChatId !== chatId || currentTab !== 'chats') return;
   const msgs = data.messages || [];
   // If a stream is in progress for this chat, the last assistant message in DB is the one
   // currently streaming — exclude it here so we don't show a duplicate alongside the live bubble.
@@ -4278,8 +4281,10 @@ function undoChatDelete() {
   chatUndoState = null;
   dismissUndoToast();
   allChats.splice(Math.min(chatIndex, allChats.length), 0, chat);
-  renderChatsTab();
-  selectChat(chatId);
+  // Restoring a chat should land the user back in the Chats tab even if they
+  // navigated away while the undo toast was up. switchTab handles the tab
+  // change, restores activeChatId, and re-selects the chat for us.
+  switchTab('chats', chatId);
 }
 
 async function deleteChatItem(e, chatId) {

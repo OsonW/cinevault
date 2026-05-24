@@ -17,6 +17,12 @@ def client(tmp_path, monkeypatch):
     app_module._user_media_cache.clear()
     app_module._user_ai_card_cache.clear()
     app_module._user_memory_cache.clear()
+    # The register/login routes are rate-limited via a process-global bucket
+    # dict keyed by client IP. Every test client shares the same IP, so without
+    # clearing it the 6th registration in a run gets 429'd and auth-dependent
+    # tests fail with spurious 401s.
+    from auth import _RATE_BUCKETS
+    _RATE_BUCKETS.clear()
     with flask_app.test_client() as c:
         yield c
 
@@ -60,9 +66,9 @@ def test_register_short_password(client):
 # ── Login ─────────────────────────────────────────────────────────────────────
 
 def test_login_success(client):
-    _register(client, username="bob", password="hunter2!!")
+    _register(client, username="bobby", password="hunter2!!")
     resp = client.post(
-        "/auth/login", json={"username": "bob", "password": "hunter2!!"}
+        "/auth/login", json={"username": "bobby", "password": "hunter2!!"}
     )
     assert resp.status_code == 200
     assert resp.get_json()["status"] == "ok"
@@ -112,7 +118,7 @@ def test_api_search_unauthenticated_returns_401(client):
 
 
 def test_api_list_authenticated_returns_200(client):
-    _register(client, username="eve", password="pass123!")
+    _register(client, username="evelyn", password="pass123!")
     resp = client.get("/api/list")
     assert resp.status_code == 200
     assert isinstance(resp.get_json(), list)
