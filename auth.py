@@ -41,30 +41,44 @@ def _client_ip() -> str:
     return request.remote_addr or "-"
 
 
+def check_rate_limit(key: str, max_requests: int, window_seconds: int) -> int | None:
+    """Sliding-window check for one bucket key. Returns the Retry-After value
+    (seconds) if the caller is over the limit, or None if the request is allowed
+    (in which case it is recorded against the window)."""
+    now    = _now()
+    cutoff = now - window_seconds
+    with _RATE_LOCK:
+        if key not in _RATE_BUCKETS:
+            if len(_RATE_BUCKETS) >= _RATE_BUCKETS_MAX:
+                _RATE_BUCKETS.pop(next(iter(_RATE_BUCKETS)))
+            _RATE_BUCKETS[key] = deque()
+        bucket = _RATE_BUCKETS[key]
+        while bucket and bucket[0] < cutoff:
+            bucket.popleft()
+        if len(bucket) >= max_requests:
+            return max(1, int(bucket[0] + window_seconds - now) + 1)
+        bucket.append(now)
+    return None
+
+
+def _too_many_requests(retry_after: int):
+    return (
+        jsonify({"error": "Too many requests. Please try again later."}),
+        429,
+        {"Retry-After": str(retry_after)},
+    )
+
+
 def rate_limit(max_requests: int, window_seconds: int):
     """Decorator: limit a route to `max_requests` per `window_seconds` per IP."""
     def decorator(fn):
         @functools.wraps(fn)
         def wrapper(*args, **kwargs):
-            key    = f"{_client_ip()}:{fn.__name__}"
-            now    = _now()
-            cutoff = now - window_seconds
-            with _RATE_LOCK:
-                if key not in _RATE_BUCKETS:
-                    if len(_RATE_BUCKETS) >= _RATE_BUCKETS_MAX:
-                        _RATE_BUCKETS.pop(next(iter(_RATE_BUCKETS)))
-                    _RATE_BUCKETS[key] = deque()
-                bucket = _RATE_BUCKETS[key]
-                while bucket and bucket[0] < cutoff:
-                    bucket.popleft()
-                if len(bucket) >= max_requests:
-                    retry_after = max(1, int(bucket[0] + window_seconds - now) + 1)
-                    return (
-                        jsonify({"error": "Too many requests. Please try again later."}),
-                        429,
-                        {"Retry-After": str(retry_after)},
-                    )
-                bucket.append(now)
+            retry_after = check_rate_limit(
+                f"{_client_ip()}:{fn.__name__}", max_requests, window_seconds
+            )
+            if retry_after is not None:
+                return _too_many_requests(retry_after)
             return fn(*args, **kwargs)
         return wrapper
     return decorator

@@ -21,7 +21,10 @@ from db import (
     update_chat_spoiler_threshold, update_message_snap,
     get_all_memory,
 )
-from auth import auth_bp, login_manager, rate_limit, _as_str
+from auth import (
+    auth_bp, login_manager, rate_limit, _as_str,
+    _client_ip, check_rate_limit, _too_many_requests,
+)
 from users_db import init_users_db, get_user_keys, delete_user
 
 
@@ -134,6 +137,23 @@ MAX_CHAT_HISTORY = 12
 AI_CARD_TTL      = 600
 MANGADEX_HEADERS = {"User-Agent": "CineVault/1.0"}
 
+# Global default rate limit applied to EVERY endpoint (per client IP + endpoint
+# name). Generous enough for normal use — including the burst of poster requests
+# a large library fires on a tab switch — while stopping abuse on the many
+# endpoints that don't carry a stricter explicit @rate_limit. Routes that DO
+# carry one still enforce their own tighter cap on top of this.
+GLOBAL_RATE_MAX    = 300
+GLOBAL_RATE_WINDOW = 60
+
+# Input validation: allowlists + length caps. The 256 KB MAX_CONTENT_LENGTH
+# stops giant bodies, but a 256 KB chat message would still become a huge (and
+# costly) Gemini prompt, so free-text fields get their own per-field caps.
+VALID_MEDIA_TYPES = frozenset({"movie", "tv", "book", "manga"})
+VALID_STATUSES    = frozenset({"watchlist", "watching", "finished"})
+MAX_TITLE_LEN     = 500
+MAX_TEXT_LEN      = 5000    # notes / author / overview
+MAX_MESSAGE_LEN   = 4000    # chat content / question / vibe query
+
 _COVER_URL_ALLOWED_HOSTS = frozenset({
     "covers.openlibrary.org",
     "uploads.mangadex.org",
@@ -178,6 +198,15 @@ def setup_request():
     if not _app_initialized:
         init_users_db()
         _app_initialized = True
+
+    # Global rate limit on every endpoint (per client IP + endpoint). Endpoints
+    # with their own stricter @rate_limit still enforce that tighter cap too.
+    endpoint    = request.endpoint or request.path
+    retry_after = check_rate_limit(
+        f"{_client_ip()}:global:{endpoint}", GLOBAL_RATE_MAX, GLOBAL_RATE_WINDOW
+    )
+    if retry_after is not None:
+        return _too_many_requests(retry_after)
 
     if request.path == "/login" and current_user.is_authenticated:
         return redirect(url_for("index"))
@@ -842,6 +871,9 @@ def list_media():
 def add_media():
     data = request.get_json(silent=True) or {}
     if "id" in data:
+        status = data.get("status")
+        if status is not None and status not in VALID_STATUSES:
+            return jsonify({"error": "Invalid status"}), 400
         allowed = {
             "status", "rating", "last_timestamp",
             "last_season", "last_episode",
@@ -850,22 +882,42 @@ def add_media():
             "notes", "cover_url", "author",
         }
         fields = {k: data[k] for k in allowed if k in data}
+        if fields.get("rating") is not None:
+            try:
+                fields["rating"] = float(fields["rating"])
+            except (TypeError, ValueError):
+                return jsonify({"error": "Invalid rating"}), 400
+            if not 0 <= fields["rating"] <= 10:
+                return jsonify({"error": "Rating out of range"}), 400
+        for f in ("notes", "author"):
+            v = fields.get(f)
+            if isinstance(v, str) and len(v) > MAX_TEXT_LEN:
+                return jsonify({"error": f"{f} too long"}), 400
         if not _is_safe_cover_url(fields.get("cover_url")):
             fields.pop("cover_url", None)
         update_media_entry(data["id"], **fields)
         _invalidate_media_cache(data["id"])
     else:
+        title = data.get("title")
+        if not isinstance(title, str) or not title.strip():
+            return jsonify({"error": "Title required"}), 400
+        if len(title) > MAX_TITLE_LEN:
+            return jsonify({"error": "Title too long"}), 400
+        media_type = data.get("media_type")
+        if media_type not in VALID_MEDIA_TYPES:
+            return jsonify({"error": "Invalid media_type"}), 400
+        status = data.get("status", "watchlist")
+        if status not in VALID_STATUSES:
+            return jsonify({"error": "Invalid status"}), 400
         cover_url = data.get("cover_url")
         if not _is_safe_cover_url(cover_url):
             cover_url = None
-        media_type = data.get("media_type")
-        external_id = data.get("external_id")
         add_media_entry(
-            title       = data["title"],
+            title       = title,
             media_type  = media_type,
-            status      = data.get("status", "watchlist"),
+            status      = status,
             tmdb_id     = data.get("tmdb_id"),
-            external_id = external_id,
+            external_id = data.get("external_id"),
             cover_url   = cover_url,
             author      = data.get("author"),
             total_pages = data.get("total_pages"),
@@ -909,12 +961,22 @@ def restore_media_chats():
     data       = request.get_json(silent=True) or {}
     media_data = data.get("media")
     chats_data = data.get("chats", [])
-    if not media_data:
+    if not isinstance(media_data, dict):
         return jsonify({"error": "Missing media data"}), 400
+    if not isinstance(chats_data, list):
+        chats_data = []
+
+    title = media_data.get("title")
+    if not isinstance(title, str) or not title.strip():
+        return jsonify({"error": "Title required"}), 400
+    if media_data.get("media_type") not in VALID_MEDIA_TYPES:
+        return jsonify({"error": "Invalid media_type"}), 400
+    if media_data.get("status") not in VALID_STATUSES:
+        return jsonify({"error": "Invalid status"}), 400
 
     restore_cover = media_data.get("cover_url")
     new_media_id = add_media_entry(
-        title       = media_data["title"],
+        title       = title,
         media_type  = media_data["media_type"],
         status      = media_data["status"],
         tmdb_id     = media_data.get("tmdb_id"),
@@ -954,9 +1016,11 @@ def restore_media_chats():
 @rate_limit(max_requests=30, window_seconds=60)
 def vibe_search_types():
     data  = request.get_json(silent=True) or {}
-    query = data.get("query", "").strip()
+    query = _as_str(data.get("query"))
     if not query:
         return jsonify({"types": ["movie", "tv"]}), 400
+    if len(query) > MAX_MESSAGE_LEN:
+        return jsonify({"error": "Query too long"}), 400
 
     gemini_key = _get_gemini_key()
     if not gemini_key:
@@ -1189,11 +1253,16 @@ def _enrich_results(recs: list, tmdb_key: str) -> list:
 @rate_limit(max_requests=20, window_seconds=60)
 def vibe_search():
     data           = request.get_json(silent=True) or {}
-    query          = data.get("query", "").strip()
-    types          = data.get("types", ["movie", "tv"])
+    query          = _as_str(data.get("query"))
+    raw_types      = data.get("types") or ["movie", "tv"]
+    types          = [t for t in raw_types if t in VALID_MEDIA_TYPES] or ["movie", "tv"]
     exclude_titles = data.get("exclude_titles", [])
+    if not isinstance(exclude_titles, list):
+        exclude_titles = []
     if not query:
         return jsonify({"error": "No query provided"}), 400
+    if len(query) > MAX_MESSAGE_LEN:
+        return jsonify({"error": "Query too long"}), 400
 
     gemini_key = _get_gemini_key()
     if not gemini_key:
@@ -1417,9 +1486,11 @@ def _detect_spoiler(snap: dict, media: dict, user_message: str) -> bool:
 @rate_limit(max_requests=30, window_seconds=60)
 def chat_message(chat_id):
     data    = request.get_json(silent=True) or {}
-    content = data.get("content", "").strip()
+    content = _as_str(data.get("content"))
     if not content:
         return jsonify({"error": "Empty message"}), 400
+    if len(content) > MAX_MESSAGE_LEN:
+        return jsonify({"error": "Message too long"}), 400
 
     gemini_key = _get_gemini_key()
     if not gemini_key:
@@ -1672,6 +1743,7 @@ def _ai_card_prompt(media: dict) -> str:
 
 @app.route("/api/ai-card", methods=["POST"])
 @login_required
+@rate_limit(max_requests=60, window_seconds=60)
 def ai_card():
     data     = request.get_json(silent=True) or {}
     media_id = data.get("media_id")
@@ -1760,13 +1832,15 @@ def ai_card_stream():
 @rate_limit(max_requests=30, window_seconds=60)
 def ask_ai():
     data          = request.get_json(silent=True) or {}
-    question      = data.get("question", "").strip()
+    question      = _as_str(data.get("question"))
     media_id      = data.get("media_id")
     chat_id       = data.get("chat_id")
     allow_spoilers = data.get("allow_spoilers", False)
 
     if not question:
         return jsonify({"error": "No question provided"}), 400
+    if len(question) > MAX_MESSAGE_LEN:
+        return jsonify({"error": "Question too long"}), 400
 
     gemini_key = _get_gemini_key()
     if not gemini_key:
