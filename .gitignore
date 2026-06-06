@@ -5,3 +5,8 @@ __pycache__/
 .pytest_cache/
 instance/
 .claude/
+
+# SQLite databases (user data / runtime state — never commit)
+*.db
+*.sqlite
+*.sqlite3
