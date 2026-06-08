@@ -2198,19 +2198,21 @@ const tabSort = {
   watching:  _VALID_SORTS.has(localStorage.getItem('tabSort_watching'))  ? localStorage.getItem('tabSort_watching')  : 'name',
   finished:  _VALID_SORTS.has(localStorage.getItem('tabSort_finished'))  ? localStorage.getItem('tabSort_finished')  : 'name',
 };
-// Discrete card-size checkpoints (column min-width in px). Default = 160 (index 2).
-const CARD_WIDTH_STEPS = [120, 140, 160, 180, 200];
-const CARD_WIDTH_DEFAULT = 160;
+// Card size = posters per row. Dots run smallest→largest; a bigger dot means
+// bigger posters, which means FEWER columns. Arrays are aligned by dot index.
+const CARD_COL_STEPS = [9, 8, 7, 6, 5];                       // columns per row
+const CARD_FONT_REM  = [0.625, 0.6875, 0.75, 0.8125, 0.875]; // poster font at each step
+const CARD_COLS_DEFAULT = 7;                                  // index 2 (center dot)
 const CARD_STEP_TITLES = ['Smallest', 'Small', 'Default', 'Large', 'Largest'];
-// Snap any value (incl. legacy continuous values from localStorage) to the nearest checkpoint.
-function _snapCardWidth(n) {
-  n = Number(n) || CARD_WIDTH_DEFAULT;
-  return CARD_WIDTH_STEPS.reduce((best, w) => Math.abs(w - n) < Math.abs(best - n) ? w : best, CARD_WIDTH_STEPS[0]);
+// Validate stored value (also discards legacy px widths from older builds).
+function _validCols(n) {
+  n = Number(n);
+  return CARD_COL_STEPS.includes(n) ? n : CARD_COLS_DEFAULT;
 }
-const tabCardWidth = {
-  watchlist: _snapCardWidth(localStorage.getItem('tabCardWidth_watchlist')),
-  watching:  _snapCardWidth(localStorage.getItem('tabCardWidth_watching')),
-  finished:  _snapCardWidth(localStorage.getItem('tabCardWidth_finished')),
+const tabCardCols = {
+  watchlist: _validCols(localStorage.getItem('tabCardCols_watchlist')),
+  watching:  _validCols(localStorage.getItem('tabCardCols_watching')),
+  finished:  _validCols(localStorage.getItem('tabCardCols_finished')),
 };
 let activeChatId = null;
 let chatMovieFilter = '';
@@ -2542,19 +2544,20 @@ function renderGrid() {
     <div class="card-size-slider">
       <span class="card-size-label">Size</span>
       <div class="card-size-steps" role="group" aria-label="Card size">
-        ${CARD_WIDTH_STEPS.map((w, i) => `<button type="button"
-          class="csz-dot${tabCardWidth[currentTab] === w ? ' active' : ''}"
+        ${CARD_COL_STEPS.map((cols, i) => `<button type="button"
+          class="csz-dot${tabCardCols[currentTab] === cols ? ' active' : ''}"
           style="--csz:${(0.3125 + i * 0.125).toFixed(4)}rem"
-          title="${CARD_STEP_TITLES[i]}" aria-label="${CARD_STEP_TITLES[i]}"
-          aria-pressed="${tabCardWidth[currentTab] === w}"
-          onclick="setCardWidth(${w})"></button>`).join('')}
+          title="${CARD_STEP_TITLES[i]} — ${cols} per row" aria-label="${cols} per row"
+          aria-pressed="${tabCardCols[currentTab] === cols}"
+          onclick="setCardCols(${cols})"></button>`).join('')}
       </div>
     </div>
   </div>`;
 
-  const cardW  = tabCardWidth[currentTab];
-  const colMin = `${cardW / 16}rem`;   /* rem so the grid rides the root scale */
-  const gridStyle = `grid-template-columns:repeat(auto-fill,minmax(${colMin},1fr))`;
+  const cols = tabCardCols[currentTab];
+  /* Fixed column count so each step changes posters-per-row exactly; minmax(0,1fr)
+     lets columns shrink below content width instead of overflowing. */
+  const gridStyle = `grid-template-columns:repeat(${cols},minmax(0,1fr))`;
 
   if (!items.length) {
     panel.innerHTML = statsHtml + topBar +
@@ -2565,8 +2568,7 @@ function renderGrid() {
   }
 
   const size     = tabSize[currentTab];
-  const cardFontRem = (12 * cardW / 160 / 16).toFixed(4);
-  const cardFontStyle = `font-size:${cardFontRem}rem`;
+  const cardFontStyle = `font-size:${CARD_FONT_REM[CARD_COL_STEPS.indexOf(cols)]}rem`;
   const cards = items.map(item => {
     const stars = currentTab === 'finished'
       ? `<div class="poster-stars">${[1,2,3,4,5,6,7,8,9,10].map(s =>
@@ -2677,18 +2679,18 @@ function setSort(s) {
   renderGrid();
 }
 
-// Jump to a discrete card-size checkpoint. Updates the grid in place (keeps the
+// Jump to a posters-per-row checkpoint. Updates the grid in place (keeps the
 // current selection) and re-points the active dot — no full re-render needed.
-function setCardWidth(w) {
-  w = _snapCardWidth(w);
-  tabCardWidth[currentTab] = w;
-  localStorage.setItem(`tabCardWidth_${currentTab}`, w);
+function setCardCols(cols) {
+  cols = _validCols(cols);
+  tabCardCols[currentTab] = cols;
+  localStorage.setItem(`tabCardCols_${currentTab}`, cols);
   const grid = document.getElementById('posterGrid');
-  if (grid) grid.style.gridTemplateColumns = `repeat(auto-fill,minmax(${w / 16}rem,1fr))`;
-  const fontRem = (12 * w / 160 / 16).toFixed(4);
+  if (grid) grid.style.gridTemplateColumns = `repeat(${cols},minmax(0,1fr))`;
+  const fontRem = CARD_FONT_REM[CARD_COL_STEPS.indexOf(cols)];
   document.querySelectorAll('[id^="pc-"]').forEach(el => el.style.fontSize = fontRem + 'rem');
   document.querySelectorAll('.csz-dot').forEach((el, i) => {
-    const on = CARD_WIDTH_STEPS[i] === w;
+    const on = CARD_COL_STEPS[i] === cols;
     el.classList.toggle('active', on);
     el.setAttribute('aria-pressed', on);
   });
