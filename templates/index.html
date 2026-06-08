@@ -2481,7 +2481,10 @@ function sortedItems() {
   if (currentSort === 'rating' && currentTab === 'finished')
     items.sort((a, b) => (b.rating || 0) - (a.rating || 0));
   else if (currentSort === 'added')
-    items.sort((a, b) => b.id - a.id);
+    // Sort by the date shown on the card (the current tab's "added" date),
+    // newest first; fall back to insertion order for items added the same day.
+    items.sort((a, b) =>
+      (b.date_added || '').localeCompare(a.date_added || '') || (b.id - a.id));
   else
     items.sort((a, b) => a.title.localeCompare(b.title));
   const f = tabFilter[currentTab];
