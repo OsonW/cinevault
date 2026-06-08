@@ -1050,28 +1050,26 @@ body[data-tab="chats"] .detail-body { display: none !important; }
 .grid-count-row { padding: 0.3125rem 0 0.5rem; display: flex; align-items: center; justify-content: space-between; }
 .grid-count { font-size: 0.75rem; color: var(--muted); }
 
-.card-size-slider { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
-.card-size-label { font-size: 0.625rem; color: var(--muted); letter-spacing: 0.07em; font-weight: 500; text-transform: uppercase; user-select: none; }
-.card-size-range {
-  -webkit-appearance: none; appearance: none;
-  width: 5.625rem; height: 0.1875rem; border-radius: 99px;
-  background: var(--border-md); outline: none; cursor: pointer;
+.card-size-slider { display: flex; align-items: center; gap: 0.375rem; flex-shrink: 0; }
+.card-size-label { font-size: 0.625rem; color: var(--muted); letter-spacing: 0.07em; font-weight: 500; text-transform: uppercase; user-select: none; margin-right: 0.125rem; }
+/* Discrete card-size checkpoints, drawn as progressively larger dots */
+.card-size-steps { display: inline-flex; align-items: center; gap: 0.125rem; }
+.csz-dot {
+  --csz: 0.5rem;
+  width: 1.125rem; height: 1.125rem;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: none; background: none; padding: 0; cursor: pointer;
+  border-radius: 50%; transition: background 0.15s;
 }
-.card-size-range::-webkit-slider-thumb {
-  -webkit-appearance: none; appearance: none;
-  width: 0.8125rem; height: 0.8125rem; border-radius: 50%;
-  background: var(--accent); border: 2px solid var(--surface);
-  box-shadow: 0 0 0 1px var(--accent-dim);
-  cursor: pointer; transition: box-shadow 0.15s;
+.csz-dot::before {
+  content: ''; width: var(--csz); height: var(--csz);
+  border-radius: 50%; border: 1px solid var(--muted);
+  background: transparent; transition: all 0.15s;
 }
-.card-size-range::-moz-range-thumb {
-  width: 0.8125rem; height: 0.8125rem; border-radius: 50%;
-  background: var(--accent); border: 2px solid var(--surface);
-  box-shadow: 0 0 0 1px var(--accent-dim);
-  cursor: pointer;
-}
-.card-size-range:hover::-webkit-slider-thumb { box-shadow: 0 0 0 4px var(--accent-glow); }
-.card-size-range:hover::-moz-range-thumb    { box-shadow: 0 0 0 4px var(--accent-glow); }
+.csz-dot:hover { background: rgba(255,255,255,0.05); }
+.csz-dot:hover::before { border-color: var(--text); }
+.csz-dot.active::before { background: var(--accent); border-color: var(--accent); }
+.csz-dot:focus-visible { outline: 2px solid var(--accent-dim); outline-offset: 1px; }
 .grid-right-group { margin-left: auto; display: flex; align-items: center; gap: 0.375rem; }
 .sort-btn {
   padding: 0.3125rem 0.75rem; border-radius: var(--radius); border: 1px solid var(--border-md);
@@ -2200,12 +2198,19 @@ const tabSort = {
   watching:  _VALID_SORTS.has(localStorage.getItem('tabSort_watching'))  ? localStorage.getItem('tabSort_watching')  : 'name',
   finished:  _VALID_SORTS.has(localStorage.getItem('tabSort_finished'))  ? localStorage.getItem('tabSort_finished')  : 'name',
 };
-const CARD_WIDTH_MIN = 120, CARD_WIDTH_MAX = 220, CARD_WIDTH_DEFAULT = 160;
-function _clampCardWidth(n) { return Math.max(CARD_WIDTH_MIN, Math.min(CARD_WIDTH_MAX, n || CARD_WIDTH_DEFAULT)); }
+// Discrete card-size checkpoints (column min-width in px). Default = 160 (index 2).
+const CARD_WIDTH_STEPS = [120, 140, 160, 180, 200];
+const CARD_WIDTH_DEFAULT = 160;
+const CARD_STEP_TITLES = ['Smallest', 'Small', 'Default', 'Large', 'Largest'];
+// Snap any value (incl. legacy continuous values from localStorage) to the nearest checkpoint.
+function _snapCardWidth(n) {
+  n = Number(n) || CARD_WIDTH_DEFAULT;
+  return CARD_WIDTH_STEPS.reduce((best, w) => Math.abs(w - n) < Math.abs(best - n) ? w : best, CARD_WIDTH_STEPS[0]);
+}
 const tabCardWidth = {
-  watchlist: _clampCardWidth(Number(localStorage.getItem('tabCardWidth_watchlist'))),
-  watching:  _clampCardWidth(Number(localStorage.getItem('tabCardWidth_watching'))),
-  finished:  _clampCardWidth(Number(localStorage.getItem('tabCardWidth_finished'))),
+  watchlist: _snapCardWidth(localStorage.getItem('tabCardWidth_watchlist')),
+  watching:  _snapCardWidth(localStorage.getItem('tabCardWidth_watching')),
+  finished:  _snapCardWidth(localStorage.getItem('tabCardWidth_finished')),
 };
 let activeChatId = null;
 let chatMovieFilter = '';
@@ -2536,11 +2541,14 @@ function renderGrid() {
     <span class="grid-count">${items.length} title${items.length!==1?'s':''}</span>
     <div class="card-size-slider">
       <span class="card-size-label">Size</span>
-      <input class="card-size-range" type="range"
-        min="${CARD_WIDTH_MIN}" max="${CARD_WIDTH_MAX}" step="1"
-        value="${tabCardWidth[currentTab]}"
-        oninput="applyCardWidth(Number(this.value))"
-        onchange="saveCardWidth(Number(this.value))">
+      <div class="card-size-steps" role="group" aria-label="Card size">
+        ${CARD_WIDTH_STEPS.map((w, i) => `<button type="button"
+          class="csz-dot${tabCardWidth[currentTab] === w ? ' active' : ''}"
+          style="--csz:${(0.3125 + i * 0.125).toFixed(4)}rem"
+          title="${CARD_STEP_TITLES[i]}" aria-label="${CARD_STEP_TITLES[i]}"
+          aria-pressed="${tabCardWidth[currentTab] === w}"
+          onclick="setCardWidth(${w})"></button>`).join('')}
+      </div>
     </div>
   </div>`;
 
@@ -2669,17 +2677,21 @@ function setSort(s) {
   renderGrid();
 }
 
-function applyCardWidth(w) {
-  w = _clampCardWidth(w);
+// Jump to a discrete card-size checkpoint. Updates the grid in place (keeps the
+// current selection) and re-points the active dot — no full re-render needed.
+function setCardWidth(w) {
+  w = _snapCardWidth(w);
   tabCardWidth[currentTab] = w;
+  localStorage.setItem(`tabCardWidth_${currentTab}`, w);
   const grid = document.getElementById('posterGrid');
   if (grid) grid.style.gridTemplateColumns = `repeat(auto-fill,minmax(${w / 16}rem,1fr))`;
   const fontRem = (12 * w / 160 / 16).toFixed(4);
   document.querySelectorAll('[id^="pc-"]').forEach(el => el.style.fontSize = fontRem + 'rem');
-}
-
-function saveCardWidth(w) {
-  localStorage.setItem(`tabCardWidth_${currentTab}`, _clampCardWidth(w));
+  document.querySelectorAll('.csz-dot').forEach((el, i) => {
+    const on = CARD_WIDTH_STEPS[i] === w;
+    el.classList.toggle('active', on);
+    el.setAttribute('aria-pressed', on);
+  });
 }
 
 function onGridFilter(val) {
