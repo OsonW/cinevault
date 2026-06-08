@@ -2343,6 +2343,16 @@ async function apiPost(path, body, timeoutMs = 60000, externalSignal = null) {
   return res.json();
 }
 
+// The /api/add update path returns the recomputed per-status "date added".
+// Apply it and re-render the grid only when the displayed date actually changed.
+function applyServerDate(item, resp) {
+  if (!item || !resp || !resp.date_added) return;
+  if (item.date_added !== resp.date_added) {
+    item.date_added = resp.date_added;
+    renderGrid();
+  }
+}
+
 function posterUrl(item) {
   if (item.media_type === 'book') {
     if (item.cover_url) return esc(item.cover_url);
@@ -2905,8 +2915,9 @@ async function saveBookProgress(id, rawValue) {
   if (!item) return;
   const oldCur = item.current_page;
   try {
-    await apiPost('/api/add', { id, current_page: val });
+    const resp = await apiPost('/api/add', { id, current_page: val });
     item.current_page = val;
+    applyServerDate(item, resp);
     invalidateProgressCache(id);
   } catch {
     showToast('Failed to update page', 'error');
@@ -3222,9 +3233,10 @@ async function saveEpisodeConstrained(id, field, rawValue) {
   const oldEpisode = item.last_episode;
 
   try {
-    await apiPost('/api/add', { id, last_season: newSeason, last_episode: newEpisode });
+    const resp = await apiPost('/api/add', { id, last_season: newSeason, last_episode: newEpisode });
     item.last_season  = newSeason;
     item.last_episode = newEpisode;
+    applyServerDate(item, resp);
     invalidateProgressCache(id);
     if (activeChatId) reapplySpoilerBlurs(activeChatId);
   } catch {
@@ -3252,8 +3264,9 @@ async function saveMangaProgressConstrained(id, rawValue) {
 
   const oldChap = item.last_chapter;
   try {
-    await apiPost('/api/add', { id, last_chapter: val });
+    const resp = await apiPost('/api/add', { id, last_chapter: val });
     item.last_chapter = val;
+    applyServerDate(item, resp);
     invalidateProgressCache(id);
     if (activeChatId) reapplySpoilerBlurs(activeChatId);
   } catch {
@@ -3474,8 +3487,9 @@ async function saveField(id, field, value) {
   const item = allItems.find(i => i.id === id);
   if (item && item[field] === value) return;
   if (item) item[field] = value;
-  await apiPost('/api/add', { id, [field]: value });
+  const resp = await apiPost('/api/add', { id, [field]: value });
   if (field === 'rating') renderGrid();
+  else applyServerDate(item, resp);
 }
 
 const statusChangePending = new Map();
@@ -3501,7 +3515,11 @@ async function changeStatus(id, status) {
   switchTab(status, id);
 
   try {
-    await apiPost('/api/add', { id, status }, 60000, controller.signal);
+    const resp = await apiPost('/api/add', { id, status }, 60000, controller.signal);
+    if (resp && resp.date_added) {
+      item.date_added = resp.date_added;
+      renderGrid();
+    }
   } catch (err) {
     if (controller.signal.aborted) return;
     showToast('Failed to update status — please try again.', 'error');

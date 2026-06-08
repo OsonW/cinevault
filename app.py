@@ -15,7 +15,7 @@ from google import genai
 from db import (
     get_user_db_path, init_user_db,
     get_all_media, get_media_by_id, get_media_by_external_id,
-    add_media_entry, update_media_entry, delete_media_entry,
+    add_media_entry, update_media_entry, delete_media_entry, set_media_dates,
     get_all_chats, get_chats_by_media_id, get_chat_by_id, get_chat_messages,
     create_chat, append_message, delete_chat, clear_chat_messages,
     update_chat_spoiler_threshold, update_message_snap,
@@ -897,6 +897,11 @@ def add_media():
             fields.pop("cover_url", None)
         update_media_entry(data["id"], **fields)
         _invalidate_media_cache(data["id"])
+        updated = get_media_by_id(data["id"])
+        return jsonify({
+            "status": "ok",
+            "date_added": updated["date_added"] if updated else None,
+        })
     else:
         title = data.get("title")
         if not isinstance(title, str) or not title.strip():
@@ -994,6 +999,16 @@ def restore_media_chats():
     }
     if update_fields:
         update_media_entry(new_media_id, **update_fields)
+
+    # Restore the original per-status dates (overriding the today-seeded ones) so
+    # undo brings the item back exactly as it was, not freshly "added today".
+    date_fields = {
+        k: media_data[k]
+        for k in ("date_added", "date_watchlist", "date_watching", "date_finished")
+        if isinstance(media_data.get(k), str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", media_data[k])
+    }
+    if date_fields:
+        set_media_dates(new_media_id, **date_fields)
 
     for chat in chats_data:
         chat_id = create_chat(
