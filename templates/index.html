@@ -2343,14 +2343,24 @@ async function apiPost(path, body, timeoutMs = 60000, externalSignal = null) {
   return res.json();
 }
 
-// The /api/add update path returns the recomputed per-status "date added".
-// Apply it and re-render the grid only when the displayed date actually changed.
-function applyServerDate(item, resp) {
-  if (!item || !resp || !resp.date_added) return;
-  if (item.date_added !== resp.date_added) {
-    item.date_added = resp.date_added;
-    renderGrid();
-  }
+// Optimistically bump an item's "watching" date to today when the user records
+// progress, so the card date updates instantly instead of waiting on the save
+// request (which can lag behind a long AI-insight request on a serial server).
+// Progress only affects the date while the item is in the watching tab — this
+// mirrors the backend. Returns a snapshot for rollback, or null if nothing changed.
+function bumpWatchingDate(item) {
+  if (!item || item.status !== 'watching') return null;
+  const today = new Date().toISOString().slice(0, 10);   // UTC, matches SQL date('now')
+  if (item.date_watching === today && item.date_added === today) return null;
+  const snap = { date_added: item.date_added, date_watching: item.date_watching };
+  item.date_watching = today;
+  item.date_added = today;
+  renderGrid();
+  return snap;
+}
+
+function rollbackDate(item, snap) {
+  if (item && snap) { Object.assign(item, snap); renderGrid(); }
 }
 
 function posterUrl(item) {
@@ -2917,12 +2927,13 @@ async function saveBookProgress(id, rawValue) {
   const item = allItems.find(i => i.id === id);
   if (!item) return;
   const oldCur = item.current_page;
+  const dsnap = bumpWatchingDate(item);
   try {
-    const resp = await apiPost('/api/add', { id, current_page: val });
+    await apiPost('/api/add', { id, current_page: val });
     item.current_page = val;
-    applyServerDate(item, resp);
     invalidateProgressCache(id);
   } catch {
+    rollbackDate(item, dsnap);
     showToast('Failed to update page', 'error');
     const cInput = document.querySelector(`[placeholder="Page number"][onchange*="${id}"]`);
     if (cInput) cInput.value = oldCur || '';
@@ -3235,14 +3246,15 @@ async function saveEpisodeConstrained(id, field, rawValue) {
   const oldSeason  = item.last_season;
   const oldEpisode = item.last_episode;
 
+  const dsnap = bumpWatchingDate(item);
   try {
-    const resp = await apiPost('/api/add', { id, last_season: newSeason, last_episode: newEpisode });
+    await apiPost('/api/add', { id, last_season: newSeason, last_episode: newEpisode });
     item.last_season  = newSeason;
     item.last_episode = newEpisode;
-    applyServerDate(item, resp);
     invalidateProgressCache(id);
     if (activeChatId) reapplySpoilerBlurs(activeChatId);
   } catch {
+    rollbackDate(item, dsnap);
     showToast('Failed to update progress', 'error');
     item.last_season  = oldSeason;
     item.last_episode = oldEpisode;
@@ -3266,13 +3278,14 @@ async function saveMangaProgressConstrained(id, rawValue) {
   if (input) input.value = val;
 
   const oldChap = item.last_chapter;
+  const dsnap = bumpWatchingDate(item);
   try {
-    const resp = await apiPost('/api/add', { id, last_chapter: val });
+    await apiPost('/api/add', { id, last_chapter: val });
     item.last_chapter = val;
-    applyServerDate(item, resp);
     invalidateProgressCache(id);
     if (activeChatId) reapplySpoilerBlurs(activeChatId);
   } catch {
+    rollbackDate(item, dsnap);
     showToast('Failed to update chapter', 'error');
     item.last_chapter = oldChap;
     if (input) input.value = oldChap || 1;
@@ -3490,9 +3503,15 @@ async function saveField(id, field, value) {
   const item = allItems.find(i => i.id === id);
   if (item && item[field] === value) return;
   if (item) item[field] = value;
-  const resp = await apiPost('/api/add', { id, [field]: value });
+  // last_timestamp is the movie "progress" field — bump the watching date now.
+  const dsnap = (field === 'last_timestamp') ? bumpWatchingDate(item) : null;
+  try {
+    await apiPost('/api/add', { id, [field]: value });
+  } catch (e) {
+    rollbackDate(item, dsnap);
+    throw e;
+  }
   if (field === 'rating') renderGrid();
-  else applyServerDate(item, resp);
 }
 
 const statusChangePending = new Map();
@@ -3506,7 +3525,25 @@ async function changeStatus(id, status) {
   statusChangePending.set(id, controller);
 
   const prevStatus = item.status;
+  // Snapshot the date fields so we can roll back if the save fails.
+  const dateSnap = {
+    date_added:     item.date_added,
+    date_watchlist: item.date_watchlist,
+    date_watching:  item.date_watching,
+    date_finished:  item.date_finished,
+  };
   item.status = status;
+
+  // Mirror the backend's per-status date rules locally so the card date updates
+  // instantly — the save request can lag behind a long AI-insight request on a
+  // serial server, and we don't want the displayed date to stall behind it.
+  const today = new Date().toISOString().slice(0, 10);   // UTC, matches SQL date('now')
+  if (status === 'finished') item.date_finished = today;                       // always refresh
+  else if (status === 'watchlist' && !item.date_watchlist) item.date_watchlist = today;  // first entry only
+  else if (status === 'watching'  && !item.date_watching)  item.date_watching  = today;  // first entry only
+  item.date_added = status === 'finished'  ? item.date_finished
+                  : status === 'watchlist' ? item.date_watchlist
+                  :                          item.date_watching;
 
   // Invalidate ALL AI card cache entries for this item — status change means
   // every cached insight (watchlist pitch, watching recap, finished recs) is
@@ -3519,7 +3556,8 @@ async function changeStatus(id, status) {
 
   try {
     const resp = await apiPost('/api/add', { id, status }, 60000, controller.signal);
-    if (resp && resp.date_added) {
+    // Reconcile with the server's authoritative value (normally identical).
+    if (resp && resp.date_added && resp.date_added !== item.date_added) {
       item.date_added = resp.date_added;
       renderGrid();
     }
@@ -3527,6 +3565,7 @@ async function changeStatus(id, status) {
     if (controller.signal.aborted) return;
     showToast('Failed to update status — please try again.', 'error');
     item.status = prevStatus;
+    Object.assign(item, dateSnap);   // roll back the optimistic date changes
     switchTab(prevStatus, id);
   } finally {
     if (statusChangePending.get(id) === controller) statusChangePending.delete(id);
