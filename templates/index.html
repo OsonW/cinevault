@@ -2160,14 +2160,12 @@ function renderDetail(item) {
         <label>Current page</label>
         <input type="number" placeholder="Page number" min="1" value="${item.current_page||''}" autocomplete="off"
                onchange="saveBookProgress(${item.id},this.value)">
-        <div style="font-size:0.625rem;color:var(--muted);margin-top:0.25rem">AI does not support specific page numbers</div>
       </div>`;
     } else if (item.media_type === 'movie') {
       progressHtml = `<div class="field">
         <label>Timestamp</label>
         <input type="text" placeholder="e.g. 1h 23m" value="${esc(item.last_timestamp||'')}" autocomplete="off"
                onblur="saveField(${item.id},'last_timestamp',this.value)">
-        <div style="font-size:0.625rem;color:var(--muted);margin-top:0.25rem">AI does not support specific timestamps</div>
       </div>`;
     }
   }
