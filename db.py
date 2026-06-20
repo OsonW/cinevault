@@ -1,6 +1,5 @@
 import os
 import sqlite3
-from datetime import datetime
 
 
 def _get_db_dir() -> str:
@@ -55,39 +54,6 @@ def _create_tables(db_path: str) -> None:
                 date_watching   TEXT,
                 date_finished   TEXT,
                 UNIQUE(external_id, media_type)
-            )
-        """)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS chats (
-                id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                media_id        INTEGER REFERENCES media(id) ON DELETE CASCADE,
-                title           TEXT NOT NULL,
-                context_tag     TEXT,
-                spoiler_season  INTEGER,
-                spoiler_episode INTEGER,
-                spoiler_chapter REAL,
-                created_at      TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S','now')),
-                updated_at      TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S','now'))
-            )
-        """)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS chat_messages (
-                id           INTEGER PRIMARY KEY AUTOINCREMENT,
-                chat_id      INTEGER NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
-                role         TEXT NOT NULL,
-                content      TEXT NOT NULL,
-                snap_season  INTEGER,
-                snap_episode INTEGER,
-                snap_chapter REAL,
-                created_at   TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S','now'))
-            )
-        """)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS user_memory (
-                id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                key        TEXT UNIQUE NOT NULL,
-                value      TEXT NOT NULL,
-                updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S','now'))
             )
         """)
         _migrate_media_dates(conn)
@@ -254,104 +220,3 @@ def set_media_dates(media_id: int, **dates):
 def delete_media_entry(media_id: int):
     with get_conn() as conn:
         conn.execute("DELETE FROM media WHERE id = ?", (media_id,))
-
-
-def get_chats_by_media_id(media_id: int):
-    with get_conn() as conn:
-        rows = conn.execute(
-            "SELECT * FROM chats WHERE media_id = ? ORDER BY updated_at DESC",
-            (media_id,),
-        ).fetchall()
-    return [row_to_dict(r) for r in rows]
-
-
-def get_all_chats():
-    with get_conn() as conn:
-        rows = conn.execute("""
-            SELECT c.*,
-                   m.title       AS media_title,
-                   m.media_type  AS media_media_type,
-                   m.cover_url   AS media_cover_url,
-                   m.external_id AS media_external_id
-            FROM chats c
-            LEFT JOIN media m ON m.id = c.media_id
-            ORDER BY c.updated_at DESC
-        """).fetchall()
-    return [row_to_dict(r) for r in rows]
-
-
-def get_chat_by_id(chat_id: int):
-    with get_conn() as conn:
-        row = conn.execute(
-            "SELECT * FROM chats WHERE id = ?", (chat_id,)
-        ).fetchone()
-    return row_to_dict(row)
-
-
-def get_chat_messages(chat_id: int):
-    with get_conn() as conn:
-        rows = conn.execute(
-            "SELECT * FROM chat_messages WHERE chat_id = ? ORDER BY id",
-            (chat_id,),
-        ).fetchall()
-    return [row_to_dict(r) for r in rows]
-
-
-def create_chat(media_id, title, context_tag=None):
-    now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
-    with get_conn() as conn:
-        cur = conn.execute(
-            "INSERT INTO chats (media_id, title, context_tag, created_at, updated_at) VALUES (?,?,?,?,?)",
-            (media_id, title, context_tag, now, now),
-        )
-        return cur.lastrowid
-
-
-def append_message(chat_id: int, role: str, content: str):
-    now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
-    with get_conn() as conn:
-        cur = conn.execute(
-            "INSERT INTO chat_messages (chat_id, role, content, created_at) VALUES (?,?,?,?)",
-            (chat_id, role, content, now),
-        )
-        conn.execute(
-            "UPDATE chats SET updated_at = ? WHERE id = ?", (now, chat_id)
-        )
-        return cur.lastrowid
-
-
-def update_message_snap(msg_id: int, snap_season=None, snap_episode=None, snap_chapter=None):
-    with get_conn() as conn:
-        conn.execute(
-            "UPDATE chat_messages SET snap_season = ?, snap_episode = ?, snap_chapter = ? WHERE id = ?",
-            (snap_season, snap_episode, snap_chapter, msg_id),
-        )
-
-
-def update_chat_spoiler_threshold(chat_id: int, season=None, episode=None, chapter=None):
-    now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
-    with get_conn() as conn:
-        conn.execute(
-            "UPDATE chats SET spoiler_season = ?, spoiler_episode = ?, spoiler_chapter = ?, updated_at = ? WHERE id = ?",
-            (season, episode, chapter, now, chat_id),
-        )
-
-
-def delete_chat(chat_id: int):
-    with get_conn() as conn:
-        conn.execute("DELETE FROM chats WHERE id = ?", (chat_id,))
-
-
-def clear_chat_messages(chat_id: int):
-    now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
-    with get_conn() as conn:
-        conn.execute("DELETE FROM chat_messages WHERE chat_id = ?", (chat_id,))
-        conn.execute(
-            "UPDATE chats SET updated_at = ? WHERE id = ?", (now, chat_id)
-        )
-
-
-def get_all_memory() -> dict:
-    with get_conn() as conn:
-        rows = conn.execute("SELECT key, value FROM user_memory").fetchall()
-    return {r["key"]: r["value"] for r in rows}

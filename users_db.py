@@ -24,36 +24,31 @@ def init_users_db() -> None:
                 id            INTEGER PRIMARY KEY AUTOINCREMENT,
                 username      TEXT UNIQUE NOT NULL COLLATE NOCASE,
                 password_hash TEXT NOT NULL,
-                gemini_key    TEXT,
                 tmdb_key      TEXT,
                 created_at    TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S','now'))
             )
         """)
-        for col in ("gemini_key", "tmdb_key"):
-            try:
-                conn.execute(f"ALTER TABLE users ADD COLUMN {col} TEXT")
-            except sqlite3.OperationalError:
-                pass
+        try:
+            conn.execute("ALTER TABLE users ADD COLUMN tmdb_key TEXT")
+        except sqlite3.OperationalError:
+            pass
 
 
 def get_user_keys(user_id: int) -> dict:
     with _get_users_conn() as conn:
         row = conn.execute(
-            "SELECT gemini_key, tmdb_key FROM users WHERE id = ?", (user_id,)
+            "SELECT tmdb_key FROM users WHERE id = ?", (user_id,)
         ).fetchone()
     if not row:
-        return {"gemini_key": "", "tmdb_key": ""}
-    return {
-        "gemini_key": row["gemini_key"] or "",
-        "tmdb_key":   row["tmdb_key"]   or "",
-    }
+        return {"tmdb_key": ""}
+    return {"tmdb_key": row["tmdb_key"] or ""}
 
 
-def set_user_keys(user_id: int, gemini_key: str, tmdb_key: str) -> None:
+def set_user_keys(user_id: int, tmdb_key: str) -> None:
     with _get_users_conn() as conn:
         conn.execute(
-            "UPDATE users SET gemini_key = ?, tmdb_key = ? WHERE id = ?",
-            (gemini_key, tmdb_key, user_id),
+            "UPDATE users SET tmdb_key = ? WHERE id = ?",
+            (tmdb_key, user_id),
         )
 
 

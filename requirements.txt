@@ -2,5 +2,4 @@ flask
 flask-login
 bcrypt
 requests
-google-genai
 pytest

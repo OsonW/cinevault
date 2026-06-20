@@ -15,8 +15,6 @@ def client(tmp_path, monkeypatch):
     app_module._app_initialized = False
     app_module._initialized_users.clear()
     app_module._user_media_cache.clear()
-    app_module._user_ai_card_cache.clear()
-    app_module._user_memory_cache.clear()
     # The register/login routes are rate-limited via a process-global bucket
     # dict keyed by client IP. Every test client shares the same IP, so without
     # clearing it the 6th registration in a run gets 429'd and auth-dependent

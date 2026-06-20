@@ -184,25 +184,6 @@ def _validate_tmdb_key(key: str) -> tuple[bool, str]:
         return False, "Could not reach TMDB to validate key — please try again."
 
 
-def _validate_gemini_key(key: str) -> tuple[bool, str]:
-    """Returns (valid, error_message). error_message is empty string on success."""
-    try:
-        resp = requests.get(
-            "https://generativelanguage.googleapis.com/v1beta/models",
-            params={"key": key},
-            timeout=10,
-        )
-        if resp.status_code == 200:
-            return True, ""
-        if resp.status_code in (400, 403):
-            return False, "Invalid Gemini key — please check and try again."
-        return False, f"Gemini validation failed (HTTP {resp.status_code}) — please try again."
-    except requests.exceptions.Timeout:
-        return False, "Gemini validation timed out — please try again."
-    except Exception:
-        return False, "Could not reach Gemini to validate key — please try again."
-
-
 def _mask_key(key: str | None) -> str:
     if not key:
         return ""
@@ -216,9 +197,8 @@ def _mask_key(key: str | None) -> str:
 def get_keys():
     keys = get_user_keys(int(current_user.id))
     return jsonify({
-        "has_keys":   bool(keys["gemini_key"] and keys["tmdb_key"]),
-        "gemini_key": _mask_key(keys["gemini_key"]),
-        "tmdb_key":   _mask_key(keys["tmdb_key"]),
+        "has_keys": bool(keys["tmdb_key"]),
+        "tmdb_key": _mask_key(keys["tmdb_key"]),
     })
 
 
@@ -226,16 +206,12 @@ def get_keys():
 @login_required
 @rate_limit(max_requests=10, window_seconds=60)    # 10/minute per IP
 def save_keys():
-    data       = request.get_json(silent=True) or {}
-    gemini_key = _as_str(data.get("gemini_key"))
-    tmdb_key   = _as_str(data.get("tmdb_key"))
-    if not gemini_key or not tmdb_key:
-        return jsonify({"error": "Both keys required"}), 400
+    data     = request.get_json(silent=True) or {}
+    tmdb_key = _as_str(data.get("tmdb_key"))
+    if not tmdb_key:
+        return jsonify({"error": "TMDB API key required"}), 400
     tmdb_ok, tmdb_err = _validate_tmdb_key(tmdb_key)
     if not tmdb_ok:
         return jsonify({"error": tmdb_err, "which": "tmdb"}), 400
-    gemini_ok, gemini_err = _validate_gemini_key(gemini_key)
-    if not gemini_ok:
-        return jsonify({"error": gemini_err, "which": "gemini"}), 400
-    set_user_keys(int(current_user.id), gemini_key, tmdb_key)
+    set_user_keys(int(current_user.id), tmdb_key)
     return jsonify({"status": "ok"})

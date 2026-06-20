@@ -110,14 +110,10 @@ CineVault calls several external APIs. Add the following domains under
 |---------|--------|
 | TMDB | `api.themoviedb.org` |
 | TMDB images | `image.tmdb.org` |
-| Google Gemini | `generativelanguage.googleapis.com` |
 | OpenLibrary | `openlibrary.org` |
 | OpenLibrary covers | `covers.openlibrary.org` |
 | MangaDex | `api.mangadex.org` |
 | MangaDex uploads | `uploads.mangadex.org` |
-
-> Google Gemini (`generativelanguage.googleapis.com`) is typically already
-> allowlisted. Check your account page to confirm.
 
 ---
 
@@ -137,10 +133,9 @@ Then click **Reload** in the Web tab.
 
 ## Environment Variables Reference
 
-All three are set inside `pythonanywhere_wsgi.py`:
+Both are set inside `pythonanywhere_wsgi.py`:
 
 | Variable | Default in WSGI file | Description |
 |----------|----------------------|-------------|
 | `DB_DIR` | `~/data` (resolved at runtime) | Directory for all SQLite files |
 | `SECRET_KEY` | *(must be changed)* | Flask session signing key — keep this secret |
-| `GEMINI_MODEL` | `gemini-2.0-flash-lite` | Gemini model name passed to the Google GenAI SDK |

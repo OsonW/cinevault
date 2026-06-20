@@ -14,8 +14,6 @@ def client(tmp_path, monkeypatch):
     app_module._app_initialized = False
     app_module._initialized_users.clear()
     app_module._user_media_cache.clear()
-    app_module._user_ai_card_cache.clear()
-    app_module._user_memory_cache.clear()
     from auth import _RATE_BUCKETS
     _RATE_BUCKETS.clear()
     with flask_app.test_client() as c:
@@ -48,7 +46,7 @@ def test_global_rate_limit_is_per_endpoint(client, monkeypatch):
     client.get("/api/list")
     assert client.get("/api/list").status_code == 429
     # Different endpoint has its own bucket and is still available.
-    assert client.get("/api/chats").status_code == 200
+    assert client.get("/api/item/999/fetch_director").status_code == 200
 
 
 # ── Input validation / allowlists ──────────────────────────────────────────────
@@ -115,13 +113,4 @@ def test_malformed_json_does_not_500(client):
         "/api/add", data="{not valid json", content_type="application/json"
     )
     # silent=True -> {} -> missing-title validation -> 400, never a 500.
-    assert resp.status_code == 400
-
-
-def test_chat_message_too_long_rejected(client):
-    _register(client)
-    chat_id = client.post("/api/chats/new", json={}).get_json()["id"]
-    resp = client.post(
-        f"/api/chats/{chat_id}/message", json={"content": "x" * 5000}
-    )
     assert resp.status_code == 400
