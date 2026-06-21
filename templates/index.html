@@ -652,6 +652,7 @@ input[type="range"]::-webkit-slider-thumb {
 }
 .search-filter-wrap .size-dd-btn svg { width: 1.15em; height: 1.15em; }
 .size-dd-btn:hover { border-color: var(--accent); background: var(--accent-dim); }
+.dd-caret { font-size: 0.8rem; opacity: 0.7; margin-left: 0.15em; }
 .size-dd-menu {
   position: absolute; top: calc(100% + 0.25rem); right: 0;
   min-width: 11.875rem; background: var(--card); border: 1px solid var(--border-md);
@@ -1921,7 +1922,7 @@ function renderSearchFilter() {
   return `<div class="size-dd-wrap pill-dd-wrap search-filter-wrap">
     <button class="size-dd-btn" onclick="toggleSearchFilter(event)">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
-      Filter <span style="font-size:0.5625rem;opacity:0.7">▾</span>
+      Filter <span class="dd-caret">▾</span>
     </button>
     <div class="size-dd-menu search-filter-menu" id="pillMenu_search">
       <div class="sfm-col">
@@ -2302,7 +2303,7 @@ function renderGridControls() {
   return `<div class="size-dd-wrap pill-dd-wrap grid-controls-wrap">
     <button class="size-dd-btn" onclick="toggleGridControls(event)">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
-      Filter <span style="font-size:0.5625rem;opacity:0.7">▾</span>
+      Filter <span class="dd-caret">▾</span>
     </button>
     <div class="size-dd-menu grid-controls-menu" id="pillMenu_gridctl">
       <div class="gcm-cols">
@@ -3373,7 +3374,7 @@ function renderPillSelector(which) {
   }).join('');
   const btnLabel = which === 'search' ? 'FILTER SEARCH RATINGS' : `Pills (${sel.length})`;
   return `<div class="size-dd-wrap pill-dd-wrap">
-    <button class="size-dd-btn" onclick="togglePillDropdown('${which}',event)">${btnLabel} <span style="font-size:0.5625rem;opacity:0.7">▾</span></button>
+    <button class="size-dd-btn" onclick="togglePillDropdown('${which}',event)">${btnLabel} <span class="dd-caret">▾</span></button>
     <div class="size-dd-menu" id="pillMenu_${which}">${body}</div>
   </div>`;
 }
