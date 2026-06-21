@@ -162,11 +162,25 @@ MDBList quota is per-user BYOK; `/api/mdblist-status` exposes `remaining`.
 - Only shown for movie/tv titles that have an MDBList key and a stored timestamp.
 
 ### 6c. Automatic refresh on access (existing 7-day path)
-- Unchanged: opening a movie/tv title whose ratings are **≥7 days old**
+- Unchanged in spirit: opening a movie/tv title whose ratings are **≥7 days old**
   auto-refreshes them on access and updates the label to "just now".
 - **No scroll/viewport-triggered refresh.** There is no IntersectionObserver and
   no quota safety buffer — the only ways ratings refresh are the manual button
   (6a) and this 7-day-on-access path.
+
+### 6e. Daily cap on lazy refreshes (500/day)
+- A **per-user daily counter** caps the **automatic 7-day-on-access** refreshes at
+  **500 per day**. Once the cap is hit, further stale items are served from their
+  existing stored ratings (or `{}` if none yet) **without re-fetching**; they
+  become eligible again the next day, so the next batch of stale items refreshes
+  then.
+- Counter state: in-memory `{uid: (date_utc, count)}`, reset when the UTC date
+  rolls over. (Resets on process restart — acceptable for a soft daily ceiling.)
+- **The manual ⟳ button (6a) is exempt** from this cap — it is user-initiated and
+  always allowed, bounded only by its 60s debounce and the MDBList quota itself.
+- Implemented server-side in `/api/ratings`: the lazy (non-`force`) stale path
+  checks/increments the counter before fetching; the `?force=1` manual path skips
+  it.
 
 ### 6d. Backend support
 - `/api/ratings/<media_type>/<tmdb_id>` gains:
@@ -180,6 +194,7 @@ MDBList quota is per-user BYOK; `/api/mdblist-status` exposes `remaining`.
 ### Tunables (chosen)
 - Manual-refresh debounce window: **60 seconds** ("just now").
 - Automatic refresh on access: **7 days** (unchanged).
+- Daily cap on lazy (auto) refreshes: **500 per user per day** (manual exempt).
 
 ---
 
