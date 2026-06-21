@@ -774,15 +774,29 @@ const PILL_SECTIONS = [
 function _mdblistCaption() {
   if (!_mdblist.has_key)   return 'Add an MDBList key in Settings to use these.';
   if (_mdblist.exhausted)  return '⚠ No API calls left today — resets daily. Score pills paused.';
-  if (_mdblist.remaining !== null) return `${_mdblist.remaining} left today`;
-  return '';
+  return '';   // when usable, the quota bar shows the remaining count
+}
+
+// Thin colour-graded quota bar + "remaining / limit (pct%)" line.
+function _quotaBar() {
+  if (!_mdblist.has_key || _mdblist.limit == null || _mdblist.remaining == null) return '';
+  const limit = _mdblist.limit || 1;
+  const rem   = Math.max(0, _mdblist.remaining);
+  const pct   = Math.max(0, Math.min(100, Math.round(rem / limit * 100)));
+  const lvl   = pct <= 0 ? 'empty' : pct <= 15 ? 'low' : pct <= 40 ? 'mid' : 'ok';
+  return `<div class="quota-bar"><div class="quota-fill q-${lvl}" style="width:${pct}%"></div></div>
+    <div class="quota-num">${rem} / ${_mdblist.limit} left (${pct}%)</div>`;
 }
 
 function renderPillSelector(which) {
   const sel = which === 'grid' ? gridPills : searchPills;
   const body = PILL_SECTIONS.map(sec => {
     const disabled = sec.limited && _mdblist.exhausted;
-    const cap = sec.limited ? `<div class="pill-dd-cap${_mdblist.exhausted ? ' warn' : ''}">${_mdblistCaption()}</div>` : '';
+    let cap = '';
+    if (sec.limited) {
+      const t = _mdblistCaption();
+      cap = (t ? `<div class="pill-dd-cap${_mdblist.exhausted ? ' warn' : ''}">${t}</div>` : '') + _quotaBar();
+    }
     const rows = sec.sources.map(src =>
       `<div class="size-dd-item pill-dd-item${sel.includes(src) ? ' active' : ''}${disabled ? ' disabled' : ''}"
             ${disabled ? '' : `onclick="togglePill('${which}','${src}',event)"`}>
@@ -875,6 +889,14 @@ In `renderGrid()`, immediately after `panel.innerHTML = statsHtml + topBar + ...
 .pill-dd-cap.warn { color:#ffb454; }
 .pill-dd-item.disabled { opacity:0.4; cursor:not-allowed; }
 .pill-dd-item.disabled:hover { background:none; }
+.quota-bar { height:4px; border-radius:2px; background:rgba(255,255,255,0.08);
+  margin:0 0.7rem 0.25rem; overflow:hidden; }
+.quota-fill { height:100%; border-radius:2px; transition:width 0.3s ease; }
+.quota-fill.q-ok    { background:#00a85a; }
+.quota-fill.q-mid   { background:#caa300; }
+.quota-fill.q-low   { background:#e0863a; }
+.quota-fill.q-empty { background:#d33b3b; }
+.quota-num { padding:0 0.7rem 0.35rem; font-size:0.6rem; color:var(--muted); }
 ```
 
 - [ ] **Step 6: Add a temporary `rerenderSearch` stub (replaced in Task 7)**
@@ -897,7 +919,7 @@ refreshMdblistStatus();
 
 Run the app, open the library (Default mode):
 - A **Pills (n) ▾** button sits left of the size dropdown.
-- Opening it shows two sections: **TMDB** (Year, Media type) and **MDBList (limited use)** with a caption showing remaining calls (e.g. `247 left today`), then the six score pills. Checkmarks mark selected pills; default = Year, Media type, IMDb, Metacritic, Tomatometer.
+- Opening it shows two sections: **TMDB** (Year, Media type) and **MDBList (limited use)** with a thin colour-graded **quota bar** and a `247 / 1000 left (25%)` line, then the six score pills. Checkmarks mark selected pills; default = Year, Media type, IMDb, Metacritic, Tomatometer.
 - Toggling a source re-renders the grid; score pills appear shortly after (lazy fetch). With no MDBList key, the MDBList caption reads "Add an MDBList key in Settings…".
 - With a key set, IMDb/🍅/Metacritic pills populate on cards.
 - **Quota greying:** temporarily force exhaustion by running `_mdblist = {has_key:true, remaining:0, exhausted:true}` then reopening the menu — the six MDBList rows grey out, become non-clickable, and the caption shows the "No API calls left" warning. TMDB rows stay usable.

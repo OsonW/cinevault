@@ -104,8 +104,8 @@ left-to-right render order:
   - **TMDB** — `Year`, `Media type` (local data, always available).
   - **MDBList** `(limited use)` — `IMDb`, `🍅 Tomatometer`, `🍿 Popcornmeter`,
     `Metacritic`, `Letterboxd`, `MyAnimeList` (consume the API quota).
-- A small caption under the MDBList header shows the remaining daily calls (e.g.
-  `247 left today`).
+- Under the MDBList header sits a thin **colour-graded quota bar** (green → amber →
+  red as it depletes) plus a `247 / 1000 left (25%)` line.
 
 ### Quota-exhausted state
 - A `GET /api/mdblist-status` endpoint returns `{ has_key, limit, used, remaining }`
