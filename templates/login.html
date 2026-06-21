@@ -188,7 +188,13 @@ let mode = 'login';
 // form (the confirm field included). Where supported, mask the confirm field with
 // -webkit-text-security on a plain text input so Safari never sees a password field.
 // Non-WebKit browsers (no such prompt) keep the normal type=password masking.
-const MASK_OK = !!(window.CSS && CSS.supports && CSS.supports('-webkit-text-security', 'disc'));
+// Detect support by setting the property and reading it back — CSS.supports() is
+// unreliable for vendor-prefixed properties (returns false on Safari for this one).
+const MASK_OK = (function () {
+  const probe = document.createElement('input');
+  probe.style.webkitTextSecurity = 'disc';
+  return probe.style.webkitTextSecurity === 'disc';
+})();
 function applyMask(inp) {
   if (!MASK_OK || !inp) return;
   inp.type = 'text';
