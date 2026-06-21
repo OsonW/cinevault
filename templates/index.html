@@ -654,8 +654,6 @@ input[type="range"]::-webkit-slider-thumb {
 .size-dd-item:last-child { border-bottom: none; }
 .size-dd-item:hover { background: rgba(255,255,255,0.04); color: var(--text); }
 .size-dd-item.active { color: var(--accent); background: var(--accent-glow); }
-.size-dd-hint { font-size: 0.625rem; color: var(--muted); opacity: 0.6; }
-.size-dd-item.active .size-dd-hint { color: var(--accent); opacity: 0.7; }
 .pill-dd-item { display:flex; align-items:center; justify-content:space-between; gap:1rem; }
 .pill-dd-check { width:0.9em; text-align:center; color:var(--accent); }
 .pill-dd-wrap .size-dd-menu { min-width: 12rem; }
@@ -2274,13 +2272,13 @@ function renderGridControls() {
        <span>${o.l}</span><span class="pill-dd-check">${currentSort===o.k?'✓':''}</span>
      </div>`).join('');
 
-  const sizeOpts = [{k:'default',l:'Default',h:''},
-                    {k:'poster',l:'Poster only',h:'image only'},
-                    {k:'text',l:'Text only',h:'no poster'}];
+  const sizeOpts = [{k:'default',l:'Default'},
+                    {k:'poster',l:'Poster only'},
+                    {k:'text',l:'Text only'}];
   const curSize = tabSize[currentTab];
   const sizeRows = sizeOpts.map(o =>
     `<div class="size-dd-item${curSize===o.k?' active':''}" onclick="setTabSize('${o.k}',event)">
-       <span>${o.l}</span><span class="size-dd-hint">${o.h}</span></div>`).join('');
+       <span>${o.l}</span></div>`).join('');
 
   const clearRow = hasFilter
     ? `<button class="gcm-clear" onclick="clearGridFilter(event)">Clear filters</button>` : '';
@@ -3291,7 +3289,7 @@ let _lastModalArgs = null;
 // Two labelled sections. The MDBList section is quota-limited.
 const PILL_SECTIONS = [
   { label: 'TMDB',    note: '',              sources: ['year','type'],                                                limited: false },
-  { label: 'MDBList', note: '(limited use)', sources: ['imdb','tomatoes','audience','metacritic','letterboxd','mal'], limited: true  },
+  { label: 'MDBList', note: '(resets daily)', sources: ['imdb','tomatoes','audience','metacritic','letterboxd','mal'], limited: true  },
 ];
 
 function _mdblistCaption() {
