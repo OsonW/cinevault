@@ -16,6 +16,10 @@ def client(tmp_path, monkeypatch):
     app_module._app_initialized = False
     app_module._initialized_users.clear()
     app_module._user_media_cache.clear()
+    app_module._lazy_refresh_counts.clear()
+    app_module._mdblist_last_used.clear()
+    app_module._mdblist_status_cache.clear()
+    app_module._ratings_cache.clear()
     from auth import _RATE_BUCKETS
     _RATE_BUCKETS.clear()
     with flask_app.test_client() as c:
@@ -297,15 +301,42 @@ def _store_stale_ratings(client, external_id="27205"):
     return item
 
 
-def test_take_lazy_refresh_slot_caps_and_resets(monkeypatch):
+def test_take_lazy_refresh_slot_caps(monkeypatch):
     import app as a
     monkeypatch.setattr(a, "_LAZY_REFRESH_DAILY_CAP", 2)
     a._lazy_refresh_counts.clear()
     assert a._take_lazy_refresh_slot(1) is True
     assert a._take_lazy_refresh_slot(1) is True
     assert a._take_lazy_refresh_slot(1) is False      # cap hit
-    a._lazy_refresh_counts[1] = ("1999-01-01", 2)     # simulate old day
-    assert a._take_lazy_refresh_slot(1) is True        # rolls over, resets
+    a._lazy_refresh_counts.pop(1, None)               # quota reset clears the count
+    assert a._take_lazy_refresh_slot(1) is True
+
+
+def test_mdblist_status_resets_lazy_cap_on_quota_drop(client, monkeypatch):
+    """When the MDBList used-count drops (quota refreshed), the 500/day auto-refresh
+    cap counter resets in lockstep."""
+    _register(client)
+    _set_mdblist_key()
+    from users_db import get_user_by_username
+    uid = get_user_by_username("alice")["id"]
+
+    used_box = {"v": 900}
+
+    class FakeResp:
+        status_code = 200
+        def json(self):
+            return {"api_requests": 1000, "api_requests_count": used_box["v"]}
+
+    monkeypatch.setattr(app_module.requests, "get", lambda *a, **k: FakeResp())
+
+    # First poll records used=900.
+    client.get("/api/mdblist-status")
+    app_module._lazy_refresh_counts[uid] = 500          # pretend the cap is spent
+    # Quota resets: used drops. Bust the 2-min status cache so it refetches.
+    used_box["v"] = 5
+    app_module._mdblist_status_cache.clear()
+    client.get("/api/mdblist-status")
+    assert uid not in app_module._lazy_refresh_counts    # counter was reset
 
 
 def test_ratings_force_refreshes_and_returns_updated_at(client, monkeypatch):

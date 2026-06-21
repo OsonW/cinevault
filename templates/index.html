@@ -657,11 +657,13 @@ input[type="range"]::-webkit-slider-thumb {
   font-size: 1rem; cursor: pointer; transition: all 0.15s; white-space: nowrap;
   display: inline-flex; align-items: center; gap: 0.3125rem; letter-spacing: 0.01em;
 }
+/* Scale the funnel icon with the button's font-size so it doesn't stay tiny on
+   large screens (the inline width/height attrs are px and don't scale). */
+.size-dd-btn svg { width: 1.15em; height: 1.15em; }
 /* Top-bar Filter button matches the top bar scale (overrides grid size). */
 .search-filter-wrap .size-dd-btn {
   padding: 0.6875rem 1.375rem; font-size: 1.1rem; gap: 0.4375rem;
 }
-.search-filter-wrap .size-dd-btn svg { width: 1.15em; height: 1.15em; }
 .size-dd-btn:hover { border-color: var(--accent); background: var(--accent-dim); }
 .dd-caret { font-size: 0.8rem; opacity: 0.7; margin-left: 0.15em; }
 .size-dd-menu {
@@ -1835,20 +1837,30 @@ async function loadList() {
   startProactiveSweeps();   // idempotent; only the first call arms the hourly timer
 }
 
-let _sweepStarted  = false;   // scheduler started once per page load
-let _sweepCapDate  = null;    // UTC date string on which the 500/day cap was hit
-
-function _todayUTC() { return new Date().toISOString().slice(0, 10); }
+let _sweepStarted    = false;  // scheduler started once per page load
+let _sweepDormantUsed = null;  // MDBList used-count when the 500/day cap was hit
 
 // Refresh MDBList ratings for movie/tv items that are missing or >=7 days old,
 // oldest-first, until the server's 500/day cap is hit. Non-blocking; paced
-// sequentially to respect the per-endpoint rate limit. Goes dormant for the rest
-// of the UTC day once the cap (or MDBList quota) is exhausted.
+// sequentially to respect the per-endpoint rate limit. Once the cap is hit it
+// goes dormant until the MDBList quota itself resets (its used-count drops back
+// down), which is exactly when the server resets the 500 cap too.
 async function proactiveRefreshStale() {
-  if (_sweepCapDate === _todayUTC()) return;        // dormant until daily reset
   await refreshMdblistStatus();
   if (!_mdblist.has_key) return;
-  if (_mdblist.exhausted) { _sweepCapDate = _todayUTC(); return; }
+  if (_mdblist.exhausted) {
+    if (typeof _mdblist.used === 'number') _sweepDormantUsed = _mdblist.used;
+    return;
+  }
+  // Dormant after hitting the cap? Resume only once the quota has reset (the
+  // used-count dropped below where we stopped).
+  if (_sweepDormantUsed !== null) {
+    if (typeof _mdblist.used === 'number' && _mdblist.used < _sweepDormantUsed) {
+      _sweepDormantUsed = null;   // quota reset -> resume sweeping
+    } else {
+      return;
+    }
+  }
 
   const WEEK = 7 * 86400 * 1000;
   const now  = Date.now();
@@ -1872,8 +1884,11 @@ async function proactiveRefreshStale() {
     item.ratings_updated_at = d.updated_at || prev;
     _ratingsCache[item.media_type + ':' + tid] = ratings;
     // updated_at didn't advance -> server served stale (cap reached) -> stop and
-    // go dormant for the rest of the UTC day.
-    if (!d.updated_at || d.updated_at === prev) { _sweepCapDate = _todayUTC(); break; }
+    // go dormant until the MDBList quota resets (used-count drops).
+    if (!d.updated_at || d.updated_at === prev) {
+      if (typeof _mdblist.used === 'number') _sweepDormantUsed = _mdblist.used;
+      break;
+    }
     // Repaint this card's pills + the detail panel if it's the open one.
     const host = document.getElementById('pills-' + item.id);
     if (host) host.innerHTML = renderPills(item, ratings, gridPills);
@@ -2441,14 +2456,19 @@ function _seedRatings(item) {
   return {};
 }
 
+// Titles whose manual refresh is still in flight, so the spinner survives leaving
+// and re-opening the detail panel until the refresh actually finishes.
+const _refreshingIds = new Set();
+
 function _ratingsMetaHtml(item) {
   if (!_mdblist.has_key) return '';
   if (item.media_type !== 'movie' && item.media_type !== 'tv') return '';
   const ago = _updatedAgo(item.ratings_updated_at);
   const label = ago ? `<span class="ratings-updated">Updated ${ago}</span>` : '';
   const dis = _mdblist.exhausted ? ' disabled' : '';
+  const spin = _refreshingIds.has(item.id) ? ' spinning' : '';
   return `<div class="ratings-meta">
-    <button class="ratings-refresh${dis}" id="ratingsRefreshBtn" title="Refresh ratings"
+    <button class="ratings-refresh${dis}${spin}" id="ratingsRefreshBtn" title="Refresh ratings"
             onclick="refreshRatingsNow(${item.id})"${dis}>
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
     </button>${label}
@@ -3335,12 +3355,12 @@ const _ratingsCache = {};   // "media_type:tmdb_id" -> ratings object
 
 // MDBList quota status. `exhausted` greys out MDBList pill options and pauses
 // new fetches (cached/persisted pills still render).
-let _mdblist = { has_key: false, limit: null, remaining: null, exhausted: false };
+let _mdblist = { has_key: false, limit: null, remaining: null, used: null, exhausted: false };
 async function refreshMdblistStatus() {
   try {
     const d = await fetch('/api/mdblist-status').then(r => r.json());
     _mdblist = {
-      has_key: !!d.has_key, limit: d.limit, remaining: d.remaining,
+      has_key: !!d.has_key, limit: d.limit, remaining: d.remaining, used: d.used,
       exhausted: !!d.has_key && d.remaining !== null && d.remaining <= 0,
     };
   } catch {}
@@ -3414,6 +3434,8 @@ async function refreshRatingsNow(itemId) {
   const tid = item.tmdb_id || item.external_id;
   if (!tid || (item.media_type !== 'movie' && item.media_type !== 'tv')) return;
   if (_updatedAgo(item.ratings_updated_at) === 'just now') return;  // 60s debounce
+  if (_refreshingIds.has(itemId)) return;   // already refreshing this title
+  _refreshingIds.add(itemId);
   const btn = document.getElementById('ratingsRefreshBtn');
   if (btn) btn.classList.add('spinning');
   try {
@@ -3422,14 +3444,17 @@ async function refreshRatingsNow(itemId) {
     item.ratings = JSON.stringify(ratings);
     item.ratings_updated_at = d.updated_at || new Date().toISOString();
     _ratingsCache[item.media_type + ':' + tid] = ratings;
+    // Keep the library grid card's pills in sync, not just the detail panel.
+    const ghost = document.getElementById('pills-' + item.id);
+    if (ghost) ghost.innerHTML = renderPills(item, ratings, gridPills);
     refreshMdblistStatus();
-    if (selectedId === itemId) renderDetail(item);
   } catch {
   } finally {
-    // On the success path renderDetail() rebuilds the button; clear the spinner
-    // here too so a network failure doesn't leave it spinning forever.
-    const b = document.getElementById('ratingsRefreshBtn');
-    if (b) b.classList.remove('spinning');
+    // Re-render so the spinner clears (driven by _refreshingIds) and the fresh
+    // pills/label show. Works whether the panel is the same one or re-opened.
+    _refreshingIds.delete(itemId);
+    if (selectedId === itemId) renderDetail(item);
+    else { const b = document.getElementById('ratingsRefreshBtn'); if (b) b.classList.remove('spinning'); }
   }
 }
 
@@ -3466,6 +3491,15 @@ function _loadPills(storeKey) {
 }
 let gridPills   = _loadPills('gridPills');
 let searchPills = _loadPills('searchPills');
+// One-time: turn the (free) TMDB pill on by default for users who saved pill
+// prefs before it existed. The flag means this runs once, so they can still turn
+// it back off afterward without it being re-added on the next load.
+(function ensureTmdbPillDefault() {
+  if (localStorage.getItem('pills_tmdb_default_v1')) return;
+  if (!gridPills.includes('tmdb'))   { gridPills.push('tmdb');   localStorage.setItem('gridPills', JSON.stringify(gridPills)); }
+  if (!searchPills.includes('tmdb')) { searchPills.push('tmdb'); localStorage.setItem('searchPills', JSON.stringify(searchPills)); }
+  localStorage.setItem('pills_tmdb_default_v1', '1');
+})();
 let _lastModalArgs = null;
 
 // Two labelled sections. The MDBList section is quota-limited.
