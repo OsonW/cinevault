@@ -125,36 +125,6 @@ body {
 }
 .btn-search-main:hover { background: var(--accent-hover); }
 
-.search-type-btns {
-  display: flex;
-  gap: 0.25rem;
-  margin-left: 0.5rem;
-  align-items: center;
-}
-.search-type-btn {
-  padding: 0.375rem 0.625rem;
-  border-radius: var(--radius);
-  border: 1px solid var(--border-md);
-  background: var(--card);
-  color: var(--muted);
-  font-size: 0.8125rem;
-  cursor: pointer;
-  transition: all 0.15s;
-  font-family: 'DM Sans', sans-serif;
-  line-height: 1;
-  display: flex;
-  align-items: center;
-  gap: 0.3125rem;
-}
-.search-type-btn:hover { color: var(--text); border-color: rgba(255,255,255,0.2); background: var(--subtle); }
-.search-type-btn.active[data-stype="movie"] { color: var(--blue);  border-color: var(--blue-dim);  background: var(--blue-glow); }
-.search-type-btn.active[data-stype="tv"]    { color: var(--green); border-color: var(--green-dim); background: var(--green-glow); }
-.search-type-btn.active[data-stype="book"]  { color: var(--amber); border-color: var(--amber-dim); background: var(--amber-glow); }
-.search-type-btn.active[data-stype="manga"] { color: var(--pink);  border-color: var(--pink-dim);  background: var(--pink-glow); }
-.search-type-btns.hidden { display: none; }
-.search-pills-wrap { display:flex; flex-direction:column; gap:0.25rem; }
-.search-pills-cap { font-size:0.625rem; letter-spacing:0.07em; text-transform:uppercase;
-  color:var(--muted); font-weight:600; }
 
 .field input,
 .field textarea {
@@ -1205,32 +1175,9 @@ body.entry-active .entry-cancel-account { display: block; }
       </div>
     </div>
 
-    <div style="display:flex;flex-direction:row;gap:1rem;align-items:flex-start;margin-left:0.5rem">
-      <div style="display:flex;flex-direction:column;gap:0.1875rem">
-      <span id="searchTypeLabel" style="font-size:0.625rem;letter-spacing:0.04em;color:var(--muted)">FILTER SEARCH BY TYPE</span>
-      <div class="search-type-btns" id="searchTypeBtns" style="margin-left:0">
-      <button class="search-type-btn active" data-stype="movie" onclick="toggleSearchType('movie')">
-        <svg class="icon-svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/></svg>
-        Film
-      </button>
-      <button class="search-type-btn active" data-stype="tv" onclick="toggleSearchType('tv')">
-        <svg class="icon-svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="15" rx="2" ry="2"/><polyline points="17 2 12 7 7 2"/></svg>
-        TV
-      </button>
-      <button class="search-type-btn active" data-stype="book" onclick="toggleSearchType('book')">
-        <svg class="icon-svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-        Book
-      </button>
-      <button class="search-type-btn active" data-stype="manga" onclick="toggleSearchType('manga')">
-        <svg class="icon-svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
-        Manga
-      </button>
-      </div>
-      </div>
-      <div class="search-pills-wrap">
-        <div class="search-pills-cap">FILTER SEARCH RATINGS</div>
-        <span id="searchPillSelectorHost"></span>
-      </div>
+    <div style="display:flex;flex-direction:row;gap:0.5rem;align-items:flex-start;margin-left:0.5rem">
+      <span id="searchTypeSelectorHost"></span>
+      <span id="searchPillSelectorHost"></span>
     </div>
 
     <nav class="tabs">
@@ -1689,6 +1636,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   refreshMdblistStatus();
   const _sph = document.getElementById('searchPillSelectorHost');
   if (_sph) _sph.innerHTML = renderPillSelector('search');
+  const _sth = document.getElementById('searchTypeSelectorHost');
+  if (_sth) _sth.innerHTML = renderSearchTypeSelector();
 });
 
 // ─────────────────────────────────────────────
@@ -1889,17 +1838,45 @@ function posterUrl(item) {
 // ─────────────────────────────────────────────
 // Search type filter
 // ─────────────────────────────────────────────
-function toggleSearchType(type) {
-  const btn = document.querySelector(`.search-type-btn[data-stype="${type}"]`);
-  if (!btn) return;
+const SEARCH_TYPES = [
+  { key: 'movie', label: 'Film' },
+  { key: 'tv',    label: 'TV' },
+  { key: 'book',  label: 'Book' },
+  { key: 'manga', label: 'Manga' },
+];
+
+function renderSearchTypeSelector() {
+  const rows = SEARCH_TYPES.map(t =>
+    `<div class="size-dd-item pill-dd-item${searchTypeActive.has(t.key) ? ' active' : ''}" onclick="toggleSearchType('${t.key}',event)">
+       <span>${t.label}</span><span class="pill-dd-check">${searchTypeActive.has(t.key) ? '✓' : ''}</span>
+     </div>`).join('');
+  return `<div class="size-dd-wrap pill-dd-wrap">
+    <button class="size-dd-btn" onclick="togglePlainDropdown('searchType',event)">FILTER SEARCH BY TYPE <span style="font-size:0.5625rem;opacity:0.7">▾</span></button>
+    <div class="size-dd-menu" id="pillMenu_searchType">${rows}</div>
+  </div>`;
+}
+
+// Generic dropdown open/close (no quota refresh) — used by the search-type menu.
+function togglePlainDropdown(which, ev) {
+  ev.stopPropagation();
+  const menu = document.getElementById('pillMenu_' + which);
+  const willOpen = !menu.classList.contains('open');
+  document.querySelectorAll('.size-dd-menu').forEach(m => m.classList.remove('open'));
+  if (willOpen) menu.classList.add('open');
+}
+
+function toggleSearchType(type, ev) {
+  if (ev) ev.stopPropagation();
   if (searchTypeActive.has(type)) {
     if (searchTypeActive.size === 1) return; // keep at least one
     searchTypeActive.delete(type);
-    btn.classList.remove('active');
   } else {
     searchTypeActive.add(type);
-    btn.classList.add('active');
   }
+  const host = document.getElementById('searchTypeSelectorHost');
+  if (host) host.innerHTML = renderSearchTypeSelector();
+  const menu = document.getElementById('pillMenu_searchType');
+  if (menu) menu.classList.add('open');   // keep open while toggling multiple
   const backdrop = document.getElementById('searchModalBackdrop');
   if (backdrop && backdrop.classList.contains('open') && lastModalQuery) {
     runModalSearch(lastModalQuery);
@@ -3207,8 +3184,9 @@ function renderPillSelector(which) {
        </div>`).join('');
     return `<div class="pill-dd-head">${sec.label}${sec.note ? ` <span class="pill-dd-note">${sec.note}</span>` : ''}</div>${cap}${rows}`;
   }).join('');
+  const btnLabel = which === 'search' ? 'FILTER SEARCH RATINGS' : `Pills (${sel.length})`;
   return `<div class="size-dd-wrap pill-dd-wrap">
-    <button class="size-dd-btn" onclick="togglePillDropdown('${which}',event)">Pills (${sel.length}) <span style="font-size:0.5625rem;opacity:0.7">▾</span></button>
+    <button class="size-dd-btn" onclick="togglePillDropdown('${which}',event)">${btnLabel} <span style="font-size:0.5625rem;opacity:0.7">▾</span></button>
     <div class="size-dd-menu" id="pillMenu_${which}">${body}</div>
   </div>`;
 }
