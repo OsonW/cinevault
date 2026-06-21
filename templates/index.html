@@ -2529,7 +2529,7 @@ function renderDetail(item) {
       <h2 class="detail-title">${esc(item.title)}</h2>
       <p class="detail-meta">${TYPE_SVG[item.media_type]} ${TYPE_LABEL[item.media_type]}</p>
       ${authorHtml}
-      <div class="detail-scores" id="detailScores">${renderPills(item, _seedRatings(item), SCORE_SOURCES)}</div>
+      <div class="detail-scores" id="detailScores">${renderPills(item, _seedRatings(item), DETAIL_SCORES)}</div>
       ${_ratingsMetaHtml(item)}
       <div style="margin-bottom:0.875rem">
         <button id="descToggleBtn" class="desc-toggle-btn" onclick="toggleDescription(${item.id})">Load description</button>
@@ -2549,7 +2549,7 @@ function renderDetail(item) {
       <button class="delete-btn" onclick="deleteItem(${item.id})">Remove from library</button>
     </div>`;
 
-  hydratePills('detailScores', item, SCORE_SOURCES);
+  hydratePills('detailScores', item, DETAIL_SCORES);
 
   if (!item.author && (item.media_type === 'movie' || item.media_type === 'tv')) {
     fetch(`/api/item/${item.id}/fetch_director`)
@@ -3318,6 +3318,9 @@ function esc(str) {
 // Pills: year/type from local data, the six scores from /api/ratings.
 const PILL_ORDER  = ['year','type','tmdb','imdb','tomatoes','audience','metacritic','letterboxd','mal'];
 const SCORE_SOURCES = ['imdb','tomatoes','audience','metacritic','letterboxd','mal'];
+// Detail panel shows the free TMDB score (first) alongside the MDBList scores,
+// regardless of the grid/search pill selection.
+const DETAIL_SCORES = ['tmdb'].concat(SCORE_SOURCES);
 const PILL_LABELS = { year:'Year', type:'Media type', tmdb:'TMDB', imdb:'IMDb', tomatoes:'Tomatometer',
   audience:'Popcornmeter', metacritic:'Metacritic', letterboxd:'Letterboxd', mal:'MyAnimeList' };
 const DEFAULT_PILLS = ['year','type','tmdb','imdb','metacritic','tomatoes'];
