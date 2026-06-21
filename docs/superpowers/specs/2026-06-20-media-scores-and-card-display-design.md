@@ -100,8 +100,24 @@ left-to-right render order:
 - A dropdown styled like the existing size dropdown (`.size-dd-*`) but
   **multi-select**: each row is a pill with a checkbox; clicking toggles without
   closing the menu. Button label shows e.g. `Pills (5) ▾`.
-- Lists all eight pills (Year, Type, IMDb, 🍅 Tomatometer, 🍿 Popcornmeter,
-  Metacritic, Letterboxd, MAL).
+- The menu is split into **two labelled sections**:
+  - **TMDB** — `Year`, `Media type` (local data, always available).
+  - **MDBList** `(limited use)` — `IMDb`, `🍅 Tomatometer`, `🍿 Popcornmeter`,
+    `Metacritic`, `Letterboxd`, `MyAnimeList` (consume the API quota).
+- A small caption under the MDBList header shows the remaining daily calls (e.g.
+  `247 left today`).
+
+### Quota-exhausted state
+- A `GET /api/mdblist-status` endpoint returns `{ has_key, limit, used, remaining }`
+  from MDBList `/user` (`remaining = api_requests − api_requests_count`),
+  server-cached ~2 min per user to avoid spending the quota on status checks.
+- The frontend refreshes status on load and whenever a pill dropdown opens.
+- When `remaining ≤ 0`: the **MDBList section rows are greyed out and
+  non-interactive** in *both* the grid and search selectors, and the caption
+  changes to a clear reason, e.g. `⚠ No API calls left today — resets daily.
+  Score pills paused.` TMDB rows stay fully usable.
+- While exhausted, the client **skips new ratings fetches** (they would fail);
+  already-cached/persisted pills keep rendering.
 - **Grid selector**: in the grid top bar's right group, next to the size dropdown.
   Controls pills on library cards.
 - **Search selector**: next to the search type buttons (`#searchTypeBtns`), with a

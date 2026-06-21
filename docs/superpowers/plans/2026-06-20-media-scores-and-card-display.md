@@ -400,6 +400,101 @@ git commit -m "feat(ratings): add /api/ratings endpoint (hybrid persist + TTL ca
 
 ---
 
+## Task 3B: MDBList quota-status endpoint
+
+**Files:**
+- Modify: `app.py` (status cache near `_ratings_cache`; route near `/api/ratings`)
+- Test: `tests/test_ratings.py`
+
+> Field assumption to verify with a live key: MDBList `/user` returns
+> `api_requests` (daily limit) and `api_requests_count` (used today), so
+> `remaining = api_requests − api_requests_count`.
+
+- [ ] **Step 1: Write the failing tests**
+
+Append to `tests/test_ratings.py`:
+
+```python
+def test_mdblist_status_no_key(client):
+    _register(client)
+    resp = client.get("/api/mdblist-status")
+    assert resp.status_code == 200
+    assert resp.get_json() == {"has_key": False, "limit": None,
+                               "used": None, "remaining": None}
+
+
+def test_mdblist_status_reports_remaining(client, monkeypatch):
+    _register(client)
+    _set_mdblist_key()
+
+    class FakeResp:
+        status_code = 200
+        def json(self):
+            return {"api_requests": 1000, "api_requests_count": 753}
+
+    monkeypatch.setattr(app_module.requests, "get", lambda *a, **k: FakeResp())
+    data = client.get("/api/mdblist-status").get_json()
+    assert data["has_key"] is True
+    assert data["limit"] == 1000
+    assert data["used"] == 753
+    assert data["remaining"] == 247
+```
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `python -m pytest tests/test_ratings.py -k mdblist_status -v`
+Expected: FAIL — 404 (route not defined).
+
+- [ ] **Step 3: Add the status cache near `_ratings_cache`**
+
+```python
+# MDBList /user snapshot per user: uid -> (ts, dict). Short TTL so polling the
+# status never meaningfully spends the daily quota.
+_mdblist_status_cache: dict[int, tuple[float, dict]] = {}
+_MDBLIST_STATUS_TTL = 120  # seconds
+```
+
+- [ ] **Step 4: Add the route near `/api/ratings`**
+
+```python
+@app.route("/api/mdblist-status")
+@login_required
+def api_mdblist_status():
+    key = _get_mdblist_key()
+    if not key:
+        return jsonify({"has_key": False, "limit": None, "used": None, "remaining": None})
+    uid = int(current_user.id)
+    hit = _mdblist_status_cache.get(uid)
+    if hit and (time.time() - hit[0]) < _MDBLIST_STATUS_TTL:
+        return jsonify(hit[1])
+    out = {"has_key": True, "limit": None, "used": None, "remaining": None}
+    try:
+        resp = requests.get("https://api.mdblist.com/user", params={"apikey": key}, timeout=8)
+        if resp.status_code == 200:
+            d = resp.json()
+            limit, used = d.get("api_requests"), d.get("api_requests_count")
+            remaining = (limit - used) if isinstance(limit, int) and isinstance(used, int) else None
+            out = {"has_key": True, "limit": limit, "used": used, "remaining": remaining}
+    except Exception:
+        pass
+    _mdblist_status_cache[uid] = (time.time(), out)
+    return jsonify(out)
+```
+
+- [ ] **Step 5: Run tests + full suite**
+
+Run: `python -m pytest tests/test_ratings.py -k mdblist_status -v` → PASS.
+Run: `python -m pytest -q` → all PASS.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add app.py tests/test_ratings.py
+git commit -m "feat(ratings): add /api/mdblist-status quota endpoint"
+```
+
+---
+
 ## Task 4: Card size-mode refactor (Text / Default / Poster only)
 
 **Files:**
@@ -567,6 +662,20 @@ const SCORE_SVG = {
 
 const _ratingsCache = {};   // "media_type:tmdb_id" -> ratings object
 
+// MDBList quota status. `exhausted` greys out MDBList pill options and pauses
+// new fetches (cached/persisted pills still render).
+let _mdblist = { has_key: false, limit: null, remaining: null, exhausted: false };
+async function refreshMdblistStatus() {
+  try {
+    const d = await fetch('/api/mdblist-status').then(r => r.json());
+    _mdblist = {
+      has_key: !!d.has_key, limit: d.limit, remaining: d.remaining,
+      exhausted: !!d.has_key && d.remaining !== null && d.remaining <= 0,
+    };
+  } catch {}
+  return _mdblist;
+}
+
 function _pillValue(src, ratings) {
   const v = ratings ? ratings[src] : undefined;
   if (v === undefined || v === null) return null;
@@ -596,6 +705,8 @@ async function fetchRatings(mediaType, tmdbId) {
   if (!tmdbId || (mediaType !== 'movie' && mediaType !== 'tv')) return {};
   const k = `${mediaType}:${tmdbId}`;
   if (k in _ratingsCache) return _ratingsCache[k];
+  // Out of quota: don't spend a failing call; show nothing new this session.
+  if (_mdblist.exhausted) return {};
   try {
     const res = await fetch(`/api/ratings/${mediaType}/${encodeURIComponent(tmdbId)}`);
     const data = res.ok ? ((await res.json()).ratings || {}) : {};
@@ -654,24 +765,59 @@ function _loadPills(storeKey) {
 let gridPills   = _loadPills('gridPills');
 let searchPills = _loadPills('searchPills');
 
+// Two labelled sections. The MDBList section is quota-limited.
+const PILL_SECTIONS = [
+  { label: 'TMDB',    note: '',              sources: ['year','type'],                                                limited: false },
+  { label: 'MDBList', note: '(limited use)', sources: ['imdb','tomatoes','audience','metacritic','letterboxd','mal'], limited: true  },
+];
+
+function _mdblistCaption() {
+  if (!_mdblist.has_key)   return 'Add an MDBList key in Settings to use these.';
+  if (_mdblist.exhausted)  return '⚠ No API calls left today — resets daily. Score pills paused.';
+  if (_mdblist.remaining !== null) return `${_mdblist.remaining} left today`;
+  return '';
+}
+
 function renderPillSelector(which) {
   const sel = which === 'grid' ? gridPills : searchPills;
-  const rows = PILL_ORDER.map(src =>
-    `<div class="size-dd-item pill-dd-item${sel.includes(src) ? ' active' : ''}" onclick="togglePill('${which}','${src}',event)">
-       <span>${PILL_LABELS[src]}</span><span class="pill-dd-check">${sel.includes(src) ? '✓' : ''}</span>
-     </div>`).join('');
+  const body = PILL_SECTIONS.map(sec => {
+    const disabled = sec.limited && _mdblist.exhausted;
+    const cap = sec.limited ? `<div class="pill-dd-cap${_mdblist.exhausted ? ' warn' : ''}">${_mdblistCaption()}</div>` : '';
+    const rows = sec.sources.map(src =>
+      `<div class="size-dd-item pill-dd-item${sel.includes(src) ? ' active' : ''}${disabled ? ' disabled' : ''}"
+            ${disabled ? '' : `onclick="togglePill('${which}','${src}',event)"`}>
+         <span>${PILL_LABELS[src]}</span><span class="pill-dd-check">${sel.includes(src) ? '✓' : ''}</span>
+       </div>`).join('');
+    return `<div class="pill-dd-head">${sec.label}${sec.note ? ` <span class="pill-dd-note">${sec.note}</span>` : ''}</div>${cap}${rows}`;
+  }).join('');
   return `<div class="size-dd-wrap pill-dd-wrap">
     <button class="size-dd-btn" onclick="togglePillDropdown('${which}',event)">Pills (${sel.length}) <span style="font-size:0.5625rem;opacity:0.7">▾</span></button>
-    <div class="size-dd-menu" id="pillMenu_${which}">${rows}</div>
+    <div class="size-dd-menu" id="pillMenu_${which}">${body}</div>
   </div>`;
 }
 
 function togglePillDropdown(which, ev) {
   ev.stopPropagation();
   const menu = document.getElementById('pillMenu_' + which);
-  const open = menu.classList.contains('open');
+  const willOpen = !menu.classList.contains('open');
   document.querySelectorAll('.size-dd-menu').forEach(m => m.classList.remove('open'));
-  if (!open) menu.classList.add('open');
+  if (willOpen) {
+    menu.classList.add('open');
+    // Refresh quota on open, then repaint this selector with fresh state.
+    refreshMdblistStatus().then(() => _repaintSelectorOpen(which));
+  }
+}
+
+function _repaintSelectorOpen(which) {
+  if (which === 'grid') {
+    const wrap = document.querySelector('.grid-right-group .pill-dd-wrap');
+    if (wrap) wrap.outerHTML = renderPillSelector('grid');
+  } else {
+    const host = document.getElementById('searchPillSelectorHost');
+    if (host) host.innerHTML = renderPillSelector('search');
+  }
+  const menu = document.getElementById('pillMenu_' + which);
+  if (menu) menu.classList.add('open');
 }
 
 function togglePill(which, src, ev) {
@@ -681,6 +827,10 @@ function togglePill(which, src, ev) {
   if (i >= 0) arr.splice(i, 1); else arr.push(src);
   localStorage.setItem(which === 'grid' ? 'gridPills' : 'searchPills', JSON.stringify(arr));
   if (which === 'grid') renderGrid(); else rerenderSearch();
+  // The re-render rebuilds the selector; reopen its (fresh) menu so toggling
+  // multiple pills doesn't close the dropdown each time.
+  const menu = document.getElementById('pillMenu_' + which);
+  if (menu) menu.classList.add('open');
 }
 ```
 
@@ -716,7 +866,15 @@ In `renderGrid()`, immediately after `panel.innerHTML = statsHtml + topBar + ...
 ```css
 .pill-dd-item { display:flex; align-items:center; justify-content:space-between; gap:1rem; }
 .pill-dd-check { width:0.9em; text-align:center; color:var(--accent); }
-.pill-dd-wrap .size-dd-menu { min-width: 11rem; }
+.pill-dd-wrap .size-dd-menu { min-width: 12rem; }
+.pill-dd-head { padding:0.4rem 0.7rem 0.2rem; font-size:0.625rem; font-weight:700;
+  letter-spacing:0.06em; text-transform:uppercase; color:var(--text-dim); }
+.pill-dd-head:not(:first-child) { border-top:1px solid var(--border-md); margin-top:0.15rem; }
+.pill-dd-note { font-weight:500; text-transform:none; letter-spacing:0; color:var(--muted); font-size:0.9em; }
+.pill-dd-cap { padding:0 0.7rem 0.3rem; font-size:0.625rem; color:var(--muted); line-height:1.4; }
+.pill-dd-cap.warn { color:#ffb454; }
+.pill-dd-item.disabled { opacity:0.4; cursor:not-allowed; }
+.pill-dd-item.disabled:hover { background:none; }
 ```
 
 - [ ] **Step 6: Add a temporary `rerenderSearch` stub (replaced in Task 7)**
@@ -727,13 +885,22 @@ Near `togglePill`, add:
 function rerenderSearch() { /* implemented in Task 7 */ }
 ```
 
+- [ ] **Step 6b: Refresh quota status on load**
+
+Find the app's main init (where the first `renderGrid()` / library load happens after auth). Add an early, non-blocking status fetch so the selector reflects quota from the start:
+
+```javascript
+refreshMdblistStatus();
+```
+
 - [ ] **Step 7: Manual verification**
 
 Run the app, open the library (Default mode):
 - A **Pills (n) ▾** button sits left of the size dropdown.
-- Opening it lists all 8 pills with checkmarks on the selected ones; default = Year, Media type, IMDb, Metacritic, Tomatometer.
-- Toggling a source re-renders the grid; score pills appear shortly after (lazy fetch). With no MDBList key set, only Year/Type appear and score toggles add nothing.
-- With an MDBList key set (Settings), IMDb/🍅/Metacritic pills populate on cards.
+- Opening it shows two sections: **TMDB** (Year, Media type) and **MDBList (limited use)** with a caption showing remaining calls (e.g. `247 left today`), then the six score pills. Checkmarks mark selected pills; default = Year, Media type, IMDb, Metacritic, Tomatometer.
+- Toggling a source re-renders the grid; score pills appear shortly after (lazy fetch). With no MDBList key, the MDBList caption reads "Add an MDBList key in Settings…".
+- With a key set, IMDb/🍅/Metacritic pills populate on cards.
+- **Quota greying:** temporarily force exhaustion by running `_mdblist = {has_key:true, remaining:0, exhausted:true}` then reopening the menu — the six MDBList rows grey out, become non-clickable, and the caption shows the "No API calls left" warning. TMDB rows stay usable.
 - Reload: selection persists.
 
 - [ ] **Step 8: Commit**
@@ -835,7 +1002,7 @@ function rerenderSearch() {
 - [ ] **Step 7: Manual verification**
 
 Run the app, open search, run a movie/TV query:
-- A **FILTER SEARCH RATINGS** caption with a **Pills (n) ▾** selector sits beside the type filters.
+- A **FILTER SEARCH RATINGS** caption with a **Pills (n) ▾** selector sits beside the type filters; the dropdown shows the same TMDB / MDBList (limited use) sections and quota caption as the grid selector, and the MDBList rows grey out identically when out of calls.
 - Search cards show Year/Type by default; with an MDBList key, IMDb/🍅/Metacritic populate shortly after results appear.
 - Toggling the search selector re-renders the current results without a new text search, and the selection persists on reload — independent of the grid selection.
 
@@ -897,4 +1064,5 @@ git commit -m "feat(ui): show score pills in the details panel"
 
 - [ ] Run the full backend suite: `python -m pytest -q` → all PASS.
 - [ ] Manual smoke (with an MDBList key in Settings): grid pills, poster-only mode, search pills, detail pills all render; toggling selectors works and persists; grid and search selections are independent.
-- [ ] Manual smoke (no MDBList key): only Year/Type pills appear; no errors in console; no empty pill rows.
+- [ ] Manual smoke (no MDBList key): only Year/Type pills appear; MDBList section caption prompts to add a key; no console errors; no empty pill rows.
+- [ ] Quota state: with `remaining` forced to 0, both selectors grey out the MDBList section with the "no calls left" reason, TMDB stays usable, and no new ratings fetches fire.
