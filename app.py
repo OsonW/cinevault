@@ -450,6 +450,7 @@ def search():
                     "poster_path": r.get("poster_path"),
                     "overview":    r.get("overview"),
                     "popularity":  r.get("popularity", 0) or 0,
+                    "tmdb_rating": r.get("vote_average"),
                 }
                 for r in resp.json().get("results", []) if r.get("id")
             ]
@@ -470,6 +471,7 @@ def search():
                     "poster_path": r.get("poster_path"),
                     "overview":    r.get("overview"),
                     "popularity":  r.get("popularity", 0) or 0,
+                    "tmdb_rating": r.get("vote_average"),
                 }
                 for r in resp.json().get("results", []) if r.get("id")
             ]

@@ -226,3 +226,23 @@ def test_migration_adds_tmdb_rating_to_legacy_db(tmp_path):
     with sqlite3.connect(db_path) as conn:
         cols = {r[1] for r in conn.execute("PRAGMA table_info(media)").fetchall()}
     assert "tmdb_rating" in cols
+
+
+def test_search_includes_tmdb_rating(client, monkeypatch):
+    _register(client)
+    _set_mdblist_key()  # ensures a tmdb key exists for the search route
+
+    class FakeResp:
+        status_code = 200
+        def raise_for_status(self): pass
+        def json(self):
+            return {"results": [
+                {"id": 603, "title": "The Matrix", "release_date": "1999-03-30",
+                 "poster_path": "/x.jpg", "overview": "o", "popularity": 9,
+                 "vote_average": 8.2},
+            ]}
+
+    monkeypatch.setattr(app_module.requests, "get", lambda *a, **k: FakeResp())
+    monkeypatch.setattr(app_module, "_fetch_tmdb_director", lambda *a, **k: "")
+    data = client.get("/api/search?q=matrix&type=movie").get_json()
+    assert data[0]["tmdb_rating"] == 8.2
