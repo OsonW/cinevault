@@ -599,6 +599,8 @@ input[type="range"]::-webkit-slider-thumb {
 
 .divider { height: 1px; background: var(--border); margin: 1rem 0; }
 
+.detail-scores { display:flex; flex-wrap:wrap; gap:0.35rem; margin-bottom:0.75rem; }
+.detail-scores:empty { display:none; margin:0; }
 .desc-toggle-btn {
   display: inline-flex; align-items: center; gap: 0.25rem;
   padding: 0.25rem 0.625rem; border-radius: var(--radius);
@@ -2289,6 +2291,7 @@ function renderDetail(item) {
       <h2 class="detail-title">${esc(item.title)}</h2>
       <p class="detail-meta">${TYPE_SVG[item.media_type]} ${TYPE_LABEL[item.media_type]}</p>
       ${authorHtml}
+      <div class="detail-scores" id="detailScores">${renderPills(item, _ratingsCache[item.media_type+':'+(item.tmdb_id||item.external_id)] || {}, SCORE_SOURCES)}</div>
       <div style="margin-bottom:0.875rem">
         <button id="descToggleBtn" class="desc-toggle-btn" onclick="toggleDescription(${item.id})">Load description</button>
         <div id="descContent" class="detail-overview" style="display:none"></div>
@@ -2306,6 +2309,8 @@ function renderDetail(item) {
       <div class="divider"></div>
       <button class="delete-btn" onclick="deleteItem(${item.id})">Remove from library</button>
     </div>`;
+
+  hydratePills('detailScores', item, SCORE_SOURCES);
 
   if (!item.author && (item.media_type === 'movie' || item.media_type === 'tv')) {
     fetch(`/api/item/${item.id}/fetch_director`)
