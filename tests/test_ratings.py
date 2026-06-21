@@ -80,3 +80,35 @@ def test_migration_adds_ratings_to_legacy_db(tmp_path):
         row = conn.execute("SELECT * FROM media").fetchone()
         assert row["date_watchlist"] == "2025-01-01"   # existing data untouched
         assert row["ratings"] is None
+
+
+def test_fetch_mdblist_ratings_normalizes(monkeypatch):
+    import app as a
+
+    class FakeResp:
+        status_code = 200
+        def json(self):
+            return {"ratings": [
+                {"source": "imdb", "value": 8.1},
+                {"source": "tomatoes", "value": 94},
+                {"source": "audience", "value": 88},
+                {"source": "metacritic", "value": 76},
+                {"source": "letterboxd", "value": 4.2},
+                {"source": "mal", "value": None},
+                {"source": "trakt", "value": 90},
+            ]}
+
+    monkeypatch.setattr(a.requests, "get", lambda *args, **kw: FakeResp())
+    out = a._fetch_mdblist_ratings("movie", 27205, "fake-key")
+    assert out == {"imdb": 8.1, "tomatoes": 94, "audience": 88,
+                   "metacritic": 76, "letterboxd": 4.2}
+
+
+def test_fetch_mdblist_ratings_unsupported_type(monkeypatch):
+    import app as a
+    called = {"n": 0}
+    def _spy(*a_, **k_):
+        called["n"] += 1
+    monkeypatch.setattr(a.requests, "get", _spy)
+    assert a._fetch_mdblist_ratings("book", 5, "fake-key") == {}
+    assert called["n"] == 0

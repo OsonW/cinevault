@@ -110,6 +110,40 @@ def _get_mdblist_key() -> str | None:
     return None
 
 
+# MDBList rating sources we surface, mapped from the API's `source` field.
+_MDBLIST_SOURCES = {"imdb", "tomatoes", "audience", "metacritic", "letterboxd", "mal"}
+
+# App media_type -> MDBList path segment. Only movies/shows are supported.
+_MDBLIST_TYPE = {"movie": "movie", "tv": "show"}
+
+
+def _fetch_mdblist_ratings(media_type: str, tmdb_id, key: str) -> dict:
+    """Return {source: value} for the sources we display, or {} on any problem.
+    One detail call returns every rating, so cost is per-title, not per-source."""
+    mtype = _MDBLIST_TYPE.get(media_type)
+    if not mtype or not tmdb_id:
+        return {}
+    try:
+        resp = requests.get(
+            f"https://api.mdblist.com/tmdb/{mtype}/{tmdb_id}",
+            params={"apikey": key},
+            timeout=8,
+        )
+        if resp.status_code != 200:
+            return {}
+        ratings = resp.json().get("ratings") or []
+    except Exception:
+        return {}
+    out = {}
+    for r in ratings:
+        if not isinstance(r, dict):
+            continue
+        src, val = r.get("source"), r.get("value")
+        if src in _MDBLIST_SOURCES and val is not None:
+            out[src] = val
+    return out
+
+
 # Shared across users — keyed by external IDs so safe to share
 poster_cache: _BoundedCache = _BoundedCache(500)   # ~100 MB max at avg 200 KB/poster
 search_cache: dict[str, list] = {}
