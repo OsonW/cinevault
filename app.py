@@ -190,22 +190,23 @@ _RATINGS_MAX_AGE_DAYS = 7         # persisted library ratings refresh after this
 _mdblist_status_cache: dict[int, tuple[float, dict]] = {}
 _MDBLIST_STATUS_TTL = 120  # seconds
 
-# Per-user daily cap on AUTOMATIC (7-day-on-access) ratings refreshes. Manual
-# force refreshes are exempt. In-memory; resets when the UTC date rolls over.
+# Per-user cap on AUTOMATIC (7-day-on-access / sweep) ratings refreshes. Manual
+# force refreshes are exempt. In-memory count since the last MDBList quota reset;
+# reset in `api_mdblist_status` when the user's MDBList used-count drops (i.e. when
+# their daily quota refreshes), so the 500 cap resets in lockstep with the quota.
 _LAZY_REFRESH_DAILY_CAP = 500
-_lazy_refresh_counts: dict[int, tuple[str, int]] = {}
+_lazy_refresh_counts: dict[int, int] = {}
+# Last-seen MDBList api_requests_count per user, used to detect a quota reset.
+_mdblist_last_used: dict[int, int] = {}
 
 
 def _take_lazy_refresh_slot(uid: int) -> bool:
-    """True (and consume a slot) if the user is under today's lazy-refresh cap."""
-    today = datetime.now(timezone.utc).date().isoformat()
-    day, count = _lazy_refresh_counts.get(uid, (today, 0))
-    if day != today:
-        day, count = today, 0
+    """True (and consume a slot) if the user is under the auto-refresh cap for the
+    current MDBList quota window. The counter is reset on quota reset, not by date."""
+    count = _lazy_refresh_counts.get(uid, 0)
     if count >= _LAZY_REFRESH_DAILY_CAP:
-        _lazy_refresh_counts[uid] = (day, count)
         return False
-    _lazy_refresh_counts[uid] = (day, count + 1)
+    _lazy_refresh_counts[uid] = count + 1
     return True
 
 _user_media_cache:   dict[int, dict] = {}
@@ -857,6 +858,13 @@ def api_mdblist_status():
             limit, used = d.get("api_requests"), d.get("api_requests_count")
             remaining = (limit - used) if isinstance(limit, int) and isinstance(used, int) else None
             out = {"has_key": True, "limit": limit, "used": used, "remaining": remaining}
+            # A drop in the used-count means the MDBList quota refreshed; reset our
+            # auto-refresh cap so it tracks the same daily window as the quota.
+            if isinstance(used, int):
+                prev = _mdblist_last_used.get(uid)
+                if prev is not None and used < prev:
+                    _lazy_refresh_counts.pop(uid, None)
+                _mdblist_last_used[uid] = used
     except Exception:
         pass
     _mdblist_status_cache[uid] = (time.time(), out)
