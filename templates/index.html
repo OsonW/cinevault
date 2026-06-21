@@ -80,7 +80,7 @@ body {
   display: flex;
   align-items: center;
   gap: 1.5rem;
-  padding: 0.75rem 1.5rem;
+  padding: 0.9375rem 1.5rem;
   flex-shrink: 0;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
@@ -105,28 +105,20 @@ body {
 .search-anchor { position: relative; flex: 1; display: flex; }
 .search-anchor input {
   width: 100%;
-  border-radius: var(--radius) 0 0 var(--radius);
-  border-right: none;
+  border-radius: var(--radius);
 }
 
-.search-btn-group { display: flex; position: relative; }
-
-.btn-search-main {
-  padding: 0.5rem 1rem;
-  border-radius: 0 var(--radius) var(--radius) 0;
-  border: 1px solid var(--border-md);
-  border-left: none;
-  background: var(--accent);
-  color: var(--bg);
-  font-family: 'DM Sans', sans-serif;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.15s;
-  white-space: nowrap;
-  letter-spacing: 0.01em;
+/* Magnifying-glass button inside the search field (mirrors the password eye). */
+.search-magnify-btn {
+  position: absolute; top: 50%; right: 0.4375rem;
+  transform: translateY(-50%);
+  width: 1.875rem; height: 1.875rem;
+  border: none; background: none; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--muted); cursor: pointer; z-index: 2;
+  border-radius: 6px; transition: color 0.15s, background 0.15s;
 }
-.btn-search-main:hover { background: var(--accent-hover); }
+.search-magnify-btn:hover { color: var(--accent); background: rgba(255,255,255,0.06); }
 
 
 .field input,
@@ -136,8 +128,8 @@ body {
   border-radius: var(--radius);
   color: var(--text);
   font-family: 'DM Sans', sans-serif;
-  font-size: 0.8125rem;
-  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  padding: 0.5625rem 0.75rem;
   transition: border-color 0.2s;
 }
 .search-anchor input {
@@ -145,8 +137,8 @@ body {
   border: 1px solid var(--border-md);
   color: var(--text);
   font-family: 'DM Sans', sans-serif;
-  font-size: 0.8125rem;
-  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  padding: 0.5625rem 2.75rem 0.5625rem 0.875rem;
   transition: border-color 0.2s;
 }
 .search-anchor input::placeholder,
@@ -189,13 +181,13 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 
 /* ── Buttons ──────────────────────────────────── */
 .btn {
-  padding: 0.5rem 1rem;
+  padding: 0.5625rem 1.0625rem;
   border-radius: var(--radius);
   border: 1px solid var(--border-md);
   background: var(--card);
   color: var(--text);
   font-family: 'DM Sans', sans-serif;
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   font-weight: 400;
   cursor: pointer;
   transition: all 0.15s;
@@ -211,13 +203,13 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 /* ── Tabs ─────────────────────────────────────── */
 .tabs { display: flex; gap: 0.125rem; margin-left: auto; }
 .tab {
-  padding: 0.4375rem 0.875rem;
+  padding: 0.5625rem 1rem;
   border-radius: var(--radius);
   border: 1px solid transparent;
   background: none;
   color: var(--muted);
   font-family: 'DM Sans', sans-serif;
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   font-weight: 400;
   cursor: pointer;
   transition: all 0.15s;
@@ -537,8 +529,8 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 
 .status-row { display: flex; gap: 0.375rem; margin-bottom: 1.125rem; }
 .status-pill {
-  flex: 1; padding: 0.4375rem 0.25rem; border-radius: var(--radius); border: 1px solid var(--border);
-  background: none; color: var(--muted); font-size: 0.6875rem; font-family: 'DM Sans', sans-serif;
+  flex: 1; padding: 0.5625rem 0.25rem; border-radius: var(--radius); border: 1px solid var(--border);
+  background: none; color: var(--muted); font-size: 0.75rem; font-family: 'DM Sans', sans-serif;
   cursor: pointer; transition: all 0.15s; text-align: center;
 }
 .status-pill:hover { border-color: var(--border-md); color: var(--text); }
@@ -563,10 +555,10 @@ input[type="range"]::-webkit-slider-thumb {
 
 .field { margin-bottom: 0.875rem; }
 .field label {
-  display: block; font-size: 0.6875rem; color: var(--muted); margin-bottom: 0.3125rem;
+  display: block; font-size: 0.75rem; color: var(--muted); margin-bottom: 0.3125rem;
   font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase;
 }
-.field input, .field textarea { width: 100%; padding: 0.5rem 0.625rem; }
+.field input, .field textarea { width: 100%; padding: 0.5625rem 0.75rem; }
 .field textarea { resize: vertical; min-height: 4rem; }
 .episode-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
 
@@ -626,17 +618,17 @@ input[type="range"]::-webkit-slider-thumb {
 .csz-dot:focus-visible { outline: 2px solid var(--accent-dim); outline-offset: 1px; }
 .grid-right-group { margin-left: auto; display: flex; align-items: center; gap: 0.375rem; }
 .sort-btn {
-  padding: 0.3125rem 0.75rem; border-radius: var(--radius); border: 1px solid var(--border-md);
-  background: var(--card); color: var(--muted); font-size: 0.75rem; font-family: 'DM Sans', sans-serif;
+  padding: 0.4375rem 0.875rem; border-radius: var(--radius); border: 1px solid var(--border-md);
+  background: var(--card); color: var(--muted); font-size: 0.8125rem; font-family: 'DM Sans', sans-serif;
   cursor: pointer; transition: all 0.15s; letter-spacing: 0.01em;
 }
 .sort-btn:hover { color: var(--text); border-color: rgba(255,255,255,0.2); background: var(--subtle); }
 .sort-btn.active { color: var(--accent); border-color: var(--accent-dim); background: var(--accent-glow); }
 .size-dd-wrap { position: relative; flex-shrink: 0; }
 .size-dd-btn {
-  padding: 0.3125rem 0.75rem; border-radius: var(--radius); border: 1px solid var(--accent-dim);
+  padding: 0.4375rem 0.875rem; border-radius: var(--radius); border: 1px solid var(--accent-dim);
   background: var(--accent-glow); color: var(--accent); font-family: 'DM Sans', sans-serif;
-  font-size: 0.75rem; cursor: pointer; transition: all 0.15s; white-space: nowrap;
+  font-size: 0.8125rem; cursor: pointer; transition: all 0.15s; white-space: nowrap;
   display: inline-flex; align-items: center; gap: 0.3125rem; letter-spacing: 0.01em;
 }
 .size-dd-btn:hover { border-color: var(--accent); background: var(--accent-dim); }
@@ -649,9 +641,9 @@ input[type="range"]::-webkit-slider-thumb {
 .size-dd-menu.open { display: block; }
 .size-dd-item {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 0.5625rem 0.75rem; border-bottom: 1px solid var(--border);
+  padding: 0.625rem 0.875rem; border-bottom: 1px solid var(--border);
   cursor: pointer; transition: background 0.12s;
-  font-family: 'DM Sans', sans-serif; font-size: 0.75rem; color: var(--muted);
+  font-family: 'DM Sans', sans-serif; font-size: 0.8125rem; color: var(--muted);
 }
 .size-dd-item:last-child { border-bottom: none; }
 .size-dd-item:hover { background: rgba(255,255,255,0.04); color: var(--text); }
@@ -678,17 +670,27 @@ input[type="range"]::-webkit-slider-thumb {
 .quota-fill.q-empty { background:#d33b3b; }
 .quota-num { padding:0 0.7rem 0.35rem; font-size:0.6rem; color:var(--muted); }
 
+/* ── Combined search filter (two columns: media type | rating pills) ── */
+.search-filter-wrap .search-filter-menu {
+  left: 0; right: auto; min-width: 23rem;
+  max-height: 72vh; overflow-y: auto;
+}
+.size-dd-menu.search-filter-menu.open { display: flex; }
+.search-filter-menu .sfm-col { flex: 1 1 0; min-width: 0; padding: 0.25rem 0; }
+.search-filter-menu .sfm-col-pills { border-left: 1px solid var(--border-md); }
+.search-filter-menu .sfm-col > .pill-dd-head:first-child { border-top: none; margin-top: 0; }
+
 .grid-filter-input {
-  width: 15rem; flex-shrink: 0; padding: 0.3125rem 0.625rem;
+  width: 16rem; flex-shrink: 0; padding: 0.4375rem 0.75rem;
   background: var(--card); border: 1px solid var(--border-md);
   border-radius: var(--radius); color: var(--text);
-  font-family: 'DM Sans', sans-serif; font-size: 0.75rem;
+  font-family: 'DM Sans', sans-serif; font-size: 0.8125rem;
 }
 .grid-filter-input:focus { outline: none; border-color: var(--accent); }
 .grid-filter-input::placeholder { color: var(--muted); }
 .grid-type-btn {
-  padding: 0.25rem 0.5rem; border-radius: var(--radius); border: 1px solid var(--border-md);
-  background: var(--card); color: var(--muted); cursor: pointer; font-size: 0.6875rem;
+  padding: 0.375rem 0.625rem; border-radius: var(--radius); border: 1px solid var(--border-md);
+  background: var(--card); color: var(--muted); cursor: pointer; font-size: 0.75rem;
   font-family: 'DM Sans', sans-serif; display: inline-flex; align-items: center;
   gap: 0.25rem; transition: all 0.15s; white-space: nowrap;
 }
@@ -698,9 +700,9 @@ input[type="range"]::-webkit-slider-thumb {
 .grid-type-btn.active[data-gtype="book"]  { color: var(--amber); border-color: var(--amber-dim); background: var(--amber-glow); }
 .grid-type-btn.active[data-gtype="manga"] { color: var(--pink);  border-color: var(--pink-dim);  background: var(--pink-glow); }
 .grid-filter-clear {
-  padding: 0.25rem 0.5rem; border-radius: var(--radius); border: 1px solid var(--border-md);
+  padding: 0.375rem 0.625rem; border-radius: var(--radius); border: 1px solid var(--border-md);
   background: transparent; color: var(--muted); cursor: pointer;
-  font-size: 0.6875rem; font-family: 'DM Sans', sans-serif; transition: all 0.15s;
+  font-size: 0.75rem; font-family: 'DM Sans', sans-serif; transition: all 0.15s;
 }
 .grid-filter-clear:hover { color: var(--text); border-color: rgba(255,255,255,0.2); background: var(--subtle); }
 .grid-filter-clear.hidden { display: none; }
@@ -1027,7 +1029,7 @@ body.entry-active .entry-cancel-account { display: block; }
   flex-shrink: 0;
 }
 .key-btn {
-  width: 2rem; height: 2rem; border-radius: var(--radius);
+  width: 2.375rem; height: 2.375rem; border-radius: var(--radius);
   border: 1px solid transparent; background: none;
   color: var(--muted); cursor: pointer;
   display: flex; align-items: center; justify-content: center;
@@ -1173,16 +1175,12 @@ body.entry-active .entry-cancel-account { display: block; }
       <div class="search-anchor">
         <input type="text" id="searchInput" placeholder="Search movies, shows, books, manga…"
                autocomplete="off" oninput="onSearchInput()" onkeydown="onSearchKey(event)">
+        <button type="button" class="search-magnify-btn" id="searchMainBtn" aria-label="Search" onclick="openModal()">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </button>
         <div id="searchDropdown" class="search-dropdown"></div>
       </div>
-      <div class="search-btn-group">
-        <button class="btn-search-main" id="searchMainBtn" onclick="openModal()">Search</button>
-      </div>
-    </div>
-
-    <div style="display:flex;flex-direction:row;gap:0.5rem;align-items:flex-start;margin-left:0.5rem">
-      <span id="searchTypeSelectorHost"></span>
-      <span id="searchPillSelectorHost"></span>
+      <span id="searchFilterHost" style="margin-left:0.5rem"></span>
     </div>
 
     <nav class="tabs">
@@ -1647,10 +1645,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   await refreshKeys();
   if (!_cachedKeys.has_keys) showKeyModal('entry');
   refreshMdblistStatus();
-  const _sph = document.getElementById('searchPillSelectorHost');
-  if (_sph) _sph.innerHTML = renderPillSelector('search');
-  const _sth = document.getElementById('searchTypeSelectorHost');
-  if (_sth) _sth.innerHTML = renderSearchTypeSelector();
+  const _sfh = document.getElementById('searchFilterHost');
+  if (_sfh) _sfh.innerHTML = renderSearchFilter();
 });
 
 // ─────────────────────────────────────────────
@@ -1858,24 +1854,61 @@ const SEARCH_TYPES = [
   { key: 'manga', label: 'Manga' },
 ];
 
-function renderSearchTypeSelector() {
-  const rows = SEARCH_TYPES.map(t =>
+// Combined search filter: media type (left column) + rating pills (right column),
+// opened from a single "Filter" button beside the search field.
+function renderSearchFilter() {
+  const typeRows = SEARCH_TYPES.map(t =>
     `<div class="size-dd-item pill-dd-item${searchTypeActive.has(t.key) ? ' active' : ''}" onclick="toggleSearchType('${t.key}',event)">
        <span>${t.label}</span><span class="pill-dd-check">${searchTypeActive.has(t.key) ? '✓' : ''}</span>
      </div>`).join('');
-  return `<div class="size-dd-wrap pill-dd-wrap">
-    <button class="size-dd-btn" onclick="togglePlainDropdown('searchType',event)">FILTER SEARCH BY TYPE <span style="font-size:0.5625rem;opacity:0.7">▾</span></button>
-    <div class="size-dd-menu" id="pillMenu_searchType">${rows}</div>
+
+  const pillBody = PILL_SECTIONS.map(sec => {
+    const disabled = sec.limited && _mdblist.exhausted;
+    let cap = '';
+    if (sec.limited) {
+      const t = _mdblistCaption();
+      cap = (t ? `<div class="pill-dd-cap${_mdblist.exhausted ? ' warn' : ''}">${t}</div>` : '') + _quotaBar();
+    }
+    const rows = sec.sources.map(src =>
+      `<div class="size-dd-item pill-dd-item${searchPills.includes(src) ? ' active' : ''}${disabled ? ' disabled' : ''}"
+            ${disabled ? '' : `onclick="togglePill('search','${src}',event)"`}>
+         <span>${PILL_LABELS[src]}</span><span class="pill-dd-check">${searchPills.includes(src) ? '✓' : ''}</span>
+       </div>`).join('');
+    return `<div class="pill-dd-head">${sec.label}${sec.note ? ` <span class="pill-dd-note">${sec.note}</span>` : ''}</div>${cap}${rows}`;
+  }).join('');
+
+  return `<div class="size-dd-wrap pill-dd-wrap search-filter-wrap">
+    <button class="size-dd-btn" onclick="toggleSearchFilter(event)">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+      Filter <span style="font-size:0.5625rem;opacity:0.7">▾</span>
+    </button>
+    <div class="size-dd-menu search-filter-menu" id="pillMenu_search">
+      <div class="sfm-col">
+        <div class="pill-dd-head">Media type</div>
+        ${typeRows}
+      </div>
+      <div class="sfm-col sfm-col-pills">${pillBody}</div>
+    </div>
   </div>`;
 }
 
-// Generic dropdown open/close (no quota refresh) — used by the search-type menu.
-function togglePlainDropdown(which, ev) {
+function _repaintSearchFilterOpen() {
+  const host = document.getElementById('searchFilterHost');
+  if (host) host.innerHTML = renderSearchFilter();
+  const menu = document.getElementById('pillMenu_search');
+  if (menu) menu.classList.add('open');
+}
+
+function toggleSearchFilter(ev) {
   ev.stopPropagation();
-  const menu = document.getElementById('pillMenu_' + which);
+  const menu = document.getElementById('pillMenu_search');
   const willOpen = !menu.classList.contains('open');
   document.querySelectorAll('.size-dd-menu').forEach(m => m.classList.remove('open'));
-  if (willOpen) menu.classList.add('open');
+  if (willOpen) {
+    menu.classList.add('open');
+    // Refresh quota on open, then repaint with fresh pill state.
+    refreshMdblistStatus().then(_repaintSearchFilterOpen);
+  }
 }
 
 function toggleSearchType(type, ev) {
@@ -1886,10 +1919,7 @@ function toggleSearchType(type, ev) {
   } else {
     searchTypeActive.add(type);
   }
-  const host = document.getElementById('searchTypeSelectorHost');
-  if (host) host.innerHTML = renderSearchTypeSelector();
-  const menu = document.getElementById('pillMenu_searchType');
-  if (menu) menu.classList.add('open');   // keep open while toggling multiple
+  _repaintSearchFilterOpen();   // keep open while toggling multiple
   const backdrop = document.getElementById('searchModalBackdrop');
   if (backdrop && backdrop.classList.contains('open') && lastModalQuery) {
     runModalSearch(lastModalQuery);
@@ -3219,8 +3249,8 @@ function _repaintSelectorOpen(which) {
     const wrap = document.querySelector('.grid-right-group .pill-dd-wrap');
     if (wrap) wrap.outerHTML = renderPillSelector('grid');
   } else {
-    const host = document.getElementById('searchPillSelectorHost');
-    if (host) host.innerHTML = renderPillSelector('search');
+    const host = document.getElementById('searchFilterHost');
+    if (host) host.innerHTML = renderSearchFilter();
   }
   const menu = document.getElementById('pillMenu_' + which);
   if (menu) menu.classList.add('open');
@@ -3240,8 +3270,8 @@ function togglePill(which, src, ev) {
 }
 
 function rerenderSearch() {
-  const host = document.getElementById('searchPillSelectorHost');
-  if (host) host.innerHTML = renderPillSelector('search');
+  const host = document.getElementById('searchFilterHost');
+  if (host) host.innerHTML = renderSearchFilter();
   if (_lastModalArgs) renderModalResults(_lastModalArgs.libMatches, _lastModalArgs.tmdbResults, _lastModalArgs.q);
 }
 
