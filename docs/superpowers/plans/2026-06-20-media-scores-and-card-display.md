@@ -330,10 +330,10 @@ _RATINGS_TTL = 24 * 3600          # seconds
 _RATINGS_MAX_AGE_DAYS = 7         # persisted library ratings refresh after this
 ```
 
-`app.py` already imports `json` and `time` (lines 3–4). It does **not** import `datetime` — add this line to the top imports:
+`app.py` already imports `json` and `time` (lines 3–4). It does **not** import `datetime` — add this line to the top imports (timezone-aware; `datetime.utcnow()` is deprecated on modern Python):
 
 ```python
-from datetime import datetime
+from datetime import datetime, timezone
 ```
 
 And add `set_media_ratings` to the existing `from db import (...)` block (line 14–18), alongside `get_media_by_external_id`.
@@ -354,7 +354,7 @@ def api_ratings(media_type, tmdb_id):
         fresh = False
         if row.get("ratings") and row.get("ratings_updated_at"):
             try:
-                age = datetime.utcnow() - datetime.fromisoformat(row["ratings_updated_at"])
+                age = datetime.now(timezone.utc) - datetime.fromisoformat(row["ratings_updated_at"])
                 fresh = age.days < _RATINGS_MAX_AGE_DAYS
             except Exception:
                 fresh = False
@@ -364,7 +364,7 @@ def api_ratings(media_type, tmdb_id):
             except Exception:
                 pass
         data = _fetch_mdblist_ratings(media_type, tmdb_id, key)
-        set_media_ratings(row["id"], json.dumps(data), datetime.utcnow().isoformat())
+        set_media_ratings(row["id"], json.dumps(data), datetime.now(timezone.utc).isoformat())
         return jsonify({"ratings": data})
 
     # Non-library (search result): TTL cache.
