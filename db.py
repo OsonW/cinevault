@@ -49,6 +49,8 @@ def _create_tables(db_path: str) -> None:
                 author          TEXT,
                 overview        TEXT,
                 year            TEXT,
+                ratings         TEXT,
+                ratings_updated_at TEXT,
                 date_added      TEXT DEFAULT (date('now')),
                 date_watchlist  TEXT,
                 date_watching   TEXT,
@@ -64,7 +66,8 @@ def _migrate_media_dates(conn) -> None:
     current-status date from its legacy date_added so nothing is lost."""
     cols = {r["name"] for r in conn.execute("PRAGMA table_info(media)").fetchall()}
     added = False
-    for col in ("date_watchlist", "date_watching", "date_finished"):
+    for col in ("date_watchlist", "date_watching", "date_finished",
+                "ratings", "ratings_updated_at"):
         if col not in cols:
             conn.execute(f"ALTER TABLE media ADD COLUMN {col} TEXT")
             added = True
@@ -214,6 +217,14 @@ def set_media_dates(media_id: int, **dates):
         conn.execute(
             f"UPDATE media SET {clauses} WHERE id = ?",
             list(cols.values()) + [media_id],
+        )
+
+
+def set_media_ratings(media_id: int, ratings_json: str, updated_at: str) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE media SET ratings = ?, ratings_updated_at = ? WHERE id = ?",
+            (ratings_json, updated_at, media_id),
         )
 
 
