@@ -1703,9 +1703,9 @@ const tabSort = {
 };
 // Card size = posters per row. Dots run smallest→largest; a bigger dot means
 // bigger posters, which means FEWER columns. Arrays are aligned by dot index.
-const CARD_COL_STEPS = [9, 8, 7, 6, 5];                       // columns per row
+const CARD_COL_STEPS = [8, 7, 6, 5, 4];                       // columns per row
 const CARD_FONT_REM  = [0.625, 0.6875, 0.75, 0.8125, 0.875]; // poster font at each step
-const CARD_COLS_DEFAULT = 7;                                  // index 2 (center dot)
+const CARD_COLS_DEFAULT = 6;                                  // index 2 (center dot)
 // Validate stored value (also discards legacy px widths from older builds).
 function _validCols(n) {
   n = Number(n);
