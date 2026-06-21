@@ -680,6 +680,25 @@ input[type="range"]::-webkit-slider-thumb {
 .size-dd-item.active { color: var(--accent); background: var(--accent-glow); }
 .size-dd-hint { font-size: 0.625rem; color: var(--muted); opacity: 0.6; }
 .size-dd-item.active .size-dd-hint { color: var(--accent); opacity: 0.7; }
+.pill-dd-item { display:flex; align-items:center; justify-content:space-between; gap:1rem; }
+.pill-dd-check { width:0.9em; text-align:center; color:var(--accent); }
+.pill-dd-wrap .size-dd-menu { min-width: 12rem; }
+.pill-dd-head { padding:0.4rem 0.7rem 0.2rem; font-size:0.625rem; font-weight:700;
+  letter-spacing:0.06em; text-transform:uppercase; color:var(--text-dim); }
+.pill-dd-head:not(:first-child) { border-top:1px solid var(--border-md); margin-top:0.15rem; }
+.pill-dd-note { font-weight:500; text-transform:none; letter-spacing:0; color:var(--muted); font-size:0.9em; }
+.pill-dd-cap { padding:0 0.7rem 0.3rem; font-size:0.625rem; color:var(--muted); line-height:1.4; }
+.pill-dd-cap.warn { color:#ffb454; }
+.pill-dd-item.disabled { opacity:0.4; cursor:not-allowed; }
+.pill-dd-item.disabled:hover { background:none; }
+.quota-bar { height:4px; border-radius:2px; background:rgba(255,255,255,0.08);
+  margin:0 0.7rem 0.25rem; overflow:hidden; }
+.quota-fill { height:100%; border-radius:2px; transition:width 0.3s ease; }
+.quota-fill.q-ok    { background:#00a85a; }
+.quota-fill.q-mid   { background:#caa300; }
+.quota-fill.q-low   { background:#e0863a; }
+.quota-fill.q-empty { background:#d33b3b; }
+.quota-num { padding:0 0.7rem 0.35rem; font-size:0.6rem; color:var(--muted); }
 
 .grid-filter-input {
   width: 15rem; flex-shrink: 0; padding: 0.3125rem 0.625rem;
@@ -1654,6 +1673,7 @@ async function doCancelAccount() {
 document.addEventListener('DOMContentLoaded', async () => {
   await refreshKeys();
   if (!_cachedKeys.has_keys) showKeyModal('entry');
+  refreshMdblistStatus();
 });
 
 // ─────────────────────────────────────────────
@@ -1751,6 +1771,7 @@ document.addEventListener('click', e => {
   if (!e.target.closest('.search-anchor') && !e.target.closest('.search-wrap'))
     closeDropdown();
   if (!e.target.closest('.size-dd-wrap')) closeSizeDropdown();
+  if (!e.target.closest('.pill-dd-wrap')) document.querySelectorAll('.size-dd-menu').forEach(m => m.classList.remove('open'));
 });
 
 function fmtDate(dateStr) {
@@ -1972,6 +1993,7 @@ function renderGrid() {
       <button class="sort-btn ${currentSort==='name'?'active':''}" onclick="setSort('name')">Alphabetical</button>
       ${ratingSortBtn}
       <button class="sort-btn ${currentSort==='added'?'active':''}" onclick="setSort('added')">${currentTab==='watching'?'Last Progress':'Recently Added'}</button>
+      ${renderPillSelector('grid')}
       <div class="size-dd-wrap">
         <button class="size-dd-btn" onclick="toggleSizeDropdown(event)">${sizeLabels[curSize]} <span style="font-size:0.5625rem;opacity:0.7">▾</span></button>
         <div class="size-dd-menu" id="sizeDropdownMenu">
@@ -2052,6 +2074,10 @@ function renderGrid() {
   }).join('');
 
   panel.innerHTML = statsHtml + topBar + `<div class="poster-grid" id="posterGrid" style="${gridStyle}">${cards}</div>`;
+
+  if (size !== 'poster') {
+    items.forEach(item => hydratePills(`pills-${item.id}`, item, gridPills));
+  }
 
   if (pendingSelectId !== null) {
     const id = pendingSelectId;
@@ -3026,8 +3052,6 @@ function esc(str) {
 }
 
 // Pills: year/type from local data, the six scores from /api/ratings.
-let gridPills = ['year','type'];   // TEMP default — replaced in Task 6
-
 const PILL_ORDER  = ['year','type','imdb','tomatoes','audience','metacritic','letterboxd','mal'];
 const SCORE_SOURCES = ['imdb','tomatoes','audience','metacritic','letterboxd','mal'];
 const PILL_LABELS = { year:'Year', type:'Media type', imdb:'IMDb', tomatoes:'Tomatometer',
@@ -3105,6 +3129,101 @@ function hydratePills(hostId, item, selected) {
     if (host) host.innerHTML = renderPills(item, r, selected);
   });
 }
+
+const _VALID_PILLS = new Set(PILL_ORDER);
+function _loadPills(storeKey) {
+  try {
+    const a = JSON.parse(localStorage.getItem(storeKey));
+    if (Array.isArray(a)) return a.filter(x => _VALID_PILLS.has(x));
+  } catch {}
+  return DEFAULT_PILLS.slice();
+}
+let gridPills   = _loadPills('gridPills');
+let searchPills = _loadPills('searchPills');
+
+// Two labelled sections. The MDBList section is quota-limited.
+const PILL_SECTIONS = [
+  { label: 'TMDB',    note: '',              sources: ['year','type'],                                                limited: false },
+  { label: 'MDBList', note: '(limited use)', sources: ['imdb','tomatoes','audience','metacritic','letterboxd','mal'], limited: true  },
+];
+
+function _mdblistCaption() {
+  if (!_mdblist.has_key)   return 'Add an MDBList key in Settings to use these.';
+  if (_mdblist.exhausted)  return '⚠ No API calls left today — resets daily. Score pills paused.';
+  return '';   // when usable, the quota bar shows the remaining count
+}
+
+// Thin colour-graded quota bar + "remaining / limit (pct%)" line.
+function _quotaBar() {
+  if (!_mdblist.has_key || _mdblist.limit == null || _mdblist.remaining == null) return '';
+  const limit = _mdblist.limit || 1;
+  const rem   = Math.max(0, _mdblist.remaining);
+  const pct   = Math.max(0, Math.min(100, Math.round(rem / limit * 100)));
+  const lvl   = pct <= 0 ? 'empty' : pct <= 15 ? 'low' : pct <= 40 ? 'mid' : 'ok';
+  return `<div class="quota-bar"><div class="quota-fill q-${lvl}" style="width:${pct}%"></div></div>
+    <div class="quota-num">${rem} / ${_mdblist.limit} left (${pct}%)</div>`;
+}
+
+function renderPillSelector(which) {
+  const sel = which === 'grid' ? gridPills : searchPills;
+  const body = PILL_SECTIONS.map(sec => {
+    const disabled = sec.limited && _mdblist.exhausted;
+    let cap = '';
+    if (sec.limited) {
+      const t = _mdblistCaption();
+      cap = (t ? `<div class="pill-dd-cap${_mdblist.exhausted ? ' warn' : ''}">${t}</div>` : '') + _quotaBar();
+    }
+    const rows = sec.sources.map(src =>
+      `<div class="size-dd-item pill-dd-item${sel.includes(src) ? ' active' : ''}${disabled ? ' disabled' : ''}"
+            ${disabled ? '' : `onclick="togglePill('${which}','${src}',event)"`}>
+         <span>${PILL_LABELS[src]}</span><span class="pill-dd-check">${sel.includes(src) ? '✓' : ''}</span>
+       </div>`).join('');
+    return `<div class="pill-dd-head">${sec.label}${sec.note ? ` <span class="pill-dd-note">${sec.note}</span>` : ''}</div>${cap}${rows}`;
+  }).join('');
+  return `<div class="size-dd-wrap pill-dd-wrap">
+    <button class="size-dd-btn" onclick="togglePillDropdown('${which}',event)">Pills (${sel.length}) <span style="font-size:0.5625rem;opacity:0.7">▾</span></button>
+    <div class="size-dd-menu" id="pillMenu_${which}">${body}</div>
+  </div>`;
+}
+
+function togglePillDropdown(which, ev) {
+  ev.stopPropagation();
+  const menu = document.getElementById('pillMenu_' + which);
+  const willOpen = !menu.classList.contains('open');
+  document.querySelectorAll('.size-dd-menu').forEach(m => m.classList.remove('open'));
+  if (willOpen) {
+    menu.classList.add('open');
+    // Refresh quota on open, then repaint this selector with fresh state.
+    refreshMdblistStatus().then(() => _repaintSelectorOpen(which));
+  }
+}
+
+function _repaintSelectorOpen(which) {
+  if (which === 'grid') {
+    const wrap = document.querySelector('.grid-right-group .pill-dd-wrap');
+    if (wrap) wrap.outerHTML = renderPillSelector('grid');
+  } else {
+    const host = document.getElementById('searchPillSelectorHost');
+    if (host) host.innerHTML = renderPillSelector('search');
+  }
+  const menu = document.getElementById('pillMenu_' + which);
+  if (menu) menu.classList.add('open');
+}
+
+function togglePill(which, src, ev) {
+  ev.stopPropagation();
+  const arr = which === 'grid' ? gridPills : searchPills;
+  const i = arr.indexOf(src);
+  if (i >= 0) arr.splice(i, 1); else arr.push(src);
+  localStorage.setItem(which === 'grid' ? 'gridPills' : 'searchPills', JSON.stringify(arr));
+  if (which === 'grid') renderGrid(); else rerenderSearch();
+  // The re-render rebuilds the selector; reopen its (fresh) menu so toggling
+  // multiple pills doesn't close the dropdown each time.
+  const menu = document.getElementById('pillMenu_' + which);
+  if (menu) menu.classList.add('open');
+}
+
+function rerenderSearch() { /* implemented in Task 7 */ }
 
 // ─────────────────────────────────────────────
 // Search modal hover tooltip for truncated text
