@@ -152,3 +152,28 @@ def test_ratings_endpoint_persists_library_item(client, monkeypatch):
     import json as _j
     assert _j.loads(item["ratings"]) == {"imdb": 7.5}
     assert item["ratings_updated_at"]
+
+
+def test_mdblist_status_no_key(client):
+    _register(client)
+    resp = client.get("/api/mdblist-status")
+    assert resp.status_code == 200
+    assert resp.get_json() == {"has_key": False, "limit": None,
+                               "used": None, "remaining": None}
+
+
+def test_mdblist_status_reports_remaining(client, monkeypatch):
+    _register(client)
+    _set_mdblist_key()
+
+    class FakeResp:
+        status_code = 200
+        def json(self):
+            return {"api_requests": 1000, "api_requests_count": 753}
+
+    monkeypatch.setattr(app_module.requests, "get", lambda *a, **k: FakeResp())
+    data = client.get("/api/mdblist-status").get_json()
+    assert data["has_key"] is True
+    assert data["limit"] == 1000
+    assert data["used"] == 753
+    assert data["remaining"] == 247

@@ -155,6 +155,11 @@ _ratings_cache: dict[str, tuple[float, dict]] = {}
 _RATINGS_TTL = 24 * 3600          # seconds
 _RATINGS_MAX_AGE_DAYS = 7         # persisted library ratings refresh after this
 
+# MDBList /user snapshot per user: uid -> (ts, dict). Short TTL so polling the
+# status never meaningfully spends the daily quota.
+_mdblist_status_cache: dict[int, tuple[float, dict]] = {}
+_MDBLIST_STATUS_TTL = 120  # seconds
+
 _user_media_cache:   dict[int, dict] = {}
 
 _app_initialized    = False
@@ -773,6 +778,30 @@ def api_ratings(media_type, tmdb_id):
         _ratings_cache.pop(next(iter(_ratings_cache)))
     _ratings_cache[ck] = (time.time(), data)
     return jsonify({"ratings": data})
+
+
+@app.route("/api/mdblist-status")
+@login_required
+def api_mdblist_status():
+    key = _get_mdblist_key()
+    if not key:
+        return jsonify({"has_key": False, "limit": None, "used": None, "remaining": None})
+    uid = int(current_user.id)
+    hit = _mdblist_status_cache.get(uid)
+    if hit and (time.time() - hit[0]) < _MDBLIST_STATUS_TTL:
+        return jsonify(hit[1])
+    out = {"has_key": True, "limit": None, "used": None, "remaining": None}
+    try:
+        resp = requests.get("https://api.mdblist.com/user", params={"apikey": key}, timeout=8)
+        if resp.status_code == 200:
+            d = resp.json()
+            limit, used = d.get("api_requests"), d.get("api_requests_count")
+            remaining = (limit - used) if isinstance(limit, int) and isinstance(used, int) else None
+            out = {"has_key": True, "limit": limit, "used": used, "remaining": remaining}
+    except Exception:
+        pass
+    _mdblist_status_cache[uid] = (time.time(), out)
+    return jsonify(out)
 
 
 # ═══════════════════════════════════════════════════
