@@ -152,6 +152,9 @@ body {
 .search-type-btn.active[data-stype="book"]  { color: var(--amber); border-color: var(--amber-dim); background: var(--amber-glow); }
 .search-type-btn.active[data-stype="manga"] { color: var(--pink);  border-color: var(--pink-dim);  background: var(--pink-glow); }
 .search-type-btns.hidden { display: none; }
+.search-pills-wrap { display:flex; flex-direction:column; gap:0.25rem; }
+.search-pills-cap { font-size:0.625rem; letter-spacing:0.07em; text-transform:uppercase;
+  color:var(--muted); font-weight:600; }
 
 .field input,
 .field textarea {
@@ -1221,6 +1224,10 @@ body.entry-active .entry-cancel-account { display: block; }
         Manga
       </button>
       </div>
+      <div class="search-pills-wrap">
+        <div class="search-pills-cap">FILTER SEARCH RATINGS</div>
+        <span id="searchPillSelectorHost"></span>
+      </div>
     </div>
 
     <nav class="tabs">
@@ -1674,6 +1681,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   await refreshKeys();
   if (!_cachedKeys.has_keys) showKeyModal('entry');
   refreshMdblistStatus();
+  const _sph = document.getElementById('searchPillSelectorHost');
+  if (_sph) _sph.innerHTML = renderPillSelector('search');
 });
 
 // ─────────────────────────────────────────────
@@ -2856,6 +2865,7 @@ function renderSkeletons() {
 }
 
 function renderModalResults(libMatches, tmdbResults, q) {
+  _lastModalArgs = { libMatches, tmdbResults, q };
   let html = '';
   if (libMatches.length) {
     html += `<div class="sm-section-label">In your library</div>
@@ -2887,6 +2897,13 @@ function renderModalResults(libMatches, tmdbResults, q) {
     const mt = card.dataset.mediaType;
     if (mt) card.style.display = modalActiveTypes.has(mt) ? '' : 'none';
   });
+  if (searchPills.some(s => SCORE_SOURCES.includes(s))) {
+    tmdbResults.forEach(r => {
+      const item = { media_type: r.media_type, year: r.year, tmdb_id: r.tmdb_id, external_id: r.external_id };
+      const pillsId = `spills-${r.media_type}-${(r.external_id || r.tmdb_id || '').toString().replace(/[^a-z0-9]/gi,'_')}`;
+      hydratePills(pillsId, item, searchPills);
+    });
+  }
 }
 
 function _progressLabel(item) {
@@ -2908,9 +2925,9 @@ function renderSmCard(r) {
   } else if (r.poster_path) {
     posterSrc = `https://image.tmdb.org/t/p/w500${r.poster_path}`;
   }
-  const chips = [];
-  if (r.year) chips.push(`<span class="sm-chip year">${esc(r.year)}</span>`);
-  chips.push(`<span class="sm-chip ${r.media_type}">${TYPE_SVG[r.media_type]} ${TYPE_LABEL[r.media_type]}</span>`);
+  const smItem = { media_type: r.media_type, year: r.year, tmdb_id: r.tmdb_id, external_id: r.external_id };
+  const pillsId = `spills-${r.media_type}-${(r.external_id || r.tmdb_id || '').toString().replace(/[^a-z0-9]/gi,'_')}`;
+  const chipsHtml = `<div class="sm-chips" id="${pillsId}">${renderPills(smItem, _ratingsCache[r.media_type+':'+(r.tmdb_id||r.external_id)] || {}, searchPills)}</div>`;
   const authorHtml = r.author ? `<div class="sm-card-author">${esc(r.author)}</div>` : '';
   const safeKey    = key.replace(/'/g, "\\'");
   return `<div class="sm-card ${already?'in-library':''}" data-media-type="${r.media_type}">
@@ -2918,7 +2935,7 @@ function renderSmCard(r) {
     <div class="sm-card-body">
       <div class="sm-card-title">${esc(r.title)}</div>
       ${authorHtml}
-      <div class="sm-chips">${chips.join('')}</div>
+      ${chipsHtml}
       ${r.overview ? `<div class="sm-overview">${esc(r.overview)}</div>` : ''}
       <button class="sm-add-btn${already?' remove':''}" id="smbtn-${r.media_type}-${(r.external_id||r.tmdb_id||'').toString().replace(/[^a-z0-9]/gi,'_')}"
         onclick="${already?`removeFromModal('${safeKey}')`:`addFromModal('${safeKey}')`}">
@@ -3140,6 +3157,7 @@ function _loadPills(storeKey) {
 }
 let gridPills   = _loadPills('gridPills');
 let searchPills = _loadPills('searchPills');
+let _lastModalArgs = null;
 
 // Two labelled sections. The MDBList section is quota-limited.
 const PILL_SECTIONS = [
@@ -3223,7 +3241,11 @@ function togglePill(which, src, ev) {
   if (menu) menu.classList.add('open');
 }
 
-function rerenderSearch() { /* implemented in Task 7 */ }
+function rerenderSearch() {
+  const host = document.getElementById('searchPillSelectorHost');
+  if (host) host.innerHTML = renderPillSelector('search');
+  if (_lastModalArgs) renderModalResults(_lastModalArgs.libMatches, _lastModalArgs.tmdbResults, _lastModalArgs.q);
+}
 
 // ─────────────────────────────────────────────
 // Search modal hover tooltip for truncated text
