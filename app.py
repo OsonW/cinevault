@@ -945,6 +945,9 @@ def add_media():
                 tmdb_rating = float(tmdb_rating)
             except (TypeError, ValueError):
                 tmdb_rating = None
+            # TMDB vote_average is always 0–10; reject inf/nan/out-of-range.
+            if tmdb_rating is not None and not (0.0 <= tmdb_rating <= 10.0):
+                tmdb_rating = None
         add_media_entry(
             title       = title,
             media_type  = media_type,

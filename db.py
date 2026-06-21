@@ -235,7 +235,7 @@ def set_media_ratings(media_id: int, ratings_json: str, updated_at: str) -> None
         )
 
 
-def set_media_tmdb_rating(media_id: int, value) -> None:
+def set_media_tmdb_rating(media_id: int, value: float | None) -> None:
     """Persist the TMDB vote_average for a library row (free; no MDBList quota)."""
     with get_conn() as conn:
         conn.execute(
