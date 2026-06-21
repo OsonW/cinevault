@@ -62,16 +62,19 @@ def _create_tables(db_path: str) -> None:
 
 
 def _migrate_media_dates(conn) -> None:
-    """Add the per-status date columns to pre-existing DBs and seed each row's
-    current-status date from its legacy date_added so nothing is lost."""
+    """Add later columns to pre-existing DBs. For the per-status date columns,
+    seed each row's current-status date from its legacy date_added so nothing is
+    lost. The ratings columns just need to exist (no seeding)."""
     cols = {r["name"] for r in conn.execute("PRAGMA table_info(media)").fetchall()}
-    added = False
-    for col in ("date_watchlist", "date_watching", "date_finished",
-                "ratings", "ratings_updated_at"):
+    dates_added = False
+    for col in ("date_watchlist", "date_watching", "date_finished"):
         if col not in cols:
             conn.execute(f"ALTER TABLE media ADD COLUMN {col} TEXT")
-            added = True
-    if added:
+            dates_added = True
+    for col in ("ratings", "ratings_updated_at"):
+        if col not in cols:
+            conn.execute(f"ALTER TABLE media ADD COLUMN {col} TEXT")
+    if dates_added:
         conn.execute("UPDATE media SET date_watchlist = date_added WHERE status='watchlist' AND date_watchlist IS NULL")
         conn.execute("UPDATE media SET date_watching  = date_added WHERE status='watching'  AND date_watching  IS NULL")
         conn.execute("UPDATE media SET date_finished  = date_added WHERE status='finished'  AND date_finished  IS NULL")
@@ -221,6 +224,7 @@ def set_media_dates(media_id: int, **dates):
 
 
 def set_media_ratings(media_id: int, ratings_json: str, updated_at: str) -> None:
+    """Persist a pre-serialised JSON ratings blob and its fetch timestamp."""
     with get_conn() as conn:
         conn.execute(
             "UPDATE media SET ratings = ?, ratings_updated_at = ? WHERE id = ?",
