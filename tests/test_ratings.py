@@ -178,3 +178,51 @@ def test_mdblist_status_reports_remaining(client, monkeypatch):
     assert data["limit"] == 1000
     assert data["used"] == 753
     assert data["remaining"] == 247
+
+
+def test_media_row_has_tmdb_rating_column(client):
+    _register(client)
+    _add_movie(client)
+    item = client.get("/api/list").get_json()[0]
+    assert "tmdb_rating" in item
+    assert item["tmdb_rating"] is None
+
+
+def test_add_movie_persists_tmdb_rating(client):
+    _register(client)
+    client.post("/api/add", json={
+        "title": "Inception", "media_type": "movie",
+        "external_id": "27205", "tmdb_id": 27205, "status": "watchlist",
+        "tmdb_rating": 8.4,
+    })
+    item = client.get("/api/list").get_json()[0]
+    assert item["tmdb_rating"] == 8.4
+
+
+def test_set_media_tmdb_rating_roundtrip(client):
+    _register(client)
+    _add_movie(client)
+    item = client.get("/api/list").get_json()[0]
+    from flask import g
+    with flask_app.test_request_context():
+        from db import get_user_db_path
+        from users_db import get_user_by_username
+        uid = get_user_by_username("alice")["id"]
+        g.user_db_path = get_user_db_path(uid)
+        db.set_media_tmdb_rating(item["id"], 7.2)
+        row = db.get_media_by_id(item["id"])
+    assert row["tmdb_rating"] == 7.2
+
+
+def test_migration_adds_tmdb_rating_to_legacy_db(tmp_path):
+    db_path = str(tmp_path / "movie_tracker_legacy2.db")
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("""CREATE TABLE media (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL,
+            media_type TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'watchlist',
+            external_id TEXT, ratings TEXT, ratings_updated_at TEXT,
+            UNIQUE(external_id, media_type))""")
+    db._create_tables(db_path)
+    with sqlite3.connect(db_path) as conn:
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(media)").fetchall()}
+    assert "tmdb_rating" in cols

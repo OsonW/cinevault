@@ -939,6 +939,12 @@ def add_media():
         cover_url = data.get("cover_url")
         if not _is_safe_cover_url(cover_url):
             cover_url = None
+        tmdb_rating = data.get("tmdb_rating")
+        if tmdb_rating is not None:
+            try:
+                tmdb_rating = float(tmdb_rating)
+            except (TypeError, ValueError):
+                tmdb_rating = None
         add_media_entry(
             title       = title,
             media_type  = media_type,
@@ -950,6 +956,7 @@ def add_media():
             total_pages = data.get("total_pages"),
             overview    = data.get("overview"),
             year        = data.get("year"),
+            tmdb_rating = tmdb_rating,
         )
     return jsonify({"status": "ok"})
 
