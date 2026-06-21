@@ -933,7 +933,98 @@ git commit -m "feat(ui): details-panel manual ratings refresh + updated-ago labe
 
 ---
 
-## Task 10: Frontend — auth autofill hardening
+## Task 10: Frontend — proactive launch refresh sweep
+
+**Files:**
+- Modify: `templates/index.html` (new `proactiveRefreshStale`; one-time hook in `loadList`)
+
+Relies on Task 4's `/api/ratings` returning `updated_at` and enforcing the
+500/day cap. The sweep detects cap exhaustion when a stale item's `updated_at`
+fails to advance, and stops.
+
+- [ ] **Step 1: Add the sweep function**
+
+In `templates/index.html`, near `loadList` (after `rebuildLibrarySet`), add:
+
+```javascript
+let _didProactiveSweep = false;
+
+// Once per browser launch: refresh MDBList ratings for movie/tv items that are
+// missing or >=7 days old, oldest-first, until the server's 500/day cap is hit.
+// Non-blocking; paced sequentially to respect the per-endpoint rate limit.
+async function proactiveRefreshStale() {
+  await refreshMdblistStatus();
+  if (!_mdblist.has_key || _mdblist.exhausted) return;
+  const WEEK = 7 * 86400 * 1000;
+  const now  = Date.now();
+  const ts   = i => (i.ratings_updated_at ? new Date(i.ratings_updated_at).getTime() || 0 : 0);
+  const stale = allItems
+    .filter(i => (i.media_type === 'movie' || i.media_type === 'tv')
+              && (i.tmdb_id || i.external_id)
+              && (!i.ratings_updated_at || (now - ts(i)) >= WEEK))
+    .sort((a, b) => ts(a) - ts(b));   // oldest (and never-fetched = 0) first
+
+  for (const item of stale) {
+    const tid  = item.tmdb_id || item.external_id;
+    const prev = item.ratings_updated_at || '';
+    let d;
+    try {
+      d = await fetch(`/api/ratings/${item.media_type}/${encodeURIComponent(tid)}`).then(r => r.json());
+    } catch { continue; }
+    if (!d) continue;
+    const ratings = d.ratings || {};
+    item.ratings = JSON.stringify(ratings);
+    item.ratings_updated_at = d.updated_at || prev;
+    _ratingsCache[item.media_type + ':' + tid] = ratings;
+    // updated_at didn't advance -> server served stale (cap reached) -> stop.
+    if (!d.updated_at || d.updated_at === prev) break;
+    // Repaint this card's pills + the detail panel if it's the open one.
+    const host = document.getElementById('pills-' + item.id);
+    if (host) host.innerHTML = renderPills(item, ratings, gridPills);
+    if (selectedId === item.id) renderDetail(item);
+  }
+  refreshMdblistStatus();
+}
+```
+
+- [ ] **Step 2: Trigger it once from `loadList`**
+
+Replace `loadList` so it fires the sweep exactly once per launch:
+
+```javascript
+async function loadList() {
+  const res = await fetch('/api/list');
+  allItems = await res.json();
+  rebuildLibrarySet();
+  renderGrid();
+  if (!_didProactiveSweep) {
+    _didProactiveSweep = true;
+    proactiveRefreshStale();   // fire-and-forget; runs once per page load
+  }
+}
+```
+
+- [ ] **Step 3: Manual verification**
+
+Run the app with an MDBList key and at least one library movie/tv item.
+- Force an item stale: temporarily lower the server `_RATINGS_MAX_AGE_DAYS` (or set
+  an item's `ratings_updated_at` to an old date in its DB), reload the page.
+- In DevTools Network, confirm a background burst of `/api/ratings` calls on load
+  (no `?force`), and that the affected card's pills update without interaction.
+- Confirm it does **not** re-fire after add/remove actions (only once per load).
+- With no MDBList key, confirm **no** sweep requests fire.
+Restore any temporary changes. Stop the app.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add templates/index.html
+git commit -m "feat(ui): proactive launch sweep to refresh stale ratings (<=500/day)"
+```
+
+---
+
+## Task 11: Frontend — auth autofill hardening
 
 **Files:**
 - Modify: `templates/login.html` (verify/tighten the two-mode logic + comments)
@@ -1015,7 +1106,8 @@ refresh + "Updated" label. Stop the app.
 
 ## Self-review notes (spec coverage)
 
-- #1 iOS flash → Task 7. #2 autofill → Task 10. #3 rating display → Task 5.
+- #1 iOS flash → Task 7. #2 autofill → Task 11. #3 rating display → Task 5.
 - #4 TMDB pill → Tasks 1–3 (data) + Task 6 (UI). #5 caret → Task 8.
 - #6 refresh: manual button + label + debounce → Task 9; force mode + updated_at +
-  500/day lazy cap → Task 4; 7-day auto path preserved in Task 4's library branch.
+  500/day lazy cap (server) → Task 4; proactive launch sweep (7-day ceiling,
+  ≤500/day, oldest-first, cap-aware stop) → Task 10.
