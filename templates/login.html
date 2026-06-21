@@ -153,7 +153,6 @@ body {
       <button class="auth-tab active" id="tabLogin" onclick="setMode('login')">Sign In</button>
       <button class="auth-tab" id="tabRegister" onclick="setMode('register')">Create Account</button>
     </div>
-    <form id="authForm" autocomplete="off" onsubmit="return false">
     <div class="auth-error" id="authError"></div>
     <div class="auth-field">
       <label>Username</label>
@@ -179,8 +178,7 @@ body {
         </button>
       </div>
     </div>
-    <button type="button" class="auth-submit" id="authSubmit" onclick="submitAuth()">Sign In</button>
-    </form>
+    <button class="auth-submit" id="authSubmit" onclick="submit()">Sign In</button>
   </div>
 </div>
 <script>
@@ -205,7 +203,7 @@ function setMode(m) {
   // JS when the field becomes visible is what actually suppresses the prompt.
   document.getElementById('authPassword').autocomplete =
     m === 'login' ? 'current-password' : 'one-time-code';
-  document.getElementById('authConfirm').autocomplete = 'off';
+  document.getElementById('authConfirm').autocomplete = 'one-time-code';
   const confirmField = document.getElementById('confirmField');
   confirmField.style.display = m === 'register' ? 'block' : 'none';
   document.getElementById('authConfirm').value = '';
@@ -220,7 +218,7 @@ function setMode(m) {
   });
 }
 
-async function submitAuth() {
+async function submit() {
   const username = document.getElementById('authUsername').value.trim();
   const password = document.getElementById('authPassword').value;
   const btn = document.getElementById('authSubmit');
@@ -275,7 +273,7 @@ function showError(msg) {
   el.classList.add('show');
 }
 
-document.addEventListener('keydown', e => { if (e.key === 'Enter') submitAuth(); });
+document.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
 
 // Tapping outside the fields blurs the active input so mobile keyboards dismiss.
 function dismissKeyboardOnOutside(e) {
