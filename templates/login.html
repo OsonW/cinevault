@@ -156,13 +156,13 @@ body {
     <div class="auth-error" id="authError"></div>
     <div class="auth-field">
       <label>Username</label>
-      <input type="text" id="authUsername" placeholder="Username" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" minlength="4" maxlength="32" />
+      <input type="text" id="authPrimary" placeholder="Username" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" minlength="4" maxlength="32" />
     </div>
     <div class="auth-field">
       <label>Password</label>
       <div class="pw-wrap">
-        <input type="password" id="authPassword" placeholder="Password" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" minlength="4" maxlength="32" />
-        <button type="button" class="pw-eye-btn" id="eyePassword" onclick="togglePw('authPassword','eyePassword')" tabindex="-1" aria-label="Toggle password visibility">
+        <input type="password" id="authSecret" placeholder="Password" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" minlength="4" maxlength="32" />
+        <button type="button" class="pw-eye-btn" id="eyePassword" onclick="togglePw('authSecret','eyePassword')" tabindex="-1" aria-label="Toggle password visibility">
           <svg class="eye-on" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
           <svg class="eye-off" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
         </button>
@@ -171,8 +171,8 @@ body {
     <div class="auth-field" id="confirmField" style="display:none">
       <label>Confirm Password</label>
       <div class="pw-wrap">
-        <input type="password" id="authConfirm" placeholder="Confirm Password" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" minlength="4" maxlength="32" />
-        <button type="button" class="pw-eye-btn" id="eyeConfirm" onclick="togglePw('authConfirm','eyeConfirm')" tabindex="-1" aria-label="Toggle confirm password visibility">
+        <input type="password" id="authSecret2" placeholder="Confirm Password" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" minlength="4" maxlength="32" />
+        <button type="button" class="pw-eye-btn" id="eyeConfirm" onclick="togglePw('authSecret2','eyeConfirm')" tabindex="-1" aria-label="Toggle confirm password visibility">
           <svg class="eye-on" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
           <svg class="eye-off" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
         </button>
@@ -263,13 +263,13 @@ function setMode(m) {
   document.getElementById('tabRegister').classList.toggle('active', m === 'register');
   document.getElementById('authSubmit').textContent = m === 'login' ? 'Sign In' : 'Create Account';
 
-  const pw = document.getElementById('authPassword');
-  const conf = document.getElementById('authConfirm');
+  const pw = document.getElementById('authSecret');
+  const conf = document.getElementById('authSecret2');
   if (m === 'register') {
     // Drop native password fields so iOS sees no login form.
     setMasked(pw, true);
     setMasked(conf, true);
-    maskReal['authConfirm'] = ''; renderMasked(conf);
+    maskReal['authSecret2'] = ''; renderMasked(conf);
   } else {
     setMasked(pw, false);
     setMasked(conf, false);
@@ -286,8 +286,8 @@ function setMode(m) {
 }
 
 async function submitAuth() {
-  const username = document.getElementById('authUsername').value.trim();
-  const password = fieldValue('authPassword');
+  const username = document.getElementById('authPrimary').value.trim();
+  const password = fieldValue('authSecret');
   const btn = document.getElementById('authSubmit');
   if (!username || !password) { showError('Please fill in all fields.'); return; }
   if (mode === 'register') {
@@ -303,7 +303,7 @@ async function submitAuth() {
     if (/\s/.test(password)) {
       showError('Password cannot contain spaces.'); return;
     }
-    const confirm = fieldValue('authConfirm');
+    const confirm = fieldValue('authSecret2');
     if (password !== confirm) {
       showError('Passwords do not match.'); return;
     }
