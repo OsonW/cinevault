@@ -153,7 +153,6 @@ body {
       <button class="auth-tab active" id="tabLogin" onclick="setMode('login')">Sign In</button>
       <button class="auth-tab" id="tabRegister" onclick="setMode('register')">Create Account</button>
     </div>
-    <form id="authForm" autocomplete="off" onsubmit="return false">
     <div class="auth-error" id="authError"></div>
     <div class="auth-field">
       <label>Username</label>
@@ -180,15 +179,79 @@ body {
       </div>
     </div>
     <button type="button" class="auth-submit" id="authSubmit" onclick="submitAuth()">Sign In</button>
-    </form>
   </div>
 </div>
 <script>
 let mode = 'login';
 
+// ── JS-based password masking for REGISTER mode ──────────────────────────────
+// iOS only offers "Use Strong Password" / username suggestions when it detects a
+// login form, which requires a real <input type="password">. In register mode we
+// convert the password fields to plain type=text and mask them ourselves (no
+// type=password, no -webkit-text-security — both of which iOS treats as passwords),
+// so iOS sees no credential form and shows none of those prompts. Login mode keeps
+// native type=password so saved-password autofill still works.
+const BULLET = '•';
+const maskReal = {};      // input id -> real typed value (while masked)
+const revealed = {};      // input id -> whether the eye is currently revealing
+
+function renderMasked(inp) {
+  const real = maskReal[inp.id] || '';
+  inp.value = revealed[inp.id] ? real : BULLET.repeat(real.length);
+}
+
+function onMaskInput(e) {
+  const inp = e.target;
+  const shown = inp.value;
+  if (revealed[inp.id]) {
+    maskReal[inp.id] = shown;                 // showing real chars — value is the real value
+  } else {
+    const real = maskReal[inp.id] || '';
+    let next = '';
+    for (let i = 0; i < shown.length; i++) {  // bullets map to stored chars; anything else is newly typed
+      const ch = shown[i];
+      next += (ch === BULLET && i < real.length) ? real[i] : ch;
+    }
+    maskReal[inp.id] = next;
+    inp.value = BULLET.repeat(next.length);
+  }
+}
+
+function setMasked(inp, on) {
+  if (on) {
+    if (inp.dataset.masked === '1') return;
+    maskReal[inp.id] = inp.value || '';
+    revealed[inp.id] = false;
+    inp.type = 'text';
+    inp.setAttribute('autocomplete', 'off');
+    inp.setAttribute('inputmode', 'text');
+    inp.dataset.masked = '1';
+    renderMasked(inp);
+    inp.addEventListener('input', onMaskInput);
+  } else {
+    if (inp.dataset.masked !== '1') return;
+    inp.removeEventListener('input', onMaskInput);
+    inp.type = 'password';
+    inp.value = maskReal[inp.id] || '';
+    delete inp.dataset.masked;
+    delete revealed[inp.id];
+  }
+}
+
+function fieldValue(id) {
+  const inp = document.getElementById(id);
+  return inp.dataset.masked === '1' ? (maskReal[id] || '') : inp.value;
+}
+
 function togglePw(inputId, btnId) {
   const inp = document.getElementById(inputId);
   const btn = document.getElementById(btnId);
+  if (inp.dataset.masked === '1') {
+    revealed[inputId] = !revealed[inputId];
+    renderMasked(inp);
+    btn.classList.toggle('shown', revealed[inputId]);
+    return;
+  }
   const show = inp.type === 'password';
   inp.type = show ? 'text' : 'password';
   btn.classList.toggle('shown', show);
@@ -199,21 +262,23 @@ function setMode(m) {
   document.getElementById('tabLogin').classList.toggle('active', m === 'login');
   document.getElementById('tabRegister').classList.toggle('active', m === 'register');
   document.getElementById('authSubmit').textContent = m === 'login' ? 'Sign In' : 'Create Account';
-  // 'new-password' is what triggers Safari's "Use Strong Password" overlay on signup;
-  // 'one-time-code' (set dynamically here, like the main field) lets the user type
-  // freely without that suggestion. Apply it to the confirm field too — setting it via
-  // JS when the field becomes visible is what actually suppresses the prompt.
-  document.getElementById('authPassword').autocomplete =
-    m === 'login' ? 'current-password' : 'one-time-code';
-  document.getElementById('authConfirm').autocomplete = 'off';
-  const confirmField = document.getElementById('confirmField');
-  confirmField.style.display = m === 'register' ? 'block' : 'none';
-  document.getElementById('authConfirm').value = '';
+
+  const pw = document.getElementById('authPassword');
+  const conf = document.getElementById('authConfirm');
+  if (m === 'register') {
+    // Drop native password fields so iOS sees no login form.
+    setMasked(pw, true);
+    setMasked(conf, true);
+    maskReal['authConfirm'] = ''; renderMasked(conf);
+  } else {
+    setMasked(pw, false);
+    setMasked(conf, false);
+    pw.autocomplete = 'current-password';   // allow saved-password autofill on login
+    conf.value = '';
+  }
+
+  document.getElementById('confirmField').style.display = m === 'register' ? 'block' : 'none';
   document.getElementById('authError').classList.remove('show');
-  ['authPassword','authConfirm'].forEach(id => {
-    const inp = document.getElementById(id);
-    if (inp) inp.type = 'password';
-  });
   ['eyePassword','eyeConfirm'].forEach(id => {
     const btn = document.getElementById(id);
     if (btn) btn.classList.remove('shown');
@@ -222,7 +287,7 @@ function setMode(m) {
 
 async function submitAuth() {
   const username = document.getElementById('authUsername').value.trim();
-  const password = document.getElementById('authPassword').value;
+  const password = fieldValue('authPassword');
   const btn = document.getElementById('authSubmit');
   if (!username || !password) { showError('Please fill in all fields.'); return; }
   if (mode === 'register') {
@@ -238,7 +303,7 @@ async function submitAuth() {
     if (/\s/.test(password)) {
       showError('Password cannot contain spaces.'); return;
     }
-    const confirm = document.getElementById('authConfirm').value;
+    const confirm = fieldValue('authConfirm');
     if (password !== confirm) {
       showError('Passwords do not match.'); return;
     }
