@@ -833,6 +833,8 @@ input[type="range"]::-webkit-slider-thumb {
 body[data-tab="watchlist"] .poster-card.selected { border-color: var(--blue);   box-shadow: 0 0 0 1px var(--blue),   0 12px 32px rgba(110,168,212,0.18); }
 body[data-tab="watching"]  .poster-card.selected { border-color: var(--green);  box-shadow: 0 0 0 1px var(--green),  0 12px 32px rgba(82,183,136,0.18); }
 body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); box-shadow: 0 0 0 1px var(--purple), 0 12px 32px rgba(167,139,250,0.18); }
+.poster-card.poster-only { padding: 0; }
+.poster-card.poster-only img { border-radius: var(--radius); }
 
 /* ── Key Modal ────────────────────────────────── */
 .key-modal-backdrop {
@@ -1654,11 +1656,16 @@ const tabFilter = {
   watching:  { query: '', types: new Set(_ALL_TYPES) },
   finished:  { query: '', types: new Set(_ALL_TYPES) },
 };
-const _VALID_SIZES = new Set(['small','medium','large']);
+const _VALID_SIZES = new Set(['text', 'poster', 'default']);
+function _migrateSize(v) {
+  if (v === 'small') return 'text';
+  if (v === 'medium' || v === 'large') return 'default';
+  return _VALID_SIZES.has(v) ? v : 'default';
+}
 const tabSize = {
-  watchlist: _VALID_SIZES.has(localStorage.getItem('tabSize_watchlist')) ? localStorage.getItem('tabSize_watchlist') : 'medium',
-  watching:  _VALID_SIZES.has(localStorage.getItem('tabSize_watching'))  ? localStorage.getItem('tabSize_watching')  : 'medium',
-  finished:  _VALID_SIZES.has(localStorage.getItem('tabSize_finished'))  ? localStorage.getItem('tabSize_finished')  : 'medium',
+  watchlist: _migrateSize(localStorage.getItem('tabSize_watchlist')),
+  watching:  _migrateSize(localStorage.getItem('tabSize_watching')),
+  finished:  _migrateSize(localStorage.getItem('tabSize_finished')),
 };
 const _VALID_SORTS = new Set(['name','added','rating']);
 const tabSort = {
@@ -1938,9 +1945,9 @@ function renderGrid() {
   const ratingSortBtn = currentTab === 'finished'
     ? `<button class="sort-btn ${currentSort==='rating'?'active':''}" onclick="setSort('rating')">Top Rated</button>` : '';
 
-  const sizeOpts   = ['small','medium','large'];
-  const sizeLabels = { small:'Compact', medium:'Default', large:'Large' };
-  const sizeHints  = { small:'remove poster', medium:'', large:'add description' };
+  const sizeOpts   = ['text','default','poster'];
+  const sizeLabels = { text:'Text only', default:'Default', poster:'Poster only' };
+  const sizeHints  = { text:'no poster', default:'', poster:'image only' };
   const curSize    = tabSize[currentTab];
   const topBar = `<div class="grid-top-bar">
     <input class="grid-filter-input" id="gridFilterInput" placeholder="Search titles…"
@@ -1993,18 +2000,23 @@ function renderGrid() {
     const stars = currentTab === 'finished'
       ? `<div class="poster-stars">${[1,2,3,4,5,6,7,8,9,10].map(s =>
           `<span class="pstar ${(item.rating||0)>=s?'lit':''}">★</span>`).join('')}</div>` : '';
-    const yearBadge  = item.year ? `<span class="poster-year-badge">${esc(item.year)}</span>` : '';
-    const typeBadge  = `<span class="poster-type-badge ptb-${item.media_type}">${TYPE_SVG[item.media_type]} ${TYPE_LABEL[item.media_type]}</span>`;
-    const badgeRow   = `<div class="poster-badge-row">${yearBadge}${typeBadge}</div>`;
     const author = `<div class="poster-author" id="pa-${item.id}"${item.author ? '' : ' style="display:none"'}>${esc(item.author||'')}</div>`;
     const dateStr = fmtDate(item.date_added);
 
     const dateHtml = dateStr ? `<div class="poster-date">${dateStr}</div>` : '';
 
-    if (size === 'small') {
+    const pillsHost = `<div class="poster-badge-row" id="pills-${item.id}">${renderPills(item, _ratingsCache[item.media_type+':'+(item.tmdb_id||item.external_id)] || {}, gridPills)}</div>`;
+
+    if (size === 'poster') {
+      return `<div class="poster-card poster-only" id="pc-${item.id}" style="${cardFontStyle}" onclick="selectItem(${item.id})">
+        <img src="${posterUrl(item)}" referrerpolicy="no-referrer" onerror="this.src='${BROKEN_POSTER_FULL}'" loading="lazy">
+      </div>`;
+    }
+
+    if (size === 'text') {
       return `<div class="poster-card" id="pc-${item.id}" style="${cardFontStyle}" onclick="selectItem(${item.id})">
         <div class="poster-info">
-          ${badgeRow}
+          ${pillsHost}
           <div class="poster-title" style="white-space:normal;overflow:visible;text-overflow:clip">${esc(item.title)}</div>
           ${author}
           ${dateHtml}
@@ -2013,24 +2025,10 @@ function renderGrid() {
       </div>`;
     }
 
-    if (size === 'large') {
-      return `<div class="poster-card" id="pc-${item.id}" style="${cardFontStyle}" onclick="selectItem(${item.id})">
-        <img src="${posterUrl(item)}" referrerpolicy="no-referrer" onerror="this.src='${BROKEN_POSTER_FULL}'" loading="lazy">
-        <div class="poster-info">
-          ${badgeRow}
-          <div class="poster-title">${esc(item.title)}</div>
-          ${author}
-          ${dateHtml}
-          ${item.overview ? `<div class="poster-overview-full">${esc(item.overview)}</div>` : ''}
-          ${stars}
-        </div>
-      </div>`;
-    }
-
     return `<div class="poster-card" id="pc-${item.id}" style="${cardFontStyle}" onclick="selectItem(${item.id})">
       <img src="${posterUrl(item)}" referrerpolicy="no-referrer" onerror="this.src='${BROKEN_POSTER_FULL}'" loading="lazy">
       <div class="poster-info">
-        ${badgeRow}
+        ${pillsHost}
         <div class="poster-title">${esc(item.title)}</div>
         ${author}
         ${dateHtml}
@@ -3011,6 +3009,16 @@ function esc(str) {
   return String(str || '')
     .replace(/&/g, '&amp;').replace(/</g, '&lt;')
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// TEMP stubs (replaced in Task 5/6).
+let gridPills = ['year','type'];
+const _ratingsCache = {};
+function renderPills(item, ratings, selected) {
+  let h = '';
+  if (selected.includes('year') && item.year) h += `<span class="poster-year-badge">${esc(String(item.year))}</span>`;
+  if (selected.includes('type')) h += `<span class="poster-type-badge ptb-${item.media_type}">${TYPE_SVG[item.media_type]} ${TYPE_LABEL[item.media_type]}</span>`;
+  return h;
 }
 
 // ─────────────────────────────────────────────
