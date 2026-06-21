@@ -79,8 +79,8 @@ body {
   grid-area: topbar;
   display: flex;
   align-items: center;
-  gap: 1.75rem;
-  padding: 1.625rem 1.75rem;
+  gap: 1.875rem;
+  padding: 0.9375rem 1.875rem;
   flex-shrink: 0;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
@@ -92,7 +92,7 @@ body {
 /* ── Top Bar logo ─────────────────────────────── */
 .logo {
   font-family: 'Fraunces', serif;
-  font-size: 2.35rem;
+  font-size: 1.6875rem;
   font-weight: 300;
   letter-spacing: 0.02em;
   white-space: nowrap;
@@ -110,9 +110,9 @@ body {
 
 /* Magnifying-glass button inside the search field (mirrors the password eye). */
 .search-magnify-btn {
-  position: absolute; top: 50%; right: 0.625rem;
+  position: absolute; top: 50%; right: 0.4375rem;
   transform: translateY(-50%);
-  width: 2.75rem; height: 2.75rem;
+  width: 2rem; height: 2rem;
   border: none; background: none; padding: 0;
   display: flex; align-items: center; justify-content: center;
   color: var(--muted); cursor: pointer; z-index: 2;
@@ -137,8 +137,8 @@ body {
   border: 1px solid var(--border-md);
   color: var(--text);
   font-family: 'DM Sans', sans-serif;
-  font-size: 1.5rem;
-  padding: 1rem 3.5rem 1rem 1.25rem;
+  font-size: 1rem;
+  padding: 0.625rem 2.375rem 0.625rem 0.9375rem;
   transition: border-color 0.2s;
 }
 .search-anchor input::placeholder,
@@ -203,13 +203,13 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 /* ── Tabs ─────────────────────────────────────── */
 .tabs { display: flex; gap: 0.125rem; margin-left: auto; }
 .tab {
-  padding: 0.9375rem 1.625rem;
+  padding: 0.5625rem 1.125rem;
   border-radius: var(--radius);
   border: 1px solid transparent;
   background: none;
   color: var(--muted);
   font-family: 'DM Sans', sans-serif;
-  font-size: 1.5rem;
+  font-size: 1rem;
   font-weight: 400;
   cursor: pointer;
   transition: all 0.15s;
@@ -631,11 +631,11 @@ input[type="range"]::-webkit-slider-thumb {
   font-size: 1rem; cursor: pointer; transition: all 0.15s; white-space: nowrap;
   display: inline-flex; align-items: center; gap: 0.3125rem; letter-spacing: 0.01em;
 }
-/* Top-bar Filter button is part of the ~75%-larger top bar (overrides grid size). */
+/* Top-bar Filter button matches the top bar scale (overrides grid size). */
 .search-filter-wrap .size-dd-btn {
-  padding: 0.875rem 1.5rem; font-size: 1.4rem; gap: 0.5rem;
+  padding: 0.625rem 1.25rem; font-size: 1rem; gap: 0.4375rem;
 }
-.search-filter-wrap .size-dd-btn svg { width: 1.4em; height: 1.4em; }
+.search-filter-wrap .size-dd-btn svg { width: 1.15em; height: 1.15em; }
 .size-dd-btn:hover { border-color: var(--accent); background: var(--accent-dim); }
 .size-dd-menu {
   position: absolute; top: calc(100% + 0.25rem); right: 0;
@@ -684,6 +684,22 @@ input[type="range"]::-webkit-slider-thumb {
 .search-filter-menu .sfm-col { flex: 1 1 0; min-width: 0; padding: 0.25rem 0; }
 .search-filter-menu .sfm-col-pills { border-left: 1px solid var(--border-md); }
 .search-filter-menu .sfm-col > .pill-dd-head:first-child { border-top: none; margin-top: 0; }
+
+/* ── Consolidated grid Filter dropdown (media type · order · pills · grid type) ── */
+.grid-controls-wrap .grid-controls-menu {
+  min-width: 26rem; max-height: 75vh; overflow-y: auto; flex-direction: column;
+}
+.size-dd-menu.grid-controls-menu.open { display: flex; }
+.grid-controls-menu .gcm-cols { display: flex; align-items: stretch; }
+.grid-controls-menu .sfm-col { flex: 1 1 0; min-width: 0; padding: 0.25rem 0; }
+.grid-controls-menu .sfm-col-pills { border-left: 1px solid var(--border-md); }
+.grid-controls-menu .sfm-col > .pill-dd-head:first-child { border-top: none; margin-top: 0; }
+.gcm-clear {
+  width: 100%; border: none; border-top: 1px solid var(--border-md);
+  background: none; color: var(--muted); font-family: 'DM Sans', sans-serif;
+  font-size: 0.9375rem; padding: 0.75rem; cursor: pointer; transition: all 0.15s;
+}
+.gcm-clear:hover { color: var(--text); background: rgba(255,255,255,0.04); }
 
 .grid-filter-input {
   width: 20rem; flex-shrink: 0; padding: 0.5625rem 0.9375rem;
@@ -1034,7 +1050,7 @@ body.entry-active .entry-cancel-account { display: block; }
   flex-shrink: 0;
 }
 .key-btn {
-  width: 3.625rem; height: 3.625rem; border-radius: var(--radius);
+  width: 2.5rem; height: 2.5rem; border-radius: var(--radius);
   border: 1px solid transparent; background: none;
   color: var(--muted); cursor: pointer;
   display: flex; align-items: center; justify-content: center;
@@ -1181,7 +1197,7 @@ body.entry-active .entry-cancel-account { display: block; }
         <input type="text" id="searchInput" placeholder="Search movies, shows, books, manga…"
                autocomplete="off" oninput="onSearchInput()" onkeydown="onSearchKey(event)">
         <button type="button" class="search-magnify-btn" id="searchMainBtn" aria-label="Search" onclick="openModal()">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         </button>
         <div id="searchDropdown" class="search-dropdown"></div>
       </div>
@@ -1195,14 +1211,14 @@ body.entry-active .entry-cancel-account { display: block; }
     </nav>
     <div class="settings-cluster">
       <button class="key-btn" onclick="openKeyUpdate()">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="7.5" cy="15.5" r="5.5"/>
           <path d="M21 2l-9.6 9.6"/>
           <path d="M15.5 7.5l3 3L22 7l-3-3"/>
         </svg>
       </button>
       <button class="key-btn" onclick="openLogoutConfirm()">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
           <polyline points="16 17 21 12 16 7"/>
           <line x1="21" y1="12" x2="9" y2="12"/>
@@ -1743,6 +1759,7 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     closeModal(); closeDropdown();
     closeSizeDropdown();
+    document.querySelectorAll('.size-dd-menu').forEach(m => m.classList.remove('open'));
   }
 });
 document.addEventListener('click', e => {
@@ -2015,31 +2032,11 @@ function renderGrid() {
   }
 
   const f = tabFilter[currentTab];
-  const hasFilter = !!(f.query || f.types.size < _ALL_TYPES.length);
-
-  const ratingSortBtn = currentTab === 'finished'
-    ? `<button class="sort-btn ${currentSort==='rating'?'active':''}" onclick="setSort('rating')">Top Rated</button>` : '';
-
-  const sizeOpts   = ['text','default','poster'];
-  const sizeLabels = { text:'Text only', default:'Default', poster:'Poster only' };
-  const sizeHints  = { text:'no poster', default:'', poster:'image only' };
-  const curSize    = tabSize[currentTab];
   const topBar = `<div class="grid-top-bar">
     <input class="grid-filter-input" id="gridFilterInput" placeholder="Search titles…"
       value="${esc(f.query)}" oninput="onGridFilter(this.value)">
-    ${_ALL_TYPES.map(t => `<button class="grid-type-btn${f.types.has(t)?' active':''}" data-gtype="${t}" onclick="toggleGridType('${t}')">${TYPE_SVG[t]} ${TYPE_LABEL[t]}</button>`).join('')}
-    <button class="grid-filter-clear${hasFilter?'':' hidden'}" onclick="clearGridFilter()">Clear</button>
     <div class="grid-right-group">
-      <button class="sort-btn ${currentSort==='name'?'active':''}" onclick="setSort('name')">Alphabetical</button>
-      ${ratingSortBtn}
-      <button class="sort-btn ${currentSort==='added'?'active':''}" onclick="setSort('added')">${currentTab==='watching'?'Last Progress':'Recently Added'}</button>
-      ${renderPillSelector('grid')}
-      <div class="size-dd-wrap">
-        <button class="size-dd-btn" onclick="toggleSizeDropdown(event)">${sizeLabels[curSize]} <span style="font-size:0.5625rem;opacity:0.7">▾</span></button>
-        <div class="size-dd-menu" id="sizeDropdownMenu">
-          ${sizeOpts.map(s => `<div class="size-dd-item${curSize===s?' active':''}" onclick="setSizeFromDropdown('${s}')"><span>${sizeLabels[s]}</span><span class="size-dd-hint">${sizeHints[s]}</span></div>`).join('')}
-        </div>
-      </div>
+      ${renderGridControls()}
     </div>
   </div>
   <div class="grid-count-row">
@@ -2170,11 +2167,19 @@ async function toggleDescription(itemId) {
   btn.disabled = false;
 }
 
-function setSort(s) {
+// Keep the consolidated grid Filter dropdown open across the renderGrid() rebuild.
+function _reopenGridCtl() {
+  const menu = document.getElementById('pillMenu_gridctl');
+  if (menu) menu.classList.add('open');
+}
+
+function setSort(s, ev) {
+  if (ev) ev.stopPropagation();
   currentSort = s;
   tabSort[currentTab] = s;
   localStorage.setItem(`tabSort_${currentTab}`, s);
   renderGrid();
+  if (ev) _reopenGridCtl();
 }
 
 // Jump to a posters-per-row checkpoint. Updates the grid in place (keeps the
@@ -2201,28 +2206,115 @@ function onGridFilter(val) {
   if (inp) { inp.focus(); const l = inp.value.length; inp.setSelectionRange(l, l); }
 }
 
-function toggleGridType(type) {
+function toggleGridType(type, ev) {
+  if (ev) ev.stopPropagation();
   const f = tabFilter[currentTab];
   if (f.types.has(type)) {
-    if (f.types.size === 1) return;
+    if (f.types.size === 1) { if (ev) _reopenGridCtl(); return; }
     f.types.delete(type);
   } else {
     f.types.add(type);
   }
   renderGrid();
-  const inp = document.getElementById('gridFilterInput');
-  if (inp) inp.focus();
+  if (ev) _reopenGridCtl();
 }
 
-function clearGridFilter() {
+function clearGridFilter(ev) {
+  if (ev) ev.stopPropagation();
   tabFilter[currentTab] = { query: '', types: new Set(_ALL_TYPES) };
   renderGrid();
+  if (ev) _reopenGridCtl();
 }
 
-function setTabSize(size) {
+function setTabSize(size, ev) {
+  if (ev) ev.stopPropagation();
   tabSize[currentTab] = size;
   localStorage.setItem(`tabSize_${currentTab}`, size);
   renderGrid();
+  if (ev) _reopenGridCtl();
+}
+
+// ── Consolidated grid Filter dropdown: media type, search order, pills, grid type ──
+function _pillSectionsHtml(selArr, which) {
+  return PILL_SECTIONS.map(sec => {
+    const disabled = sec.limited && _mdblist.exhausted;
+    let cap = '';
+    if (sec.limited) {
+      const t = _mdblistCaption();
+      cap = (t ? `<div class="pill-dd-cap${_mdblist.exhausted ? ' warn' : ''}">${t}</div>` : '') + _quotaBar();
+    }
+    const rows = sec.sources.map(src =>
+      `<div class="size-dd-item pill-dd-item${selArr.includes(src) ? ' active' : ''}${disabled ? ' disabled' : ''}"
+            ${disabled ? '' : `onclick="togglePill('${which}','${src}',event)"`}>
+         <span>${PILL_LABELS[src]}</span><span class="pill-dd-check">${selArr.includes(src) ? '✓' : ''}</span>
+       </div>`).join('');
+    return `<div class="pill-dd-head">${sec.label}${sec.note ? ` <span class="pill-dd-note">${sec.note}</span>` : ''}</div>${cap}${rows}`;
+  }).join('');
+}
+
+function renderGridControls() {
+  const f = tabFilter[currentTab];
+  const hasFilter = !!(f.query || f.types.size < _ALL_TYPES.length);
+
+  const typeRows = _ALL_TYPES.map(t =>
+    `<div class="size-dd-item pill-dd-item${f.types.has(t)?' active':''}" onclick="toggleGridType('${t}',event)">
+       <span>${TYPE_SVG[t]} ${TYPE_LABEL[t]}</span><span class="pill-dd-check">${f.types.has(t)?'✓':''}</span>
+     </div>`).join('');
+
+  const sortOpts = [{k:'name',l:'Alphabetical'},
+                    {k:'added',l:currentTab==='watching'?'Last Progress':'Recently Added'}];
+  if (currentTab === 'finished') sortOpts.push({k:'rating',l:'Top Rated'});
+  const sortRows = sortOpts.map(o =>
+    `<div class="size-dd-item pill-dd-item${currentSort===o.k?' active':''}" onclick="setSort('${o.k}',event)">
+       <span>${o.l}</span><span class="pill-dd-check">${currentSort===o.k?'✓':''}</span>
+     </div>`).join('');
+
+  const sizeOpts = [{k:'default',l:'Default',h:''},
+                    {k:'poster',l:'Poster only',h:'image only'},
+                    {k:'text',l:'Text only',h:'no poster'}];
+  const curSize = tabSize[currentTab];
+  const sizeRows = sizeOpts.map(o =>
+    `<div class="size-dd-item${curSize===o.k?' active':''}" onclick="setTabSize('${o.k}',event)">
+       <span>${o.l}</span><span class="size-dd-hint">${o.h}</span></div>`).join('');
+
+  const clearRow = hasFilter
+    ? `<button class="gcm-clear" onclick="clearGridFilter(event)">Clear filters</button>` : '';
+
+  return `<div class="size-dd-wrap pill-dd-wrap grid-controls-wrap">
+    <button class="size-dd-btn" onclick="toggleGridControls(event)">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+      Filter <span style="font-size:0.5625rem;opacity:0.7">▾</span>
+    </button>
+    <div class="size-dd-menu grid-controls-menu" id="pillMenu_gridctl">
+      <div class="gcm-cols">
+        <div class="sfm-col">
+          <div class="pill-dd-head">Media type</div>${typeRows}
+          <div class="pill-dd-head">Search order</div>${sortRows}
+          <div class="pill-dd-head">Grid type</div>${sizeRows}
+        </div>
+        <div class="sfm-col sfm-col-pills">${_pillSectionsHtml(gridPills, 'grid')}</div>
+      </div>
+      ${clearRow}
+    </div>
+  </div>`;
+}
+
+function _repaintGridCtlOpen() {
+  const wrap = document.querySelector('.grid-controls-wrap');
+  if (wrap) wrap.outerHTML = renderGridControls();
+  _reopenGridCtl();
+}
+
+function toggleGridControls(ev) {
+  ev.stopPropagation();
+  const menu = document.getElementById('pillMenu_gridctl');
+  const willOpen = !menu.classList.contains('open');
+  document.querySelectorAll('.size-dd-menu').forEach(m => m.classList.remove('open'));
+  if (willOpen) {
+    menu.classList.add('open');
+    // Refresh quota on open, then repaint controls with fresh pill state.
+    refreshMdblistStatus().then(_repaintGridCtlOpen);
+  }
 }
 
 // ─────────────────────────────────────────────
@@ -3270,7 +3362,7 @@ function togglePill(which, src, ev) {
   if (which === 'grid') renderGrid(); else rerenderSearch();
   // The re-render rebuilds the selector; reopen its (fresh) menu so toggling
   // multiple pills doesn't close the dropdown each time.
-  const menu = document.getElementById('pillMenu_' + which);
+  const menu = document.getElementById(which === 'grid' ? 'pillMenu_gridctl' : 'pillMenu_search');
   if (menu) menu.classList.add('open');
 }
 
