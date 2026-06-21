@@ -2338,6 +2338,17 @@ function selectItem(id) {
   if (item) renderDetail(item);
 }
 
+// 0 -> "Unrated"; otherwise drop a trailing .0 (10.0 -> "10", 7.5 -> "7.5").
+function fmtRating(r) {
+  const n = Number(r) || 0;
+  if (n <= 0) return 'Unrated';
+  return (Math.round(n * 10) % 10 === 0) ? String(Math.round(n)) : n.toFixed(1);
+}
+function ratingLabel(r) {
+  const n = Number(r) || 0;
+  return n <= 0 ? 'Unrated' : fmtRating(n) + ' / 10';
+}
+
 function renderDetail(item) {
   const panel = document.getElementById('detailPanel');
   panel.scrollTop = 0;
@@ -2345,10 +2356,10 @@ function renderDetail(item) {
   const ratingHtml = item.status === 'finished' ? `
     <div class="rating-wrap">
       <div class="rating-label">Your rating
-        <span class="rating-val" id="rv">${(item.rating||0).toFixed(1)} / 10</span>
+        <span class="rating-val" id="rv">${ratingLabel(item.rating)}</span>
       </div>
       <input type="range" min="0" max="10" step="0.1" value="${item.rating||0}"
-             oninput="document.getElementById('rv').textContent=parseFloat(this.value).toFixed(1)+' / 10'"
+             oninput="document.getElementById('rv').textContent=ratingLabel(this.value)"
              onchange="saveField(${item.id},'rating',parseFloat(this.value))">
     </div>` : '';
 
