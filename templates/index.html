@@ -961,25 +961,13 @@ body.entry-active .entry-cancel-account { display: block; }
   font-family: 'DM Sans', sans-serif;
 }
 .key-help-link:hover { color: var(--accent-hover); }
-.key-meta-row {
-  display: flex; align-items: center; justify-content: space-between;
-  margin-top: 0.375rem;
+.key-subrow {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 0.5rem; margin-top: 0.25rem; min-height: 0.9rem;
 }
-.key-badge {
-  font-size: 0.625rem; font-weight: 600; letter-spacing: 0.07em;
-  text-transform: uppercase; padding: 0.1875rem 0.5rem;
-  border-radius: 999px; border: 1px solid transparent;
-}
-.key-badge-req { color: var(--accent); background: var(--accent-glow); border-color: var(--accent-dim); }
-.key-badge-opt { color: var(--muted);  background: rgba(255,255,255,0.04); border-color: var(--border-md); }
-.key-info-btn {
-  font-family: 'DM Sans', sans-serif; font-size: 0.6875rem; font-weight: 500;
-  color: var(--accent); background: var(--accent-glow);
-  border: 1px solid var(--accent-dim); border-radius: 999px;
-  padding: 0.1875rem 0.625rem; cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
-}
-.key-info-btn:hover { background: var(--accent-dim); border-color: var(--accent); color: var(--accent-hover); }
+.key-subrow .key-current-hint { margin-top: 0; }
+.key-req { font-size: 0.625rem; font-weight: 600; letter-spacing: 0.05em; color: var(--accent); }
+.key-opt { font-size: 0.625rem; font-weight: 600; letter-spacing: 0.05em; color: var(--muted); }
 .key-modal-save {
   background: var(--accent); color: #fff;
   border: none; border-radius: var(--radius);
@@ -1284,7 +1272,7 @@ body.entry-active .entry-cancel-account { display: block; }
       </div>
       <div class="key-field">
         <div class="key-field-row">
-          <label>TMDB API Key</label>
+          <label>TMDB API Key <span class="key-req">(REQUIRED)</span></label>
           <button class="key-help-link" onclick="showKeyHelp('Tmdb')">How do I get this?</button>
         </div>
         <div class="key-input-wrap">
@@ -1294,15 +1282,14 @@ body.entry-active .entry-cancel-account { display: block; }
             <svg class="eye-off" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
           </button>
         </div>
-        <div class="key-current-hint" id="keyCurrentTmdb"></div>
-        <div class="key-meta-row">
-          <span class="key-badge key-badge-req">Required</span>
-          <button type="button" class="key-info-btn" onclick="showKeyHelp('TmdbInfo')">More info</button>
+        <div class="key-subrow">
+          <span class="key-current-hint" id="keyCurrentTmdb"></span>
+          <button type="button" class="key-help-link" onclick="showKeyHelp('TmdbInfo')">More info</button>
         </div>
       </div>
       <div class="key-field">
         <div class="key-field-row">
-          <label>MDBList API Key</label>
+          <label>MDBList API Key <span class="key-opt">(OPTIONAL)</span></label>
           <button class="key-help-link" onclick="showKeyHelp('Mdblist')">How do I get this?</button>
         </div>
         <div class="key-input-wrap">
@@ -1312,10 +1299,9 @@ body.entry-active .entry-cancel-account { display: block; }
             <svg class="eye-off" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
           </button>
         </div>
-        <div class="key-current-hint" id="keyCurrentMdblist"></div>
-        <div class="key-meta-row">
-          <span class="key-badge key-badge-opt">Optional</span>
-          <button type="button" class="key-info-btn" onclick="showKeyHelp('MdblistInfo')">More info</button>
+        <div class="key-subrow">
+          <span class="key-current-hint" id="keyCurrentMdblist"></span>
+          <button type="button" class="key-help-link" onclick="showKeyHelp('MdblistInfo')">More info</button>
         </div>
       </div>
       <div class="key-modal-actions">
