@@ -753,20 +753,19 @@ input[type="range"]::-webkit-slider-thumb {
   font-size: 0.917em; color: var(--muted); line-height: 1.45; margin-top: 0.3125rem;
 }
 .poster-badge-row { display: flex; align-items: center; gap: 0.25rem; margin-bottom: 0.25rem; flex-wrap: wrap; }
-.spill { display:inline-flex; align-items:center; gap:0.2em; padding:0.1em 0.42em;
-  border-radius:0.32em; font-size:0.66em; font-weight:600; line-height:1.45;
+.spill { display:inline-flex; align-items:center; gap:0.2em; padding:0.125rem 0.4rem;
+  border-radius:var(--radius); font-size:0.66em; font-weight:600; line-height:1.45;
   border:1px solid transparent; white-space:nowrap; }
 .spill-ic { height:1em; width:auto; }
-.spill-imdb { background:#f5c518; color:#000; }
+.spill-imdb { background:rgba(245,197,24,0.16); color:#f5c518; border-color:rgba(245,197,24,0.4); }
 .spill-imdb b, .spill-mal b { font-weight:800; letter-spacing:0.01em; }
-.spill-mal { background:#2e51a2; color:#fff; }
+.spill-mal { background:rgba(70,110,200,0.18); color:#8aa4e6; border-color:rgba(70,110,200,0.42); }
 .spill-tomatoes  { background:rgba(250,50,10,0.14);  color:#ff6a4d; border-color:rgba(250,50,10,0.32); }
 .spill-audience  { background:rgba(250,110,30,0.14); color:#ffa05c; border-color:rgba(250,110,30,0.32); }
 .spill-letterboxd{ background:rgba(0,224,84,0.12);   color:#5be08a; border-color:rgba(0,224,84,0.28); }
-.spill-metacritic { color:#fff; }
-.spill-metacritic.mc-good  { background:#00a85a; }
-.spill-metacritic.mc-mixed { background:#caa300; color:#1a1a1a; }
-.spill-metacritic.mc-bad   { background:#d33b3b; }
+.spill-metacritic.mc-good  { background:rgba(0,168,90,0.15);  color:#3ad486; border-color:rgba(0,168,90,0.34); }
+.spill-metacritic.mc-mixed { background:rgba(202,163,0,0.16); color:#e6c34d; border-color:rgba(202,163,0,0.36); }
+.spill-metacritic.mc-bad   { background:rgba(211,59,59,0.15); color:#f06a6a; border-color:rgba(211,59,59,0.36); }
 .poster-type-badge {
   display: inline-flex; align-items: center; gap: 0.1875rem;
   font-size: 0.75em; padding: 0.125rem 0.375rem; border-radius: var(--radius);
@@ -1339,7 +1338,7 @@ body.entry-active .entry-cancel-account { display: block; }
           <button class="key-help-link" onclick="showKeyHelp('Mdblist')">How do I get this?</button>
         </div>
         <div class="key-input-wrap">
-          <input type="password" id="keyInputMdblist" placeholder="New MDBList Key (optional)" autocomplete="one-time-code" data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" oninput="validateKeyForm()">
+          <input type="password" id="keyInputMdblist" placeholder="New MDBList Key" autocomplete="one-time-code" data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" oninput="validateKeyForm()">
           <button type="button" class="key-eye-btn" id="keyEyeMdblist" onclick="toggleKeyVisibility('Mdblist')">
             <svg class="eye-on" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
             <svg class="eye-off" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
@@ -1375,8 +1374,8 @@ body.entry-active .entry-cancel-account { display: block; }
         <div class="key-help-header">Getting an MDBList API Key</div>
         <div class="key-help-steps">
           <div class="key-help-step"><div class="key-help-num">1</div><div class="key-help-text">Create a free account at <a href="https://mdblist.com" target="_blank">mdblist.com</a></div></div>
-          <div class="key-help-step"><div class="key-help-num">2</div><div class="key-help-text">Open your <a href="https://mdblist.com/preferences" target="_blank">Preferences</a> page</div></div>
-          <div class="key-help-step"><div class="key-help-num">3</div><div class="key-help-text">Scroll to the <strong>API Key</strong> section and generate a key if you don't have one</div></div>
+          <div class="key-help-step"><div class="key-help-num">2</div><div class="key-help-text">Click on your username and open your <a href="https://mdblist.com/preferences" target="_blank">Preferences</a> page</div></div>
+          <div class="key-help-step"><div class="key-help-num">3</div><div class="key-help-text">Scroll to the <strong>API Access</strong> section and click <Strong>New API Key</Strong> if you don't have one</div></div>
           <div class="key-help-step"><div class="key-help-num">4</div><div class="key-help-text">Copy the key and paste it here. The free tier allows 1,000 requests per day</div></div>
         </div>
       </div>
@@ -1557,6 +1556,9 @@ async function saveKeysFromModal() {
 
   if (ok) {
     await refreshKeys();
+    document.getElementById('keyInputTmdb').value    = '';
+    document.getElementById('keyInputMdblist').value = '';
+    _resetKeyVisibility();
     document.getElementById('keyModalBackdrop').classList.add('hidden');
     document.body.classList.remove('entry-active');
     showToast(_keyModalMode === 'update' ? 'Key updated.' : 'Key saved.');

@@ -112,8 +112,17 @@ def _get_mdblist_key() -> str | None:
     return None
 
 
-# MDBList rating sources we surface, mapped from the API's `source` field.
-_MDBLIST_SOURCES = {"imdb", "tomatoes", "audience", "metacritic", "letterboxd", "mal"}
+# MDBList `source` field -> our canonical key. Aliases cover naming differences
+# across MDBList API versions (popcornmeter is "popcorn", MAL is "myanimelist").
+# Matched case-insensitively.
+_MDBLIST_SOURCE_ALIASES = {
+    "imdb": "imdb",
+    "tomatoes": "tomatoes",
+    "audience": "audience", "popcorn": "audience",
+    "metacritic": "metacritic",
+    "letterboxd": "letterboxd",
+    "mal": "mal", "myanimelist": "mal",
+}
 
 # App media_type -> MDBList path segment. Only movies/shows are supported.
 _MDBLIST_TYPE = {"movie": "movie", "tv": "show"}
@@ -140,9 +149,10 @@ def _fetch_mdblist_ratings(media_type: str, tmdb_id, key: str) -> dict:
     for r in ratings:
         if not isinstance(r, dict):
             continue
-        src, val = r.get("source"), r.get("value")
-        if src in _MDBLIST_SOURCES and val is not None:
-            out[src] = val
+        canon = _MDBLIST_SOURCE_ALIASES.get(str(r.get("source", "")).lower())
+        val = r.get("value")
+        if canon and val is not None and canon not in out:
+            out[canon] = val
     return out
 
 

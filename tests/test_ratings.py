@@ -90,18 +90,19 @@ def test_fetch_mdblist_ratings_normalizes(monkeypatch):
         def json(self):
             return {"ratings": [
                 {"source": "imdb", "value": 8.1},
-                {"source": "tomatoes", "value": 94},
-                {"source": "audience", "value": 88},
+                {"source": "Tomatoes", "value": 94},       # capitalized -> tomatoes
+                {"source": "popcorn", "value": 88},         # alias -> audience
                 {"source": "metacritic", "value": 76},
                 {"source": "letterboxd", "value": 4.2},
-                {"source": "mal", "value": None},
-                {"source": "trakt", "value": 90},
+                {"source": "myanimelist", "value": 8.5},    # alias -> mal
+                {"source": "metacriticuser", "value": 70},  # not surfaced
+                {"source": "trakt", "value": 90},           # not surfaced
             ]}
 
     monkeypatch.setattr(a.requests, "get", lambda *args, **kw: FakeResp())
     out = a._fetch_mdblist_ratings("movie", 27205, "fake-key")
     assert out == {"imdb": 8.1, "tomatoes": 94, "audience": 88,
-                   "metacritic": 76, "letterboxd": 4.2}
+                   "metacritic": 76, "letterboxd": 4.2, "mal": 8.5}
 
 
 def test_fetch_mdblist_ratings_unsupported_type(monkeypatch):
