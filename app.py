@@ -17,6 +17,7 @@ from db import (
     get_all_media, get_media_by_id, get_media_by_external_id,
     add_media_entry, update_media_entry, delete_media_entry, set_media_dates,
     set_media_ratings,
+    set_media_tmdb_rating,
 )
 from auth import (
     auth_bp, login_manager, rate_limit, _as_str,
@@ -154,6 +155,25 @@ def _fetch_mdblist_ratings(media_type: str, tmdb_id, key: str) -> dict:
         if canon and val is not None and canon not in out:
             out[canon] = val
     return out
+
+
+# TMDB rating (vote_average) for non-library titles. Keyed "media_type:tmdb_id".
+_tmdb_rating_cache: dict[str, tuple[float, object]] = {}
+_TMDB_RATING_TTL = 24 * 3600  # seconds
+
+
+def _fetch_tmdb_rating(media_type: str, tmdb_id, api_key: str):
+    """Return the TMDB vote_average (float) or None. Free; no MDBList quota."""
+    if media_type not in ("movie", "tv") or not tmdb_id:
+        return None
+    try:
+        endpoint = "movie" if media_type == "movie" else "tv"
+        url = f"https://api.themoviedb.org/3/{endpoint}/{tmdb_id}"
+        data = requests.get(url, params=_tmdb_params(api_key), timeout=5).json()
+        val = data.get("vote_average")
+        return float(val) if isinstance(val, (int, float)) and val else None
+    except Exception:
+        return None
 
 
 # Shared across users — keyed by external IDs so safe to share
@@ -814,6 +834,36 @@ def api_mdblist_status():
         pass
     _mdblist_status_cache[uid] = (time.time(), out)
     return jsonify(out)
+
+
+@app.route("/api/tmdb-rating/<media_type>/<tmdb_id>")
+@login_required
+def api_tmdb_rating(media_type, tmdb_id):
+    """Free TMDB vote_average. Persists for library rows; TTL-caches others."""
+    if media_type not in ("movie", "tv"):
+        return jsonify({"tmdb": None})
+    key = _get_tmdb_key()
+    if not key:
+        return jsonify({"tmdb": None})
+
+    row = get_media_by_external_id(str(tmdb_id), media_type)
+    if row:
+        if row.get("tmdb_rating") is not None:
+            return jsonify({"tmdb": row["tmdb_rating"]})
+        val = _fetch_tmdb_rating(media_type, tmdb_id, key)
+        if val is not None:
+            set_media_tmdb_rating(row["id"], val)
+        return jsonify({"tmdb": val})
+
+    ck = f"{media_type}:{tmdb_id}"
+    hit = _tmdb_rating_cache.get(ck)
+    if hit and (time.time() - hit[0]) < _TMDB_RATING_TTL:
+        return jsonify({"tmdb": hit[1]})
+    val = _fetch_tmdb_rating(media_type, tmdb_id, key)
+    if len(_tmdb_rating_cache) > 2000:
+        _tmdb_rating_cache.pop(next(iter(_tmdb_rating_cache)))
+    _tmdb_rating_cache[ck] = (time.time(), val)
+    return jsonify({"tmdb": val})
 
 
 # ═══════════════════════════════════════════════════

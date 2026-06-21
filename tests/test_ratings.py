@@ -228,6 +228,40 @@ def test_migration_adds_tmdb_rating_to_legacy_db(tmp_path):
     assert "tmdb_rating" in cols
 
 
+def test_tmdb_rating_endpoint_persists_library_item(client, monkeypatch):
+    _register(client)
+    _set_mdblist_key()
+    _add_movie(client, external_id="27205")
+    monkeypatch.setattr(app_module, "_fetch_tmdb_rating", lambda *a, **k: 8.4)
+    resp = client.get("/api/tmdb-rating/movie/27205").get_json()
+    assert resp == {"tmdb": 8.4}
+    item = client.get("/api/list").get_json()[0]
+    assert item["tmdb_rating"] == 8.4
+
+
+def test_tmdb_rating_endpoint_uses_stored_value(client, monkeypatch):
+    _register(client)
+    _set_mdblist_key()
+    client.post("/api/add", json={
+        "title": "Inception", "media_type": "movie", "external_id": "27205",
+        "tmdb_id": 27205, "status": "watchlist", "tmdb_rating": 7.0})
+    calls = {"n": 0}
+    def spy(*a, **k):
+        calls["n"] += 1
+        return 9.9
+    monkeypatch.setattr(app_module, "_fetch_tmdb_rating", spy)
+    resp = client.get("/api/tmdb-rating/movie/27205").get_json()
+    assert resp == {"tmdb": 7.0}
+    assert calls["n"] == 0  # stored value served, no fetch
+
+
+def test_tmdb_rating_endpoint_no_tmdb_key(client):
+    _register(client)  # no keys set -> _get_tmdb_key() is None
+    resp = client.get("/api/tmdb-rating/movie/27205")
+    assert resp.status_code == 200
+    assert resp.get_json() == {"tmdb": None}
+
+
 def test_search_includes_tmdb_rating(client, monkeypatch):
     _register(client)
     _set_mdblist_key()  # ensures a tmdb key exists for the search route
