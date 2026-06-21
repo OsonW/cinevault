@@ -3,6 +3,20 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<script>
+// Set root font-size from clientWidth (not vw) to avoid the iOS first-paint
+// flash where 100vw is briefly miscomputed. Mirrors the CSS clamp(12,100vw/120,22).
+(function () {
+  function setRem() {
+    var w = document.documentElement.clientWidth || window.innerWidth || 0;
+    var px = Math.max(12, Math.min(22, w / 120));
+    document.documentElement.style.fontSize = px + 'px';
+  }
+  setRem();
+  window.addEventListener('resize', setRem);
+  window.addEventListener('orientationchange', setRem);
+})();
+</script>
 <title>CineVault</title>
 <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
@@ -567,6 +581,17 @@ input[type="range"]::-webkit-slider-thumb {
 
 .detail-scores { display:flex; flex-wrap:wrap; gap:0.45rem; margin-bottom:0.75rem; font-size:1.5rem; }
 .detail-scores:empty { display:none; margin:0; }
+.ratings-meta { display:flex; align-items:center; gap:0.5rem; margin:-0.25rem 0 0.85rem; }
+.ratings-refresh {
+  display:inline-flex; align-items:center; justify-content:center;
+  background:none; border:1px solid var(--border-md); border-radius:var(--radius);
+  color:var(--muted); padding:0.25rem 0.4rem; cursor:pointer; transition:color 0.15s, border-color 0.15s;
+}
+.ratings-refresh:hover:not([disabled]) { color:var(--text); border-color:var(--accent); }
+.ratings-refresh[disabled] { opacity:0.4; cursor:default; }
+.ratings-refresh.spinning svg { animation:ratings-spin 0.8s linear infinite; }
+@keyframes ratings-spin { to { transform:rotate(360deg); } }
+.ratings-updated { font-size:0.95rem; color:var(--muted); }
 .desc-toggle-btn {
   display: inline-flex; align-items: center; gap: 0.375rem;
   padding: 0.375rem 0.9375rem; border-radius: var(--radius);
@@ -638,6 +663,7 @@ input[type="range"]::-webkit-slider-thumb {
 }
 .search-filter-wrap .size-dd-btn svg { width: 1.15em; height: 1.15em; }
 .size-dd-btn:hover { border-color: var(--accent); background: var(--accent-dim); }
+.dd-caret { font-size: 0.8rem; opacity: 0.7; margin-left: 0.15em; }
 .size-dd-menu {
   position: absolute; top: calc(100% + 0.25rem); right: 0;
   min-width: 11.875rem; background: var(--card); border: 1px solid var(--border-md);
@@ -755,6 +781,7 @@ input[type="range"]::-webkit-slider-thumb {
 .spill-imdb { background:rgba(245,197,24,0.16); color:#f5c518; border-color:rgba(245,197,24,0.4); }
 .spill-imdb b, .spill-mal b { font-weight:inherit; letter-spacing:0.01em; }
 .spill-mal { background:rgba(70,110,200,0.18); color:#8aa4e6; border-color:rgba(70,110,200,0.42); }
+.spill-tmdb { background:rgba(1,180,134,0.16); color:#3fd0a6; border-color:rgba(1,180,134,0.4); }
 .spill-tomatoes  { background:rgba(250,50,10,0.14);  color:#ff6a4d; border-color:rgba(250,50,10,0.32); }
 .spill-audience  { background:rgba(250,110,30,0.14); color:#ffa05c; border-color:rgba(250,110,30,0.32); }
 .spill-letterboxd{ background:rgba(0,224,84,0.12);   color:#5be08a; border-color:rgba(0,224,84,0.28); }
@@ -1805,6 +1832,63 @@ async function loadList() {
   allItems = await res.json();
   rebuildLibrarySet();
   renderGrid();
+  startProactiveSweeps();   // idempotent; only the first call arms the hourly timer
+}
+
+let _sweepStarted  = false;   // scheduler started once per page load
+let _sweepCapDate  = null;    // UTC date string on which the 500/day cap was hit
+
+function _todayUTC() { return new Date().toISOString().slice(0, 10); }
+
+// Refresh MDBList ratings for movie/tv items that are missing or >=7 days old,
+// oldest-first, until the server's 500/day cap is hit. Non-blocking; paced
+// sequentially to respect the per-endpoint rate limit. Goes dormant for the rest
+// of the UTC day once the cap (or MDBList quota) is exhausted.
+async function proactiveRefreshStale() {
+  if (_sweepCapDate === _todayUTC()) return;        // dormant until daily reset
+  await refreshMdblistStatus();
+  if (!_mdblist.has_key) return;
+  if (_mdblist.exhausted) { _sweepCapDate = _todayUTC(); return; }
+
+  const WEEK = 7 * 86400 * 1000;
+  const now  = Date.now();
+  const ts   = i => (i.ratings_updated_at ? new Date(i.ratings_updated_at).getTime() || 0 : 0);
+  const stale = allItems
+    .filter(i => (i.media_type === 'movie' || i.media_type === 'tv')
+              && (i.tmdb_id || i.external_id)
+              && (!i.ratings_updated_at || (now - ts(i)) >= WEEK))
+    .sort((a, b) => ts(a) - ts(b));   // oldest (and never-fetched = 0) first
+
+  for (const item of stale) {
+    const tid  = item.tmdb_id || item.external_id;
+    const prev = item.ratings_updated_at || '';
+    let d;
+    try {
+      d = await fetch(`/api/ratings/${item.media_type}/${encodeURIComponent(tid)}`).then(r => r.json());
+    } catch { continue; }
+    if (!d) continue;
+    const ratings = d.ratings || {};
+    item.ratings = JSON.stringify(ratings);
+    item.ratings_updated_at = d.updated_at || prev;
+    _ratingsCache[item.media_type + ':' + tid] = ratings;
+    // updated_at didn't advance -> server served stale (cap reached) -> stop and
+    // go dormant for the rest of the UTC day.
+    if (!d.updated_at || d.updated_at === prev) { _sweepCapDate = _todayUTC(); break; }
+    // Repaint this card's pills + the detail panel if it's the open one.
+    const host = document.getElementById('pills-' + item.id);
+    if (host) host.innerHTML = renderPills(item, ratings, gridPills);
+    if (selectedId === item.id) renderDetail(item);
+  }
+  refreshMdblistStatus();
+}
+
+// Start once per page load: sweep now, then re-check every hour for items that
+// have newly crossed the 7-day line (dormant days are no-ops inside the sweep).
+function startProactiveSweeps() {
+  if (_sweepStarted) return;
+  _sweepStarted = true;
+  proactiveRefreshStale();
+  setInterval(proactiveRefreshStale, 3600 * 1000);   // hourly while the tab is open
 }
 
 function rebuildLibrarySet() {
@@ -1906,7 +1990,7 @@ function renderSearchFilter() {
   return `<div class="size-dd-wrap pill-dd-wrap search-filter-wrap">
     <button class="size-dd-btn" onclick="toggleSearchFilter(event)">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
-      Filter <span style="font-size:0.5625rem;opacity:0.7">▾</span>
+      Filter <span class="dd-caret">▾</span>
     </button>
     <div class="size-dd-menu search-filter-menu" id="pillMenu_search">
       <div class="sfm-col">
@@ -2287,7 +2371,7 @@ function renderGridControls() {
   return `<div class="size-dd-wrap pill-dd-wrap grid-controls-wrap">
     <button class="size-dd-btn" onclick="toggleGridControls(event)">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
-      Filter <span style="font-size:0.5625rem;opacity:0.7">▾</span>
+      Filter <span class="dd-caret">▾</span>
     </button>
     <div class="size-dd-menu grid-controls-menu" id="pillMenu_gridctl">
       <div class="gcm-cols">
@@ -2338,6 +2422,39 @@ function selectItem(id) {
   if (item) renderDetail(item);
 }
 
+// 0 -> "Unrated"; otherwise drop a trailing .0 (10.0 -> "10", 7.5 -> "7.5").
+function fmtRating(r) {
+  const n = Number(r) || 0;
+  if (n <= 0) return 'Unrated';
+  return (Math.round(n * 10) % 10 === 0) ? String(Math.round(n)) : n.toFixed(1);
+}
+function ratingLabel(r) {
+  const n = Number(r) || 0;
+  return n <= 0 ? 'Unrated' : fmtRating(n) + ' / 10';
+}
+
+function _seedRatings(item) {
+  const tid = item.tmdb_id || item.external_id;
+  const k = item.media_type + ':' + tid;
+  if (_ratingsCache[k]) return _ratingsCache[k];
+  if (item.ratings) { try { return JSON.parse(item.ratings); } catch {} }
+  return {};
+}
+
+function _ratingsMetaHtml(item) {
+  if (!_mdblist.has_key) return '';
+  if (item.media_type !== 'movie' && item.media_type !== 'tv') return '';
+  const ago = _updatedAgo(item.ratings_updated_at);
+  const label = ago ? `<span class="ratings-updated">Updated ${ago}</span>` : '';
+  const dis = _mdblist.exhausted ? ' disabled' : '';
+  return `<div class="ratings-meta">
+    <button class="ratings-refresh${dis}" id="ratingsRefreshBtn" title="Refresh ratings"
+            onclick="refreshRatingsNow(${item.id})"${dis}>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+    </button>${label}
+  </div>`;
+}
+
 function renderDetail(item) {
   const panel = document.getElementById('detailPanel');
   panel.scrollTop = 0;
@@ -2345,10 +2462,10 @@ function renderDetail(item) {
   const ratingHtml = item.status === 'finished' ? `
     <div class="rating-wrap">
       <div class="rating-label">Your rating
-        <span class="rating-val" id="rv">${(item.rating||0).toFixed(1)} / 10</span>
+        <span class="rating-val" id="rv">${ratingLabel(item.rating)}</span>
       </div>
       <input type="range" min="0" max="10" step="0.1" value="${item.rating||0}"
-             oninput="document.getElementById('rv').textContent=parseFloat(this.value).toFixed(1)+' / 10'"
+             oninput="document.getElementById('rv').textContent=ratingLabel(this.value)"
              onchange="saveField(${item.id},'rating',parseFloat(this.value))">
     </div>` : '';
 
@@ -2412,7 +2529,8 @@ function renderDetail(item) {
       <h2 class="detail-title">${esc(item.title)}</h2>
       <p class="detail-meta">${TYPE_SVG[item.media_type]} ${TYPE_LABEL[item.media_type]}</p>
       ${authorHtml}
-      <div class="detail-scores" id="detailScores">${renderPills(item, _ratingsCache[item.media_type+':'+(item.tmdb_id||item.external_id)] || {}, SCORE_SOURCES)}</div>
+      <div class="detail-scores" id="detailScores">${renderPills(item, _seedRatings(item), DETAIL_SCORES)}</div>
+      ${_ratingsMetaHtml(item)}
       <div style="margin-bottom:0.875rem">
         <button id="descToggleBtn" class="desc-toggle-btn" onclick="toggleDescription(${item.id})">Load description</button>
         <div id="descContent" class="detail-overview" style="display:none"></div>
@@ -2431,7 +2549,7 @@ function renderDetail(item) {
       <button class="delete-btn" onclick="deleteItem(${item.id})">Remove from library</button>
     </div>`;
 
-  hydratePills('detailScores', item, SCORE_SOURCES);
+  hydratePills('detailScores', item, DETAIL_SCORES);
 
   if (!item.author && (item.media_type === 'movie' || item.media_type === 'tv')) {
     fetch(`/api/item/${item.id}/fetch_director`)
@@ -3027,7 +3145,7 @@ function renderModalResults(libMatches, tmdbResults, q) {
   });
   if (searchPills.some(s => SCORE_SOURCES.includes(s))) {
     tmdbResults.forEach(r => {
-      const item = { media_type: r.media_type, year: r.year, tmdb_id: r.tmdb_id, external_id: r.external_id };
+      const item = { media_type: r.media_type, year: r.year, tmdb_id: r.tmdb_id, external_id: r.external_id, tmdb_rating: r.tmdb_rating };
       const pillsId = `spills-${r.media_type}-${(r.external_id || r.tmdb_id || '').toString().replace(/[^a-z0-9]/gi,'_')}`;
       hydratePills(pillsId, item, searchPills);
     });
@@ -3053,7 +3171,7 @@ function renderSmCard(r) {
   } else if (r.poster_path) {
     posterSrc = `https://image.tmdb.org/t/p/w500${r.poster_path}`;
   }
-  const smItem = { media_type: r.media_type, year: r.year, tmdb_id: r.tmdb_id, external_id: r.external_id };
+  const smItem = { media_type: r.media_type, year: r.year, tmdb_id: r.tmdb_id, external_id: r.external_id, tmdb_rating: r.tmdb_rating };
   const pillsId = `spills-${r.media_type}-${(r.external_id || r.tmdb_id || '').toString().replace(/[^a-z0-9]/gi,'_')}`;
   const chipsHtml = `<div class="sm-chips" id="${pillsId}">${renderPills(smItem, _ratingsCache[r.media_type+':'+(r.tmdb_id||r.external_id)] || {}, searchPills)}</div>`;
   const authorHtml = r.author ? `<div class="sm-card-author">${esc(r.author)}</div>` : '';
@@ -3097,6 +3215,7 @@ async function addFromModal(key) {
       total_pages: r.total_pages || null,
       overview:    r.overview   || null,
       year:        r.year       || null,
+      tmdb_rating: r.tmdb_rating ?? null,
     });
     await loadList();
     const newItem = allItems.find(i =>
@@ -3197,11 +3316,14 @@ function esc(str) {
 }
 
 // Pills: year/type from local data, the six scores from /api/ratings.
-const PILL_ORDER  = ['year','type','imdb','tomatoes','audience','metacritic','letterboxd','mal'];
+const PILL_ORDER  = ['year','type','tmdb','imdb','tomatoes','audience','metacritic','letterboxd','mal'];
 const SCORE_SOURCES = ['imdb','tomatoes','audience','metacritic','letterboxd','mal'];
-const PILL_LABELS = { year:'Year', type:'Media type', imdb:'IMDb', tomatoes:'Tomatometer',
+// Detail panel shows the free TMDB score (first) alongside the MDBList scores,
+// regardless of the grid/search pill selection.
+const DETAIL_SCORES = ['tmdb'].concat(SCORE_SOURCES);
+const PILL_LABELS = { year:'Year', type:'Media type', tmdb:'TMDB', imdb:'IMDb', tomatoes:'Tomatometer',
   audience:'Popcornmeter', metacritic:'Metacritic', letterboxd:'Letterboxd', mal:'MyAnimeList' };
-const DEFAULT_PILLS = ['year','type','imdb','metacritic','tomatoes'];
+const DEFAULT_PILLS = ['year','type','tmdb','imdb','metacritic','tomatoes'];
 
 const SCORE_SVG = {
   tomatoes:  '<svg class="spill-ic" viewBox="0 0 24 24" fill="#fa320a"><path d="M12 4c1-2 4-2 5-1-1 1-2 1-3 2 3 0 6 2 6 6 0 5-4 9-8 9s-8-4-8-9c0-4 3-6 6-6-1-1-2-1-3-2 1-1 4-1 5 1z"/></svg>',
@@ -3240,6 +3362,12 @@ function renderPills(item, ratings, selected) {
     if (!selected.includes(src)) continue;
     if (src === 'year') { if (item.year) out.push(`<span class="poster-year-badge">${esc(String(item.year))}</span>`); continue; }
     if (src === 'type') { out.push(`<span class="poster-type-badge ptb-${item.media_type}">${TYPE_SVG[item.media_type]} ${TYPE_LABEL[item.media_type]}</span>`); continue; }
+    if (src === 'tmdb') {
+      const tv = item.tmdb_rating;
+      if (tv !== undefined && tv !== null && Number(tv) > 0)
+        out.push(`<span class="spill spill-tmdb"><b>TMDB</b> ${Number(tv).toFixed(1)}</span>`);
+      continue;
+    }
     const val = _pillValue(src, ratings);
     if (val === null) continue;
     if (src === 'imdb')       { out.push(`<span class="spill spill-imdb"><b>IMDb</b> ${val}</span>`); continue; }
@@ -3264,8 +3392,61 @@ async function fetchRatings(mediaType, tmdbId) {
   } catch { _ratingsCache[k] = {}; return {}; }
 }
 
+// "just now" (<60s) / "Xm ago" / "Xh ago" / "Xd ago" from an ISO timestamp.
+function _updatedAgo(iso) {
+  if (!iso) return '';
+  let then;
+  try { then = new Date(iso).getTime(); } catch { return ''; }
+  if (!then) return '';
+  const s = Math.max(0, Math.floor((Date.now() - then) / 1000));
+  if (s < 60)      return 'just now';
+  if (s < 3600)    return Math.floor(s / 60) + 'm ago';
+  if (s < 86400)   return Math.floor(s / 3600) + 'h ago';
+  return Math.floor(s / 86400) + 'd ago';
+}
+
+// Manual force-refresh of one title's MDBList ratings. Debounced: while the label
+// still reads "just now" (<60s since last refresh) a click is a no-op.
+async function refreshRatingsNow(itemId) {
+  const item = allItems.find(i => i.id === itemId);
+  if (!item) return;
+  if (!_mdblist.has_key || _mdblist.exhausted) return;
+  const tid = item.tmdb_id || item.external_id;
+  if (!tid || (item.media_type !== 'movie' && item.media_type !== 'tv')) return;
+  if (_updatedAgo(item.ratings_updated_at) === 'just now') return;  // 60s debounce
+  const btn = document.getElementById('ratingsRefreshBtn');
+  if (btn) btn.classList.add('spinning');
+  try {
+    const d = await fetch(`/api/ratings/${item.media_type}/${encodeURIComponent(tid)}?force=1`).then(r => r.json());
+    const ratings = d.ratings || {};
+    item.ratings = JSON.stringify(ratings);
+    item.ratings_updated_at = d.updated_at || new Date().toISOString();
+    _ratingsCache[item.media_type + ':' + tid] = ratings;
+    refreshMdblistStatus();
+    if (selectedId === itemId) renderDetail(item);
+  } catch {
+  } finally {
+    // On the success path renderDetail() rebuilds the button; clear the spinner
+    // here too so a network failure doesn't leave it spinning forever.
+    const b = document.getElementById('ratingsRefreshBtn');
+    if (b) b.classList.remove('spinning');
+  }
+}
+
 // Lazily fill a pills container once ratings arrive.
 function hydratePills(hostId, item, selected) {
+  // Backfill TMDB rating (free) when selected and not already known.
+  if (selected.includes('tmdb') && (item.tmdb_rating === undefined || item.tmdb_rating === null)) {
+    const tid = item.tmdb_id || item.external_id;
+    if (tid && (item.media_type === 'movie' || item.media_type === 'tv')) {
+      fetch(`/api/tmdb-rating/${item.media_type}/${encodeURIComponent(tid)}`)
+        .then(r => r.json()).then(d => {
+          item.tmdb_rating = d.tmdb;
+          const host = document.getElementById(hostId);
+          if (host) host.innerHTML = renderPills(item, _ratingsCache[item.media_type+':'+tid] || {}, selected);
+        }).catch(() => {});
+    }
+  }
   if (!selected.some(s => SCORE_SOURCES.includes(s))) return;
   const tmdbId = item.tmdb_id || item.external_id;
   if (!tmdbId || (item.media_type !== 'movie' && item.media_type !== 'tv')) return;
@@ -3289,7 +3470,7 @@ let _lastModalArgs = null;
 
 // Two labelled sections. The MDBList section is quota-limited.
 const PILL_SECTIONS = [
-  { label: 'TMDB',    note: '',              sources: ['year','type'],                                                limited: false },
+  { label: 'TMDB',    note: '',              sources: ['year','type','tmdb'],                                         limited: false },
   { label: 'MDBList', note: '(resets daily)', sources: ['imdb','tomatoes','audience','metacritic','letterboxd','mal'], limited: true  },
 ];
 
@@ -3328,7 +3509,7 @@ function renderPillSelector(which) {
   }).join('');
   const btnLabel = which === 'search' ? 'FILTER SEARCH RATINGS' : `Pills (${sel.length})`;
   return `<div class="size-dd-wrap pill-dd-wrap">
-    <button class="size-dd-btn" onclick="togglePillDropdown('${which}',event)">${btnLabel} <span style="font-size:0.5625rem;opacity:0.7">▾</span></button>
+    <button class="size-dd-btn" onclick="togglePillDropdown('${which}',event)">${btnLabel} <span class="dd-caret">▾</span></button>
     <div class="size-dd-menu" id="pillMenu_${which}">${body}</div>
   </div>`;
 }

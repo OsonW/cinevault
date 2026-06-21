@@ -51,6 +51,7 @@ def _create_tables(db_path: str) -> None:
                 year            TEXT,
                 ratings         TEXT,
                 ratings_updated_at TEXT,
+                tmdb_rating     REAL,
                 date_added      TEXT DEFAULT (date('now')),
                 date_watchlist  TEXT,
                 date_watching   TEXT,
@@ -74,7 +75,9 @@ def _migrate_media_dates(conn) -> None:
     for col in ("ratings", "ratings_updated_at"):
         if col not in cols:
             conn.execute(f"ALTER TABLE media ADD COLUMN {col} TEXT")
-    if dates_added:
+    if "tmdb_rating" not in cols:
+        conn.execute("ALTER TABLE media ADD COLUMN tmdb_rating REAL")
+    if dates_added and "date_added" in cols:
         conn.execute("UPDATE media SET date_watchlist = date_added WHERE status='watchlist' AND date_watchlist IS NULL")
         conn.execute("UPDATE media SET date_watching  = date_added WHERE status='watching'  AND date_watching  IS NULL")
         conn.execute("UPDATE media SET date_finished  = date_added WHERE status='finished'  AND date_finished  IS NULL")
@@ -112,9 +115,9 @@ def add_media_entry(
     tmdb_id=None, external_id=None,
     cover_url=None, author=None,
     total_pages=None, overview=None, year=None,
+    tmdb_rating=None,
 ):
     ext = external_id or (str(tmdb_id) if tmdb_id else None)
-    # Seed the date for the status the item is created in (today).
     date_col = {
         "watchlist": "date_watchlist",
         "watching":  "date_watching",
@@ -124,10 +127,10 @@ def add_media_entry(
         conn.execute(f"""
             INSERT OR IGNORE INTO media
                 (tmdb_id, external_id, title, media_type, status,
-                 cover_url, author, total_pages, overview, year, {date_col})
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, date('now'))
+                 cover_url, author, total_pages, overview, year, tmdb_rating, {date_col})
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, date('now'))
         """, (tmdb_id, ext, title, media_type, status,
-              cover_url, author, total_pages, overview, year))
+              cover_url, author, total_pages, overview, year, tmdb_rating))
         row = conn.execute(
             "SELECT id FROM media WHERE external_id = ? AND media_type = ?",
             (ext, media_type),
@@ -229,6 +232,15 @@ def set_media_ratings(media_id: int, ratings_json: str, updated_at: str) -> None
         conn.execute(
             "UPDATE media SET ratings = ?, ratings_updated_at = ? WHERE id = ?",
             (ratings_json, updated_at, media_id),
+        )
+
+
+def set_media_tmdb_rating(media_id: int, value: float | None) -> None:
+    """Persist the TMDB vote_average for a library row (free; no MDBList quota)."""
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE media SET tmdb_rating = ? WHERE id = ?",
+            (value, media_id),
         )
 
 

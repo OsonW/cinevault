@@ -178,3 +178,175 @@ def test_mdblist_status_reports_remaining(client, monkeypatch):
     assert data["limit"] == 1000
     assert data["used"] == 753
     assert data["remaining"] == 247
+
+
+def test_media_row_has_tmdb_rating_column(client):
+    _register(client)
+    _add_movie(client)
+    item = client.get("/api/list").get_json()[0]
+    assert "tmdb_rating" in item
+    assert item["tmdb_rating"] is None
+
+
+def test_add_movie_persists_tmdb_rating(client):
+    _register(client)
+    client.post("/api/add", json={
+        "title": "Inception", "media_type": "movie",
+        "external_id": "27205", "tmdb_id": 27205, "status": "watchlist",
+        "tmdb_rating": 8.4,
+    })
+    item = client.get("/api/list").get_json()[0]
+    assert item["tmdb_rating"] == 8.4
+
+
+def test_set_media_tmdb_rating_roundtrip(client):
+    _register(client)
+    _add_movie(client)
+    item = client.get("/api/list").get_json()[0]
+    from flask import g
+    with flask_app.test_request_context():
+        from db import get_user_db_path
+        from users_db import get_user_by_username
+        uid = get_user_by_username("alice")["id"]
+        g.user_db_path = get_user_db_path(uid)
+        db.set_media_tmdb_rating(item["id"], 7.2)
+        row = db.get_media_by_id(item["id"])
+    assert row["tmdb_rating"] == 7.2
+
+
+def test_migration_adds_tmdb_rating_to_legacy_db(tmp_path):
+    db_path = str(tmp_path / "movie_tracker_legacy2.db")
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("""CREATE TABLE media (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL,
+            media_type TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'watchlist',
+            external_id TEXT, ratings TEXT, ratings_updated_at TEXT,
+            UNIQUE(external_id, media_type))""")
+    db._create_tables(db_path)
+    with sqlite3.connect(db_path) as conn:
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(media)").fetchall()}
+    assert "tmdb_rating" in cols
+
+
+def test_tmdb_rating_endpoint_persists_library_item(client, monkeypatch):
+    _register(client)
+    _set_mdblist_key()
+    _add_movie(client, external_id="27205")
+    monkeypatch.setattr(app_module, "_fetch_tmdb_rating", lambda *a, **k: 8.4)
+    resp = client.get("/api/tmdb-rating/movie/27205").get_json()
+    assert resp == {"tmdb": 8.4}
+    item = client.get("/api/list").get_json()[0]
+    assert item["tmdb_rating"] == 8.4
+
+
+def test_tmdb_rating_endpoint_uses_stored_value(client, monkeypatch):
+    _register(client)
+    _set_mdblist_key()
+    client.post("/api/add", json={
+        "title": "Inception", "media_type": "movie", "external_id": "27205",
+        "tmdb_id": 27205, "status": "watchlist", "tmdb_rating": 7.0})
+    calls = {"n": 0}
+    def spy(*a, **k):
+        calls["n"] += 1
+        return 9.9
+    monkeypatch.setattr(app_module, "_fetch_tmdb_rating", spy)
+    resp = client.get("/api/tmdb-rating/movie/27205").get_json()
+    assert resp == {"tmdb": 7.0}
+    assert calls["n"] == 0  # stored value served, no fetch
+
+
+def test_tmdb_rating_endpoint_no_tmdb_key(client):
+    _register(client)  # no keys set -> _get_tmdb_key() is None
+    resp = client.get("/api/tmdb-rating/movie/27205")
+    assert resp.status_code == 200
+    assert resp.get_json() == {"tmdb": None}
+
+
+def test_search_includes_tmdb_rating(client, monkeypatch):
+    _register(client)
+    _set_mdblist_key()  # ensures a tmdb key exists for the search route
+
+    class FakeResp:
+        status_code = 200
+        def raise_for_status(self): pass
+        def json(self):
+            return {"results": [
+                {"id": 603, "title": "The Matrix", "release_date": "1999-03-30",
+                 "poster_path": "/x.jpg", "overview": "o", "popularity": 9,
+                 "vote_average": 8.2},
+            ]}
+
+    monkeypatch.setattr(app_module.requests, "get", lambda *a, **k: FakeResp())
+    monkeypatch.setattr(app_module, "_fetch_tmdb_director", lambda *a, **k: "")
+    data = client.get("/api/search?q=matrix&type=movie").get_json()
+    assert data[0]["tmdb_rating"] == 8.2
+
+
+def _store_stale_ratings(client, external_id="27205"):
+    """Add a movie and stamp it with old MDBList ratings (>7 days)."""
+    _add_movie(client, external_id=external_id)
+    item = client.get("/api/list").get_json()[0]
+    from flask import g
+    with flask_app.test_request_context():
+        from db import get_user_db_path
+        from users_db import get_user_by_username
+        uid = get_user_by_username("alice")["id"]
+        g.user_db_path = get_user_db_path(uid)
+        db.set_media_ratings(item["id"], json.dumps({"imdb": 5.0}),
+                             "2020-01-01T00:00:00+00:00")
+    return item
+
+
+def test_take_lazy_refresh_slot_caps_and_resets(monkeypatch):
+    import app as a
+    monkeypatch.setattr(a, "_LAZY_REFRESH_DAILY_CAP", 2)
+    a._lazy_refresh_counts.clear()
+    assert a._take_lazy_refresh_slot(1) is True
+    assert a._take_lazy_refresh_slot(1) is True
+    assert a._take_lazy_refresh_slot(1) is False      # cap hit
+    a._lazy_refresh_counts[1] = ("1999-01-01", 2)     # simulate old day
+    assert a._take_lazy_refresh_slot(1) is True        # rolls over, resets
+
+
+def test_ratings_force_refreshes_and_returns_updated_at(client, monkeypatch):
+    _register(client)
+    _set_mdblist_key()
+    _store_stale_ratings(client)
+    monkeypatch.setattr(app_module, "_fetch_mdblist_ratings",
+                        lambda *a, **k: {"imdb": 9.0})
+    resp = client.get("/api/ratings/movie/27205?force=1").get_json()
+    assert resp["ratings"] == {"imdb": 9.0}
+    assert resp["updated_at"]   # present and truthy
+
+
+def test_ratings_lazy_cap_serves_stale_without_fetch(client, monkeypatch):
+    _register(client)
+    _set_mdblist_key()
+    _store_stale_ratings(client)
+    calls = {"n": 0}
+    def spy(*a, **k):
+        calls["n"] += 1
+        return {"imdb": 9.0}
+    monkeypatch.setattr(app_module, "_fetch_mdblist_ratings", spy)
+    monkeypatch.setattr(app_module, "_take_lazy_refresh_slot", lambda uid: False)
+    resp = client.get("/api/ratings/movie/27205").get_json()
+    assert resp["ratings"] == {"imdb": 5.0}   # old stored value
+    assert calls["n"] == 0                     # cap blocked the fetch
+
+
+def test_ratings_cap_denied_never_fetched_returns_null_updated_at(client, monkeypatch):
+    """Never-fetched library row + cap denied: serve empty ratings with a null
+    updated_at. The client sweep relies on this null to detect the cap and stop."""
+    _register(client)
+    _set_mdblist_key()
+    _add_movie(client, external_id="27205")   # added, but ratings never fetched
+    calls = {"n": 0}
+    def spy(*a, **k):
+        calls["n"] += 1
+        return {"imdb": 9.0}
+    monkeypatch.setattr(app_module, "_fetch_mdblist_ratings", spy)
+    monkeypatch.setattr(app_module, "_take_lazy_refresh_slot", lambda uid: False)
+    resp = client.get("/api/ratings/movie/27205").get_json()
+    assert resp["ratings"] == {}
+    assert resp["updated_at"] is None
+    assert calls["n"] == 0

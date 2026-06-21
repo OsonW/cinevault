@@ -17,6 +17,7 @@ from db import (
     get_all_media, get_media_by_id, get_media_by_external_id,
     add_media_entry, update_media_entry, delete_media_entry, set_media_dates,
     set_media_ratings,
+    set_media_tmdb_rating,
 )
 from auth import (
     auth_bp, login_manager, rate_limit, _as_str,
@@ -156,6 +157,25 @@ def _fetch_mdblist_ratings(media_type: str, tmdb_id, key: str) -> dict:
     return out
 
 
+# TMDB rating (vote_average) for non-library titles. Keyed "media_type:tmdb_id".
+_tmdb_rating_cache: dict[str, tuple[float, object]] = {}
+_TMDB_RATING_TTL = 24 * 3600  # seconds
+
+
+def _fetch_tmdb_rating(media_type: str, tmdb_id, api_key: str):
+    """Return the TMDB vote_average (float) or None. Free; no MDBList quota."""
+    if media_type not in ("movie", "tv") or not tmdb_id:
+        return None
+    try:
+        endpoint = "movie" if media_type == "movie" else "tv"
+        url = f"https://api.themoviedb.org/3/{endpoint}/{tmdb_id}"
+        data = requests.get(url, params=_tmdb_params(api_key), timeout=5).json()
+        val = data.get("vote_average")
+        return float(val) if isinstance(val, (int, float)) and val else None
+    except Exception:
+        return None
+
+
 # Shared across users — keyed by external IDs so safe to share
 poster_cache: _BoundedCache = _BoundedCache(500)   # ~100 MB max at avg 200 KB/poster
 search_cache: dict[str, list] = {}
@@ -169,6 +189,24 @@ _RATINGS_MAX_AGE_DAYS = 7         # persisted library ratings refresh after this
 # status never meaningfully spends the daily quota.
 _mdblist_status_cache: dict[int, tuple[float, dict]] = {}
 _MDBLIST_STATUS_TTL = 120  # seconds
+
+# Per-user daily cap on AUTOMATIC (7-day-on-access) ratings refreshes. Manual
+# force refreshes are exempt. In-memory; resets when the UTC date rolls over.
+_LAZY_REFRESH_DAILY_CAP = 500
+_lazy_refresh_counts: dict[int, tuple[str, int]] = {}
+
+
+def _take_lazy_refresh_slot(uid: int) -> bool:
+    """True (and consume a slot) if the user is under today's lazy-refresh cap."""
+    today = datetime.now(timezone.utc).date().isoformat()
+    day, count = _lazy_refresh_counts.get(uid, (today, 0))
+    if day != today:
+        day, count = today, 0
+    if count >= _LAZY_REFRESH_DAILY_CAP:
+        _lazy_refresh_counts[uid] = (day, count)
+        return False
+    _lazy_refresh_counts[uid] = (day, count + 1)
+    return True
 
 _user_media_cache:   dict[int, dict] = {}
 
@@ -450,6 +488,7 @@ def search():
                     "poster_path": r.get("poster_path"),
                     "overview":    r.get("overview"),
                     "popularity":  r.get("popularity", 0) or 0,
+                    "tmdb_rating": r.get("vote_average"),
                 }
                 for r in resp.json().get("results", []) if r.get("id")
             ]
@@ -470,6 +509,7 @@ def search():
                     "poster_path": r.get("poster_path"),
                     "overview":    r.get("overview"),
                     "popularity":  r.get("popularity", 0) or 0,
+                    "tmdb_rating": r.get("vote_average"),
                 }
                 for r in resp.json().get("results", []) if r.get("id")
             ]
@@ -759,9 +799,18 @@ def api_ratings(media_type, tmdb_id):
     if not key:
         return jsonify({"ratings": {}})
 
+    force = request.args.get("force") == "1"
+    uid = int(current_user.id)
+
     # Library item? Serve/refresh persisted ratings.
     row = get_media_by_external_id(str(tmdb_id), media_type)
     if row:
+        stored = {}
+        if row.get("ratings"):
+            try:
+                stored = json.loads(row["ratings"])
+            except Exception:
+                stored = {}
         fresh = False
         if row.get("ratings") and row.get("ratings_updated_at"):
             try:
@@ -769,14 +818,14 @@ def api_ratings(media_type, tmdb_id):
                 fresh = age.days < _RATINGS_MAX_AGE_DAYS
             except Exception:
                 fresh = False
-        if fresh:
-            try:
-                return jsonify({"ratings": json.loads(row["ratings"])})
-            except Exception:
-                pass
-        data = _fetch_mdblist_ratings(media_type, tmdb_id, key)
-        set_media_ratings(row["id"], json.dumps(data), datetime.now(timezone.utc).isoformat())
-        return jsonify({"ratings": data})
+        # Refresh when forced (manual button, exempt from cap) or stale-and-under-cap.
+        if force or (not fresh and _take_lazy_refresh_slot(uid)):
+            now = datetime.now(timezone.utc).isoformat()
+            data = _fetch_mdblist_ratings(media_type, tmdb_id, key)
+            set_media_ratings(row["id"], json.dumps(data), now)
+            return jsonify({"ratings": data, "updated_at": now})
+        # Fresh, or cap hit: serve what we have.
+        return jsonify({"ratings": stored, "updated_at": row.get("ratings_updated_at")})
 
     # Non-library (search result): TTL cache.
     ck = f"{media_type}:{tmdb_id}"
@@ -812,6 +861,36 @@ def api_mdblist_status():
         pass
     _mdblist_status_cache[uid] = (time.time(), out)
     return jsonify(out)
+
+
+@app.route("/api/tmdb-rating/<media_type>/<tmdb_id>")
+@login_required
+def api_tmdb_rating(media_type, tmdb_id):
+    """Free TMDB vote_average. Persists for library rows; TTL-caches others."""
+    if media_type not in ("movie", "tv"):
+        return jsonify({"tmdb": None})
+    key = _get_tmdb_key()
+    if not key:
+        return jsonify({"tmdb": None})
+
+    row = get_media_by_external_id(str(tmdb_id), media_type)
+    if row:
+        if row.get("tmdb_rating") is not None:
+            return jsonify({"tmdb": row["tmdb_rating"]})
+        val = _fetch_tmdb_rating(media_type, tmdb_id, key)
+        if val is not None:
+            set_media_tmdb_rating(row["id"], val)
+        return jsonify({"tmdb": val})
+
+    ck = f"{media_type}:{tmdb_id}"
+    hit = _tmdb_rating_cache.get(ck)
+    if hit and (time.time() - hit[0]) < _TMDB_RATING_TTL:
+        return jsonify({"tmdb": hit[1]})
+    val = _fetch_tmdb_rating(media_type, tmdb_id, key)
+    if len(_tmdb_rating_cache) > 2000:
+        _tmdb_rating_cache.pop(next(iter(_tmdb_rating_cache)))
+    _tmdb_rating_cache[ck] = (time.time(), val)
+    return jsonify({"tmdb": val})
 
 
 # ═══════════════════════════════════════════════════
@@ -939,6 +1018,15 @@ def add_media():
         cover_url = data.get("cover_url")
         if not _is_safe_cover_url(cover_url):
             cover_url = None
+        tmdb_rating = data.get("tmdb_rating")
+        if tmdb_rating is not None:
+            try:
+                tmdb_rating = float(tmdb_rating)
+            except (TypeError, ValueError):
+                tmdb_rating = None
+            # TMDB vote_average is always 0–10; reject inf/nan/out-of-range.
+            if tmdb_rating is not None and not (0.0 <= tmdb_rating <= 10.0):
+                tmdb_rating = None
         add_media_entry(
             title       = title,
             media_type  = media_type,
@@ -950,6 +1038,7 @@ def add_media():
             total_pages = data.get("total_pages"),
             overview    = data.get("overview"),
             year        = data.get("year"),
+            tmdb_rating = tmdb_rating,
         )
     return jsonify({"status": "ok"})
 

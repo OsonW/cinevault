@@ -269,15 +269,20 @@ function setMode(m) {
   if (m === 'register') {
     // Create account: drop native password fields (mask to text) and turn off the
     // username hint, so iOS sees no credential/sign-up form — no "Use Strong
-    // Password" and no suggested usernames on any field.
+    // Password" and no suggested usernames on any field. A randomized name on the
+    // username field further discourages iOS/password managers from matching it
+    // to a saved username.
     user.setAttribute('autocomplete', 'off');
+    user.setAttribute('name', 'reg_user_' + Math.random().toString(36).slice(2));
     setMasked(pw, true);
     setMasked(conf, true);
+    conf.setAttribute('autocomplete', 'off');
     maskReal['authConfirm'] = ''; renderMasked(conf);
   } else {
     // Sign in: standard login form so iOS shows the saved-login prompt on the
     // username field and fills both username and password when tapped.
     user.setAttribute('autocomplete', 'username');
+    user.removeAttribute('name');
     setMasked(pw, false);
     setMasked(conf, false);
     pw.autocomplete = 'current-password';
@@ -346,6 +351,10 @@ function showError(msg) {
   el.textContent = msg;
   el.classList.add('show');
 }
+
+// Initialize a clean Sign-In form on load so saved-password autofill works and
+// register-mode credential suppression is applied only after an explicit switch.
+setMode('login');
 
 document.addEventListener('keydown', e => { if (e.key === 'Enter') submitAuth(); });
 
