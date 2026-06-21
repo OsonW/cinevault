@@ -16,8 +16,6 @@ def client(tmp_path, monkeypatch):
     app_module._app_initialized = False
     app_module._initialized_users.clear()
     app_module._user_media_cache.clear()
-    app_module._lazy_refresh_counts.clear()
-    app_module._mdblist_last_used.clear()
     app_module._mdblist_status_cache.clear()
     app_module._ratings_cache.clear()
     from auth import _RATE_BUCKETS
@@ -301,22 +299,47 @@ def _store_stale_ratings(client, external_id="27205"):
     return item
 
 
-def test_take_lazy_refresh_slot_caps(monkeypatch):
-    import app as a
-    monkeypatch.setattr(a, "_LAZY_REFRESH_DAILY_CAP", 2)
-    a._lazy_refresh_counts.clear()
-    assert a._take_lazy_refresh_slot(1) is True
-    assert a._take_lazy_refresh_slot(1) is True
-    assert a._take_lazy_refresh_slot(1) is False      # cap hit
-    a._lazy_refresh_counts.pop(1, None)               # quota reset clears the count
-    assert a._take_lazy_refresh_slot(1) is True
+def test_take_lazy_refresh_slot_caps(client):
+    """The persisted per-user slot counter caps at the limit and is atomic."""
+    _register(client)
+    _add_movie(client)   # triggers init_user_db so app_meta exists
+    from flask import g
+    from db import get_user_db_path, take_lazy_refresh_slot
+    from users_db import get_user_by_username
+    with flask_app.test_request_context():
+        uid = get_user_by_username("alice")["id"]
+        g.user_db_path = get_user_db_path(uid)
+        assert take_lazy_refresh_slot(2) is True
+        assert take_lazy_refresh_slot(2) is True
+        assert take_lazy_refresh_slot(2) is False      # cap hit
+
+
+def test_lazy_cap_persists_across_connections(client):
+    """The count lives in the DB, so a fresh connection still sees it (survives
+    restarts / is shared across workers)."""
+    _register(client)
+    _add_movie(client)
+    from flask import g
+    from db import get_user_db_path, take_lazy_refresh_slot, get_lazy_refresh_count
+    from users_db import get_user_by_username
+    uid = get_user_by_username("alice")["id"]
+    with flask_app.test_request_context():
+        g.user_db_path = get_user_db_path(uid)
+        take_lazy_refresh_slot(500)
+        take_lazy_refresh_slot(500)
+    with flask_app.test_request_context():       # new request/connection
+        g.user_db_path = get_user_db_path(uid)
+        assert get_lazy_refresh_count() == 2
 
 
 def test_mdblist_status_resets_lazy_cap_on_quota_drop(client, monkeypatch):
-    """When the MDBList used-count drops (quota refreshed), the 500/day auto-refresh
+    """When the MDBList used-count drops (quota refreshed), the persisted auto-refresh
     cap counter resets in lockstep."""
     _register(client)
     _set_mdblist_key()
+    _add_movie(client)   # triggers init_user_db so app_meta exists
+    from flask import g
+    from db import get_user_db_path, take_lazy_refresh_slot, get_lazy_refresh_count
     from users_db import get_user_by_username
     uid = get_user_by_username("alice")["id"]
 
@@ -329,14 +352,21 @@ def test_mdblist_status_resets_lazy_cap_on_quota_drop(client, monkeypatch):
 
     monkeypatch.setattr(app_module.requests, "get", lambda *a, **k: FakeResp())
 
-    # First poll records used=900.
-    client.get("/api/mdblist-status")
-    app_module._lazy_refresh_counts[uid] = 500          # pretend the cap is spent
-    # Quota resets: used drops. Bust the 2-min status cache so it refetches.
-    used_box["v"] = 5
-    app_module._mdblist_status_cache.clear()
-    client.get("/api/mdblist-status")
-    assert uid not in app_module._lazy_refresh_counts    # counter was reset
+    # Spend two slots.
+    with flask_app.test_request_context():
+        g.user_db_path = get_user_db_path(uid)
+        take_lazy_refresh_slot(500)
+        take_lazy_refresh_slot(500)
+        assert get_lazy_refresh_count() == 2
+
+    client.get("/api/mdblist-status")            # records used=900
+    used_box["v"] = 5                            # quota resets
+    app_module._mdblist_status_cache.clear()     # bust the 2-min status cache
+    client.get("/api/mdblist-status")            # detects the drop -> resets count
+
+    with flask_app.test_request_context():
+        g.user_db_path = get_user_db_path(uid)
+        assert get_lazy_refresh_count() == 0
 
 
 def test_ratings_force_refreshes_and_returns_updated_at(client, monkeypatch):

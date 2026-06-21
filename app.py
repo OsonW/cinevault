@@ -18,6 +18,7 @@ from db import (
     add_media_entry, update_media_entry, delete_media_entry, set_media_dates,
     set_media_ratings,
     set_media_tmdb_rating,
+    take_lazy_refresh_slot, sync_lazy_cap_to_quota,
 )
 from auth import (
     auth_bp, login_manager, rate_limit, _as_str,
@@ -191,23 +192,18 @@ _mdblist_status_cache: dict[int, tuple[float, dict]] = {}
 _MDBLIST_STATUS_TTL = 120  # seconds
 
 # Per-user cap on AUTOMATIC (7-day-on-access / sweep) ratings refreshes. Manual
-# force refreshes are exempt. In-memory count since the last MDBList quota reset;
-# reset in `api_mdblist_status` when the user's MDBList used-count drops (i.e. when
-# their daily quota refreshes), so the 500 cap resets in lockstep with the quota.
+# force refreshes are exempt. The count is persisted in the user's DB (app_meta),
+# so it survives restarts and is shared across worker processes; it's reset in
+# `api_mdblist_status` when the user's MDBList used-count drops (their daily quota
+# refreshed), so the 500 cap resets in lockstep with the quota.
 _LAZY_REFRESH_DAILY_CAP = 500
-_lazy_refresh_counts: dict[int, int] = {}
-# Last-seen MDBList api_requests_count per user, used to detect a quota reset.
-_mdblist_last_used: dict[int, int] = {}
 
 
 def _take_lazy_refresh_slot(uid: int) -> bool:
-    """True (and consume a slot) if the user is under the auto-refresh cap for the
-    current MDBList quota window. The counter is reset on quota reset, not by date."""
-    count = _lazy_refresh_counts.get(uid, 0)
-    if count >= _LAZY_REFRESH_DAILY_CAP:
-        return False
-    _lazy_refresh_counts[uid] = count + 1
-    return True
+    """Consume one auto-refresh slot (persisted, atomic). `uid` is unused — the slot
+    lives in the current request's per-user DB — but kept so callers/tests that pass
+    it keep working."""
+    return take_lazy_refresh_slot(_LAZY_REFRESH_DAILY_CAP)
 
 _user_media_cache:   dict[int, dict] = {}
 
@@ -861,10 +857,7 @@ def api_mdblist_status():
             # A drop in the used-count means the MDBList quota refreshed; reset our
             # auto-refresh cap so it tracks the same daily window as the quota.
             if isinstance(used, int):
-                prev = _mdblist_last_used.get(uid)
-                if prev is not None and used < prev:
-                    _lazy_refresh_counts.pop(uid, None)
-                _mdblist_last_used[uid] = used
+                sync_lazy_cap_to_quota(used)
     except Exception:
         pass
     _mdblist_status_cache[uid] = (time.time(), out)

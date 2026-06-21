@@ -59,6 +59,14 @@ def _create_tables(db_path: str) -> None:
                 UNIQUE(external_id, media_type)
             )
         """)
+        # Small key/value store for per-user counters (e.g. the auto-refresh cap),
+        # persisted so they survive restarts and are shared across worker processes.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS app_meta (
+                key   TEXT PRIMARY KEY,
+                value TEXT
+            )
+        """)
         _migrate_media_dates(conn)
 
 
@@ -247,3 +255,54 @@ def set_media_tmdb_rating(media_id: int, value: float | None) -> None:
 def delete_media_entry(media_id: int):
     with get_conn() as conn:
         conn.execute("DELETE FROM media WHERE id = ?", (media_id,))
+
+
+# ── Per-user auto-refresh cap (persisted in the user's DB) ──────────────────────
+# Stored in app_meta so the cap survives restarts and is shared across worker
+# processes. The conditional UPDATE is atomic under SQLite's write lock, so two
+# concurrent requests can't both grab the last slot.
+
+def take_lazy_refresh_slot(cap: int) -> bool:
+    """Atomically consume one automatic-refresh slot for the current user. Returns
+    True (and increments) if under `cap`, else False once the cap is reached."""
+    with get_conn() as conn:
+        conn.execute("INSERT OR IGNORE INTO app_meta (key, value) VALUES ('lazy_refresh_count', '0')")
+        cur = conn.execute(
+            "UPDATE app_meta SET value = CAST(value AS INTEGER) + 1 "
+            "WHERE key = 'lazy_refresh_count' AND CAST(value AS INTEGER) < ?",
+            (cap,),
+        )
+        return cur.rowcount == 1
+
+
+def get_lazy_refresh_count() -> int:
+    """Current per-user auto-refresh slot count (0 if never set)."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT value FROM app_meta WHERE key = 'lazy_refresh_count'"
+        ).fetchone()
+    try:
+        return int(row["value"]) if row and row["value"] is not None else 0
+    except (TypeError, ValueError):
+        return 0
+
+
+def sync_lazy_cap_to_quota(used: int) -> None:
+    """Track the MDBList used-count; when it drops below the last seen value (i.e.
+    the daily quota reset), reset the per-user auto-refresh slot counter so the cap
+    resets in lockstep with the quota."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT value FROM app_meta WHERE key = 'mdblist_last_used'"
+        ).fetchone()
+        prev = None
+        if row and row["value"] is not None:
+            try:
+                prev = int(row["value"])
+            except (TypeError, ValueError):
+                prev = None
+        if prev is not None and used < prev:
+            conn.execute("INSERT OR IGNORE INTO app_meta (key, value) VALUES ('lazy_refresh_count', '0')")
+            conn.execute("UPDATE app_meta SET value = '0' WHERE key = 'lazy_refresh_count'")
+        conn.execute("INSERT OR IGNORE INTO app_meta (key, value) VALUES ('mdblist_last_used', ?)", (str(used),))
+        conn.execute("UPDATE app_meta SET value = ? WHERE key = 'mdblist_last_used'", (str(used),))
