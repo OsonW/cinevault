@@ -102,6 +102,14 @@ def _tmdb_params(api_key: str) -> dict:
     return {"api_key": api_key}
 
 
+def _get_mdblist_key() -> str | None:
+    if current_user.is_authenticated:
+        key = get_user_keys(int(current_user.id)).get("mdblist_key", "").strip()
+        if key:
+            return key
+    return None
+
+
 # Shared across users — keyed by external IDs so safe to share
 poster_cache: _BoundedCache = _BoundedCache(500)   # ~100 MB max at avg 200 KB/poster
 search_cache: dict[str, list] = {}

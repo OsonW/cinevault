@@ -25,30 +25,36 @@ def init_users_db() -> None:
                 username      TEXT UNIQUE NOT NULL COLLATE NOCASE,
                 password_hash TEXT NOT NULL,
                 tmdb_key      TEXT,
+                mdblist_key   TEXT,
                 created_at    TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%S','now'))
             )
         """)
-        try:
-            conn.execute("ALTER TABLE users ADD COLUMN tmdb_key TEXT")
-        except sqlite3.OperationalError:
-            pass
+        # Idempotent migrations for databases created before each column existed.
+        for column in ("tmdb_key", "mdblist_key"):
+            try:
+                conn.execute(f"ALTER TABLE users ADD COLUMN {column} TEXT")
+            except sqlite3.OperationalError:
+                pass
 
 
 def get_user_keys(user_id: int) -> dict:
     with _get_users_conn() as conn:
         row = conn.execute(
-            "SELECT tmdb_key FROM users WHERE id = ?", (user_id,)
+            "SELECT tmdb_key, mdblist_key FROM users WHERE id = ?", (user_id,)
         ).fetchone()
     if not row:
-        return {"tmdb_key": ""}
-    return {"tmdb_key": row["tmdb_key"] or ""}
+        return {"tmdb_key": "", "mdblist_key": ""}
+    return {
+        "tmdb_key":    row["tmdb_key"]    or "",
+        "mdblist_key": row["mdblist_key"] or "",
+    }
 
 
-def set_user_keys(user_id: int, tmdb_key: str) -> None:
+def set_user_keys(user_id: int, tmdb_key: str, mdblist_key: str = "") -> None:
     with _get_users_conn() as conn:
         conn.execute(
-            "UPDATE users SET tmdb_key = ? WHERE id = ?",
-            (tmdb_key, user_id),
+            "UPDATE users SET tmdb_key = ?, mdblist_key = ? WHERE id = ?",
+            (tmdb_key, mdblist_key, user_id),
         )
 
 

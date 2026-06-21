@@ -961,6 +961,25 @@ body.entry-active .entry-cancel-account { display: block; }
   font-family: 'DM Sans', sans-serif;
 }
 .key-help-link:hover { color: var(--accent-hover); }
+.key-meta-row {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 0.375rem;
+}
+.key-badge {
+  font-size: 0.625rem; font-weight: 600; letter-spacing: 0.07em;
+  text-transform: uppercase; padding: 0.1875rem 0.5rem;
+  border-radius: 999px; border: 1px solid transparent;
+}
+.key-badge-req { color: var(--accent); background: var(--accent-glow); border-color: var(--accent-dim); }
+.key-badge-opt { color: var(--muted);  background: rgba(255,255,255,0.04); border-color: var(--border-md); }
+.key-info-btn {
+  font-family: 'DM Sans', sans-serif; font-size: 0.6875rem; font-weight: 500;
+  color: var(--accent); background: var(--accent-glow);
+  border: 1px solid var(--accent-dim); border-radius: 999px;
+  padding: 0.1875rem 0.625rem; cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.key-info-btn:hover { background: var(--accent-dim); border-color: var(--accent); color: var(--accent-hover); }
 .key-modal-save {
   background: var(--accent); color: #fff;
   border: none; border-radius: var(--radius);
@@ -1266,7 +1285,7 @@ body.entry-active .entry-cancel-account { display: block; }
       <div class="key-field">
         <div class="key-field-row">
           <label>TMDB API Key</label>
-          <button class="key-help-link" onclick="showKeyHelp('tmdb')">How do I get this?</button>
+          <button class="key-help-link" onclick="showKeyHelp('Tmdb')">How do I get this?</button>
         </div>
         <div class="key-input-wrap">
           <input type="password" id="keyInputTmdb" placeholder="New TMDB Key" autocomplete="one-time-code" data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" oninput="validateKeyForm()">
@@ -1276,6 +1295,28 @@ body.entry-active .entry-cancel-account { display: block; }
           </button>
         </div>
         <div class="key-current-hint" id="keyCurrentTmdb"></div>
+        <div class="key-meta-row">
+          <span class="key-badge key-badge-req">Required</span>
+          <button type="button" class="key-info-btn" onclick="showKeyHelp('TmdbInfo')">More info</button>
+        </div>
+      </div>
+      <div class="key-field">
+        <div class="key-field-row">
+          <label>MDBList API Key</label>
+          <button class="key-help-link" onclick="showKeyHelp('Mdblist')">How do I get this?</button>
+        </div>
+        <div class="key-input-wrap">
+          <input type="password" id="keyInputMdblist" placeholder="New MDBList Key (optional)" autocomplete="one-time-code" data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" oninput="validateKeyForm()">
+          <button type="button" class="key-eye-btn" id="keyEyeMdblist" onclick="toggleKeyVisibility('Mdblist')">
+            <svg class="eye-on" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            <svg class="eye-off" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+          </button>
+        </div>
+        <div class="key-current-hint" id="keyCurrentMdblist"></div>
+        <div class="key-meta-row">
+          <span class="key-badge key-badge-opt">Optional</span>
+          <button type="button" class="key-info-btn" onclick="showKeyHelp('MdblistInfo')">More info</button>
+        </div>
       </div>
       <div class="key-modal-actions">
         <button class="key-confirm-cancel" id="keyModalCancel" onclick="closeKeyModal()" style="display:none">Cancel</button>
@@ -1293,6 +1334,23 @@ body.entry-active .entry-cancel-account { display: block; }
           <div class="key-help-step"><div class="key-help-num">4</div><div class="key-help-text">Name the application <em>CineVault</em> and use <em>https://localhost</em> for <strong>Application URL</strong>. Put in your contact info and <Strong>Subscribe</Strong></div></div>
           <div class="key-help-step"><div class="key-help-num">5</div><div class="key-help-text">Copy the <strong>API Key</strong> and paste it here — it's a 32-character hex string</div></div>
         </div>
+      </div>
+      <div class="key-help-panel" id="keyHelpTmdbInfo">
+        <div class="key-help-header">Why TMDB is required</div>
+        <div class="key-help-text">TMDB is a database for movies and TV shows that is required to access, look up, and view media. As this project is not funded, we do not offer TMDB APIs, and you are required to use your own key.</div>
+      </div>
+      <div class="key-help-panel" id="keyHelpMdblist">
+        <div class="key-help-header">Getting an MDBList API Key</div>
+        <div class="key-help-steps">
+          <div class="key-help-step"><div class="key-help-num">1</div><div class="key-help-text">Create a free account at <a href="https://mdblist.com" target="_blank">mdblist.com</a></div></div>
+          <div class="key-help-step"><div class="key-help-num">2</div><div class="key-help-text">Open your <a href="https://mdblist.com/preferences" target="_blank">Preferences</a> page</div></div>
+          <div class="key-help-step"><div class="key-help-num">3</div><div class="key-help-text">Scroll to the <strong>API Key</strong> section and generate a key if you don't have one</div></div>
+          <div class="key-help-step"><div class="key-help-num">4</div><div class="key-help-text">Copy the key and paste it here. The free tier allows 1,000 requests per day</div></div>
+        </div>
+      </div>
+      <div class="key-help-panel" id="keyHelpMdblistInfo">
+        <div class="key-help-header">Why MDBList is optional</div>
+        <div class="key-help-text">MDBList is a database that records IMDB, Letterboxd, Tomatometer, Popcornmeter, Metacritic, and MyAnimeList scores for movies and TV shows. This is optional.</div>
       </div>
     </div>
   </div>
@@ -1341,7 +1399,7 @@ body.entry-active .entry-cancel-account { display: block; }
 // ─────────────────────────────────────────────
 // API Key management (server-backed, per-account)
 // ─────────────────────────────────────────────
-let _cachedKeys = { tmdb_key: '', has_keys: false };
+let _cachedKeys = { tmdb_key: '', mdblist_key: '', has_keys: false };
 let _keyModalMode = 'entry';  // 'entry' = mandatory first-time, 'update' = optional
 const _currentUsername = document.getElementById('entryGreeting').dataset.username;
 
@@ -1368,16 +1426,19 @@ function showKeyModal(mode) {
     document.body.classList.remove('entry-active');
     cancelBtn.style.display = '';
     saveBtn.textContent = 'Update';
-    sub.textContent = 'Update your API key.';
-    document.getElementById('keyCurrentTmdb').textContent   = _cachedKeys.tmdb_key   ? `Current: ${_cachedKeys.tmdb_key}`   : '';
+    sub.textContent = 'Update your API keys.';
+    document.getElementById('keyCurrentTmdb').textContent    = _cachedKeys.tmdb_key    ? `Current: ${_cachedKeys.tmdb_key}`    : '';
+    document.getElementById('keyCurrentMdblist').textContent = _cachedKeys.mdblist_key ? `Current: ${_cachedKeys.mdblist_key}` : 'Not set';
   } else {
     backdrop.classList.add('solid');            // solid backdrop for mandatory entry
     document.body.classList.add('entry-active');
     cancelBtn.style.display = 'none';
     saveBtn.textContent = 'Save Key';
     sub.textContent = 'Enter your API key to get started.';
-    document.getElementById('keyInputTmdb').value   = '';
-    document.getElementById('keyCurrentTmdb').textContent   = '';
+    document.getElementById('keyInputTmdb').value    = '';
+    document.getElementById('keyCurrentTmdb').textContent    = '';
+    document.getElementById('keyInputMdblist').value = '';
+    document.getElementById('keyCurrentMdblist').textContent = '';
   }
   _resetKeyVisibility();
   validateKeyForm();
@@ -1390,9 +1451,12 @@ function closeKeyModal() {
   document.getElementById('keyModalBackdrop').classList.add('hidden');
 }
 
+const _KEY_HELP_PANELS = ['Tmdb', 'TmdbInfo', 'Mdblist', 'MdblistInfo'];
 function showKeyHelp(which) {
-  document.getElementById('keyHelpEmpty').style.display  = 'none';
-  document.getElementById('keyHelpTmdb').classList.toggle('visible',   which === 'tmdb');
+  document.getElementById('keyHelpEmpty').style.display = 'none';
+  _KEY_HELP_PANELS.forEach(p =>
+    document.getElementById('keyHelp' + p).classList.toggle('visible', p === which)
+  );
 }
 
 function toggleKeyVisibility(which) {
@@ -1405,21 +1469,29 @@ function toggleKeyVisibility(which) {
 }
 
 function _resetKeyVisibility() {
-  const input = document.getElementById('keyInputTmdb');
-  const btn   = document.getElementById('keyEyeTmdb');
-  if (input) input.type = 'password';
-  if (btn)   btn.classList.remove('shown');
+  ['Tmdb', 'Mdblist'].forEach(w => {
+    const input = document.getElementById('keyInput' + w);
+    const btn   = document.getElementById('keyEye'   + w);
+    if (input) input.type = 'password';
+    if (btn)   btn.classList.remove('shown');
+  });
 }
 
 function validateKeyForm() {
   const t = document.getElementById('keyInputTmdb').value.trim();
-  const unchanged = _keyModalMode === 'update' && t === (_cachedKeys.tmdb_key || '');
-  document.getElementById('keyModalSave').disabled = !t || unchanged;
+  const m = document.getElementById('keyInputMdblist').value.trim();
+  // Entry mode: TMDB is mandatory, MDBList is optional.
+  // Update mode: enable once the user has typed a new value in either field.
+  const enable = _keyModalMode === 'entry' ? !!t : (!!t || !!m);
+  document.getElementById('keyModalSave').disabled = !enable;
 }
 
 async function saveKeysFromModal() {
   const t = document.getElementById('keyInputTmdb').value.trim();
-  if (!t) return;
+  const m = document.getElementById('keyInputMdblist').value.trim();
+  // Entry mode requires TMDB; update mode requires at least one new value.
+  if (_keyModalMode === 'entry' && !t) return;
+  if (_keyModalMode === 'update' && !t && !m) return;
 
   const saveBtn   = document.getElementById('keyModalSave');
   const cancelBtn = document.getElementById('keyModalCancel');
@@ -1434,7 +1506,7 @@ async function saveKeysFromModal() {
     const res = await fetch('/auth/keys', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ tmdb_key: t }),
+      body:    JSON.stringify({ tmdb_key: t, mdblist_key: m }),
     });
     ok = res.ok;
     if (!ok) {
@@ -1461,7 +1533,8 @@ async function saveKeysFromModal() {
       showToast(errMsg, 'error');
     } else {
       // Entry mode is mandatory — can't close. Clear the bad input instead.
-      document.getElementById('keyInputTmdb').value   = '';
+      document.getElementById('keyInputTmdb').value    = '';
+      document.getElementById('keyInputMdblist').value = '';
       _resetKeyVisibility();
       showToast(errMsg, 'error');
     }
@@ -1476,7 +1549,8 @@ function openKeyUpdate() {
   showKeyModal('update');
   refreshKeys().then(keys => {
     if (document.getElementById('keyModalBackdrop').classList.contains('hidden')) return;
-    document.getElementById('keyCurrentTmdb').textContent   = keys.tmdb_key   ? `Current: ${keys.tmdb_key}`   : '';
+    document.getElementById('keyCurrentTmdb').textContent    = keys.tmdb_key    ? `Current: ${keys.tmdb_key}`    : '';
+    document.getElementById('keyCurrentMdblist').textContent = keys.mdblist_key ? `Current: ${keys.mdblist_key}` : 'Not set';
   });
 }
 

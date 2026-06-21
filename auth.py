@@ -184,6 +184,28 @@ def _validate_tmdb_key(key: str) -> tuple[bool, str]:
         return False, "Could not reach TMDB to validate key — please try again."
 
 
+def _validate_mdblist_key(key: str) -> tuple[bool, str]:
+    """Returns (valid, error_message). error_message is empty string on success.
+
+    Hits /user, the cheapest authenticated endpoint. MDBList returns 403 for a
+    missing or invalid key (there is no separate 401)."""
+    try:
+        resp = requests.get(
+            "https://api.mdblist.com/user",
+            params={"apikey": key},
+            timeout=10,
+        )
+        if resp.status_code == 200:
+            return True, ""
+        if resp.status_code in (401, 403):
+            return False, "Invalid MDBList API key — please check and try again."
+        return False, f"MDBList validation failed (HTTP {resp.status_code}) — please try again."
+    except requests.exceptions.Timeout:
+        return False, "MDBList validation timed out — please try again."
+    except Exception:
+        return False, "Could not reach MDBList to validate key — please try again."
+
+
 def _mask_key(key: str | None) -> str:
     if not key:
         return ""
@@ -197,8 +219,9 @@ def _mask_key(key: str | None) -> str:
 def get_keys():
     keys = get_user_keys(int(current_user.id))
     return jsonify({
-        "has_keys": bool(keys["tmdb_key"]),
-        "tmdb_key": _mask_key(keys["tmdb_key"]),
+        "has_keys":    bool(keys["tmdb_key"]),
+        "tmdb_key":    _mask_key(keys["tmdb_key"]),
+        "mdblist_key": _mask_key(keys["mdblist_key"]),
     })
 
 
@@ -206,12 +229,32 @@ def get_keys():
 @login_required
 @rate_limit(max_requests=10, window_seconds=60)    # 10/minute per IP
 def save_keys():
-    data     = request.get_json(silent=True) or {}
-    tmdb_key = _as_str(data.get("tmdb_key"))
-    if not tmdb_key:
-        return jsonify({"error": "TMDB API key required"}), 400
-    tmdb_ok, tmdb_err = _validate_tmdb_key(tmdb_key)
-    if not tmdb_ok:
-        return jsonify({"error": tmdb_err, "which": "tmdb"}), 400
-    set_user_keys(int(current_user.id), tmdb_key)
+    data       = request.get_json(silent=True) or {}
+    tmdb_input = _as_str(data.get("tmdb_key"))
+    mdb_input  = _as_str(data.get("mdblist_key"))
+    existing   = get_user_keys(int(current_user.id))
+
+    # TMDB is required. An empty field means "keep the existing key", so we only
+    # validate (and pay the network round-trip) when the user supplied a new one.
+    if tmdb_input:
+        tmdb_ok, tmdb_err = _validate_tmdb_key(tmdb_input)
+        if not tmdb_ok:
+            return jsonify({"error": tmdb_err, "which": "tmdb"}), 400
+        tmdb_final = tmdb_input
+    else:
+        tmdb_final = existing["tmdb_key"]
+    if not tmdb_final:
+        return jsonify({"error": "TMDB API key required", "which": "tmdb"}), 400
+
+    # MDBList is optional. Same keep-on-empty semantics as TMDB; validate only
+    # when a new value is supplied.
+    if mdb_input:
+        mdb_ok, mdb_err = _validate_mdblist_key(mdb_input)
+        if not mdb_ok:
+            return jsonify({"error": mdb_err, "which": "mdblist"}), 400
+        mdblist_final = mdb_input
+    else:
+        mdblist_final = existing["mdblist_key"]
+
+    set_user_keys(int(current_user.id), tmdb_final, mdblist_final)
     return jsonify({"status": "ok"})
