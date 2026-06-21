@@ -1832,6 +1832,63 @@ async function loadList() {
   allItems = await res.json();
   rebuildLibrarySet();
   renderGrid();
+  startProactiveSweeps();   // idempotent; only the first call arms the hourly timer
+}
+
+let _sweepStarted  = false;   // scheduler started once per page load
+let _sweepCapDate  = null;    // UTC date string on which the 500/day cap was hit
+
+function _todayUTC() { return new Date().toISOString().slice(0, 10); }
+
+// Refresh MDBList ratings for movie/tv items that are missing or >=7 days old,
+// oldest-first, until the server's 500/day cap is hit. Non-blocking; paced
+// sequentially to respect the per-endpoint rate limit. Goes dormant for the rest
+// of the UTC day once the cap (or MDBList quota) is exhausted.
+async function proactiveRefreshStale() {
+  if (_sweepCapDate === _todayUTC()) return;        // dormant until daily reset
+  await refreshMdblistStatus();
+  if (!_mdblist.has_key) return;
+  if (_mdblist.exhausted) { _sweepCapDate = _todayUTC(); return; }
+
+  const WEEK = 7 * 86400 * 1000;
+  const now  = Date.now();
+  const ts   = i => (i.ratings_updated_at ? new Date(i.ratings_updated_at).getTime() || 0 : 0);
+  const stale = allItems
+    .filter(i => (i.media_type === 'movie' || i.media_type === 'tv')
+              && (i.tmdb_id || i.external_id)
+              && (!i.ratings_updated_at || (now - ts(i)) >= WEEK))
+    .sort((a, b) => ts(a) - ts(b));   // oldest (and never-fetched = 0) first
+
+  for (const item of stale) {
+    const tid  = item.tmdb_id || item.external_id;
+    const prev = item.ratings_updated_at || '';
+    let d;
+    try {
+      d = await fetch(`/api/ratings/${item.media_type}/${encodeURIComponent(tid)}`).then(r => r.json());
+    } catch { continue; }
+    if (!d) continue;
+    const ratings = d.ratings || {};
+    item.ratings = JSON.stringify(ratings);
+    item.ratings_updated_at = d.updated_at || prev;
+    _ratingsCache[item.media_type + ':' + tid] = ratings;
+    // updated_at didn't advance -> server served stale (cap reached) -> stop and
+    // go dormant for the rest of the UTC day.
+    if (!d.updated_at || d.updated_at === prev) { _sweepCapDate = _todayUTC(); break; }
+    // Repaint this card's pills + the detail panel if it's the open one.
+    const host = document.getElementById('pills-' + item.id);
+    if (host) host.innerHTML = renderPills(item, ratings, gridPills);
+    if (selectedId === item.id) renderDetail(item);
+  }
+  refreshMdblistStatus();
+}
+
+// Start once per page load: sweep now, then re-check every hour for items that
+// have newly crossed the 7-day line (dormant days are no-ops inside the sweep).
+function startProactiveSweeps() {
+  if (_sweepStarted) return;
+  _sweepStarted = true;
+  proactiveRefreshStale();
+  setInterval(proactiveRefreshStale, 3600 * 1000);   // hourly while the tab is open
 }
 
 function rebuildLibrarySet() {
