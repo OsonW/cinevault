@@ -3421,7 +3421,13 @@ async function refreshRatingsNow(itemId) {
     _ratingsCache[item.media_type + ':' + tid] = ratings;
     refreshMdblistStatus();
     if (selectedId === itemId) renderDetail(item);
-  } catch {}
+  } catch {
+  } finally {
+    // On the success path renderDetail() rebuilds the button; clear the spinner
+    // here too so a network failure doesn't leave it spinning forever.
+    const b = document.getElementById('ratingsRefreshBtn');
+    if (b) b.classList.remove('spinning');
+  }
 }
 
 // Lazily fill a pills container once ratings arrive.

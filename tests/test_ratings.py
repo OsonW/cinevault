@@ -332,3 +332,21 @@ def test_ratings_lazy_cap_serves_stale_without_fetch(client, monkeypatch):
     resp = client.get("/api/ratings/movie/27205").get_json()
     assert resp["ratings"] == {"imdb": 5.0}   # old stored value
     assert calls["n"] == 0                     # cap blocked the fetch
+
+
+def test_ratings_cap_denied_never_fetched_returns_null_updated_at(client, monkeypatch):
+    """Never-fetched library row + cap denied: serve empty ratings with a null
+    updated_at. The client sweep relies on this null to detect the cap and stop."""
+    _register(client)
+    _set_mdblist_key()
+    _add_movie(client, external_id="27205")   # added, but ratings never fetched
+    calls = {"n": 0}
+    def spy(*a, **k):
+        calls["n"] += 1
+        return {"imdb": 9.0}
+    monkeypatch.setattr(app_module, "_fetch_mdblist_ratings", spy)
+    monkeypatch.setattr(app_module, "_take_lazy_refresh_slot", lambda uid: False)
+    resp = client.get("/api/ratings/movie/27205").get_json()
+    assert resp["ratings"] == {}
+    assert resp["updated_at"] is None
+    assert calls["n"] == 0
