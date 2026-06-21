@@ -184,34 +184,9 @@ body {
 <script>
 let mode = 'login';
 
-// iOS Safari offers "Use Strong Password" for any type=password field in a signup
-// form (the confirm field included). Where supported, mask the confirm field with
-// -webkit-text-security on a plain text input so Safari never sees a password field.
-// Non-WebKit browsers (no such prompt) keep the normal type=password masking.
-// Detect support by setting the property and reading it back — CSS.supports() is
-// unreliable for vendor-prefixed properties (returns false on Safari for this one).
-const MASK_OK = (function () {
-  const probe = document.createElement('input');
-  probe.style.webkitTextSecurity = 'disc';
-  return probe.style.webkitTextSecurity === 'disc';
-})();
-function applyMask(inp) {
-  if (!MASK_OK || !inp) return;
-  inp.type = 'text';
-  inp.style.webkitTextSecurity = 'disc';
-  inp.dataset.mask = '1';
-}
-applyMask(document.getElementById('authConfirm'));
-
 function togglePw(inputId, btnId) {
   const inp = document.getElementById(inputId);
   const btn = document.getElementById(btnId);
-  if (inp.dataset.mask) {
-    const masked = inp.style.webkitTextSecurity !== 'none';
-    inp.style.webkitTextSecurity = masked ? 'none' : 'disc';
-    btn.classList.toggle('shown', masked);
-    return;
-  }
   const show = inp.type === 'password';
   inp.type = show ? 'text' : 'password';
   btn.classList.toggle('shown', show);
@@ -223,18 +198,19 @@ function setMode(m) {
   document.getElementById('tabRegister').classList.toggle('active', m === 'register');
   document.getElementById('authSubmit').textContent = m === 'login' ? 'Sign In' : 'Create Account';
   // 'new-password' is what triggers Safari's "Use Strong Password" overlay on signup;
-  // 'one-time-code' lets the user type freely without that suggestion.
+  // 'one-time-code' (set dynamically here, like the main field) lets the user type
+  // freely without that suggestion. Apply it to the confirm field too — setting it via
+  // JS when the field becomes visible is what actually suppresses the prompt.
   document.getElementById('authPassword').autocomplete =
     m === 'login' ? 'current-password' : 'one-time-code';
+  document.getElementById('authConfirm').autocomplete = 'one-time-code';
   const confirmField = document.getElementById('confirmField');
   confirmField.style.display = m === 'register' ? 'block' : 'none';
   document.getElementById('authConfirm').value = '';
   document.getElementById('authError').classList.remove('show');
   ['authPassword','authConfirm'].forEach(id => {
     const inp = document.getElementById(id);
-    if (!inp) return;
-    if (inp.dataset.mask) inp.style.webkitTextSecurity = 'disc';  // re-mask without reverting to type=password
-    else inp.type = 'password';
+    if (inp) inp.type = 'password';
   });
   ['eyePassword','eyeConfirm'].forEach(id => {
     const btn = document.getElementById(id);
