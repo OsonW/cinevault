@@ -3,6 +3,20 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<script>
+// Set root font-size from clientWidth (not vw) to avoid the iOS first-paint
+// flash where 100vw is briefly miscomputed. Mirrors the CSS clamp(12,100vw/120,22).
+(function () {
+  function setRem() {
+    var w = document.documentElement.clientWidth || window.innerWidth || 0;
+    var px = Math.max(12, Math.min(22, w / 120));
+    document.documentElement.style.fontSize = px + 'px';
+  }
+  setRem();
+  window.addEventListener('resize', setRem);
+  window.addEventListener('orientationchange', setRem);
+})();
+</script>
 <title>CineVault</title>
 <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
