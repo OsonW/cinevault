@@ -5,6 +5,7 @@ import time
 import secrets
 import threading
 import requests
+from datetime import datetime, timezone
 from collections import OrderedDict
 from urllib.parse import urlparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -15,6 +16,7 @@ from db import (
     get_user_db_path, init_user_db,
     get_all_media, get_media_by_id, get_media_by_external_id,
     add_media_entry, update_media_entry, delete_media_entry, set_media_dates,
+    set_media_ratings,
 )
 from auth import (
     auth_bp, login_manager, rate_limit, _as_str,
@@ -147,6 +149,11 @@ def _fetch_mdblist_ratings(media_type: str, tmdb_id, key: str) -> dict:
 # Shared across users — keyed by external IDs so safe to share
 poster_cache: _BoundedCache = _BoundedCache(500)   # ~100 MB max at avg 200 KB/poster
 search_cache: dict[str, list] = {}
+
+# Ratings for non-library titles (search results). Keyed "media_type:tmdb_id".
+_ratings_cache: dict[str, tuple[float, dict]] = {}
+_RATINGS_TTL = 24 * 3600          # seconds
+_RATINGS_MAX_AGE_DAYS = 7         # persisted library ratings refresh after this
 
 _user_media_cache:   dict[int, dict] = {}
 
@@ -724,6 +731,48 @@ def get_poster(media_type, item_id):
     except Exception as e:
         print(f"TMDB poster error for {media_type}/{item_id}: {e}")
         return "", 404
+
+
+# ═══════════════════════════════════════════════════
+# Ratings
+# ═══════════════════════════════════════════════════
+
+@app.route("/api/ratings/<media_type>/<tmdb_id>")
+@login_required
+def api_ratings(media_type, tmdb_id):
+    key = _get_mdblist_key()
+    if not key:
+        return jsonify({"ratings": {}})
+
+    # Library item? Serve/refresh persisted ratings.
+    row = get_media_by_external_id(str(tmdb_id), media_type)
+    if row:
+        fresh = False
+        if row.get("ratings") and row.get("ratings_updated_at"):
+            try:
+                age = datetime.now(timezone.utc) - datetime.fromisoformat(row["ratings_updated_at"])
+                fresh = age.days < _RATINGS_MAX_AGE_DAYS
+            except Exception:
+                fresh = False
+        if fresh:
+            try:
+                return jsonify({"ratings": json.loads(row["ratings"])})
+            except Exception:
+                pass
+        data = _fetch_mdblist_ratings(media_type, tmdb_id, key)
+        set_media_ratings(row["id"], json.dumps(data), datetime.now(timezone.utc).isoformat())
+        return jsonify({"ratings": data})
+
+    # Non-library (search result): TTL cache.
+    ck = f"{media_type}:{tmdb_id}"
+    hit = _ratings_cache.get(ck)
+    if hit and (time.time() - hit[0]) < _RATINGS_TTL:
+        return jsonify({"ratings": hit[1]})
+    data = _fetch_mdblist_ratings(media_type, tmdb_id, key)
+    if len(_ratings_cache) > 2000:
+        _ratings_cache.pop(next(iter(_ratings_cache)))
+    _ratings_cache[ck] = (time.time(), data)
+    return jsonify({"ratings": data})
 
 
 # ═══════════════════════════════════════════════════

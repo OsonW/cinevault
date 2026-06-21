@@ -112,3 +112,43 @@ def test_fetch_mdblist_ratings_unsupported_type(monkeypatch):
     monkeypatch.setattr(a.requests, "get", _spy)
     assert a._fetch_mdblist_ratings("book", 5, "fake-key") == {}
     assert called["n"] == 0
+
+
+def _set_mdblist_key(username="alice", key="fake-key"):
+    from users_db import get_user_by_username, get_user_keys, set_user_keys
+    uid = get_user_by_username(username)["id"]
+    set_user_keys(uid, get_user_keys(uid)["tmdb_key"] or "tmdbkey", key)
+
+
+def test_ratings_endpoint_no_key_returns_empty(client):
+    _register(client)
+    resp = client.get("/api/ratings/movie/27205")
+    assert resp.status_code == 200
+    assert resp.get_json() == {"ratings": {}}
+
+
+def test_ratings_endpoint_caches_non_library(client, monkeypatch):
+    _register(client)
+    _set_mdblist_key()
+    calls = {"n": 0}
+    def fake(media_type, tmdb_id, key):
+        calls["n"] += 1
+        return {"imdb": 8.1}
+    monkeypatch.setattr(app_module, "_fetch_mdblist_ratings", fake)
+    first  = client.get("/api/ratings/movie/603").get_json()
+    second = client.get("/api/ratings/movie/603").get_json()
+    assert first == second == {"ratings": {"imdb": 8.1}}
+    assert calls["n"] == 1  # second served from TTL cache
+
+
+def test_ratings_endpoint_persists_library_item(client, monkeypatch):
+    _register(client)
+    _set_mdblist_key()
+    _add_movie(client, external_id="27205")
+    monkeypatch.setattr(app_module, "_fetch_mdblist_ratings",
+                        lambda *a, **k: {"imdb": 7.5})
+    client.get("/api/ratings/movie/27205")
+    item = client.get("/api/list").get_json()[0]
+    import json as _j
+    assert _j.loads(item["ratings"]) == {"imdb": 7.5}
+    assert item["ratings_updated_at"]
