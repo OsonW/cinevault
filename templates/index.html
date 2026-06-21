@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>CineVault</title>
 <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
@@ -14,6 +14,9 @@
 /* Fluid root: 1rem = 16px at exactly 1920px wide (1080p baseline = pixel-identical).
    Scales linearly with viewport width, floored at 12px and capped at 22px. */
 html { font-size: clamp(12px, 100vw / 120, 22px); }
+
+/* Disable double-tap-to-zoom on touch devices (also kills the 300ms tap delay). */
+html, body { touch-action: manipulation; }
 
 :root {
   --bg:          #0e0e10;
@@ -728,7 +731,7 @@ input[type="range"]::-webkit-slider-thumb {
   border:1px solid transparent; white-space:nowrap; }
 .spill-ic { height:1em; width:auto; }
 .spill-imdb { background:rgba(245,197,24,0.16); color:#f5c518; border-color:rgba(245,197,24,0.4); }
-.spill-imdb b, .spill-mal b { font-weight:800; letter-spacing:0.01em; }
+.spill-imdb b, .spill-mal b { font-weight:inherit; letter-spacing:0.01em; }
 .spill-mal { background:rgba(70,110,200,0.18); color:#8aa4e6; border-color:rgba(70,110,200,0.42); }
 .spill-tomatoes  { background:rgba(250,50,10,0.14);  color:#ff6a4d; border-color:rgba(250,50,10,0.32); }
 .spill-audience  { background:rgba(250,110,30,0.14); color:#ffa05c; border-color:rgba(250,110,30,0.32); }
@@ -737,13 +740,15 @@ input[type="range"]::-webkit-slider-thumb {
 .spill-metacritic.mc-mixed { background:rgba(202,163,0,0.16); color:#e6c34d; border-color:rgba(202,163,0,0.36); }
 .spill-metacritic.mc-bad   { background:rgba(211,59,59,0.15); color:#f06a6a; border-color:rgba(211,59,59,0.36); }
 .poster-type-badge {
-  display: inline-flex; align-items: center; gap: 0.1875rem;
-  font-size: 0.75em; padding: 0.125rem 0.375rem; border-radius: var(--radius);
+  display: inline-flex; align-items: center; gap: 0.2em;
+  font-size: 0.66em; font-weight: 600; line-height: 1.45;
+  padding: 0.125rem 0.4rem; border-radius: var(--radius);
   border: 1px solid;
 }
 .poster-year-badge {
   display: inline-flex; align-items: center;
-  font-size: 0.75em; padding: 0.125rem 0.375rem; border-radius: var(--radius);
+  font-size: 0.66em; font-weight: 600; line-height: 1.45;
+  padding: 0.125rem 0.4rem; border-radius: var(--radius);
   border: 1px solid rgba(255,255,255,0.18); background: rgba(255,255,255,0.07);
   color: rgba(255,255,255,0.7);
 }
@@ -1374,6 +1379,14 @@ body.entry-active .entry-cancel-account { display: block; }
 <div class="sm-text-tooltip" id="smTextTooltip"></div>
 
 <script>
+// Block pinch-zoom on iOS Safari, which ignores user-scalable=no / maximum-scale.
+// (touch-action: manipulation handles double-tap zoom; these cover the pinch gesture.)
+['gesturestart', 'gesturechange', 'gestureend'].forEach(ev =>
+  document.addEventListener(ev, e => e.preventDefault(), { passive: false }));
+document.addEventListener('touchmove', e => {
+  if (e.touches.length > 1) e.preventDefault();
+}, { passive: false });
+
 // ─────────────────────────────────────────────
 // API Key management (server-backed, per-account)
 // ─────────────────────────────────────────────
@@ -2175,8 +2188,6 @@ function setTabSize(size) {
   tabSize[currentTab] = size;
   localStorage.setItem(`tabSize_${currentTab}`, size);
   renderGrid();
-  const inp = document.getElementById('gridFilterInput');
-  if (inp) inp.focus();
 }
 
 // ─────────────────────────────────────────────
@@ -2846,7 +2857,7 @@ async function runModalSearch(q) {
 }
 
 function renderSkeletons() {
-  return `<div class="sm-grid">${Array(8).fill(0).map(() =>
+  return `<div class="sm-grid">${Array(10).fill(0).map(() =>
     `<div><div class="sm-skeleton"></div></div>`).join('')}</div>`;
 }
 
