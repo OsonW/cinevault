@@ -729,6 +729,20 @@ input[type="range"]::-webkit-slider-thumb {
   font-size: 0.917em; color: var(--muted); line-height: 1.45; margin-top: 0.3125rem;
 }
 .poster-badge-row { display: flex; align-items: center; gap: 0.25rem; margin-bottom: 0.25rem; flex-wrap: wrap; }
+.spill { display:inline-flex; align-items:center; gap:0.2em; padding:0.1em 0.42em;
+  border-radius:0.32em; font-size:0.66em; font-weight:600; line-height:1.45;
+  border:1px solid transparent; white-space:nowrap; }
+.spill-ic { height:1em; width:auto; }
+.spill-imdb { background:#f5c518; color:#000; }
+.spill-imdb b, .spill-mal b { font-weight:800; letter-spacing:0.01em; }
+.spill-mal { background:#2e51a2; color:#fff; }
+.spill-tomatoes  { background:rgba(250,50,10,0.14);  color:#ff6a4d; border-color:rgba(250,50,10,0.32); }
+.spill-audience  { background:rgba(250,110,30,0.14); color:#ffa05c; border-color:rgba(250,110,30,0.32); }
+.spill-letterboxd{ background:rgba(0,224,84,0.12);   color:#5be08a; border-color:rgba(0,224,84,0.28); }
+.spill-metacritic { color:#fff; }
+.spill-metacritic.mc-good  { background:#00a85a; }
+.spill-metacritic.mc-mixed { background:#caa300; color:#1a1a1a; }
+.spill-metacritic.mc-bad   { background:#d33b3b; }
 .poster-type-badge {
   display: inline-flex; align-items: center; gap: 0.1875rem;
   font-size: 0.75em; padding: 0.125rem 0.375rem; border-radius: var(--radius);
@@ -3011,14 +3025,85 @@ function esc(str) {
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-// TEMP stubs (replaced in Task 5/6).
-let gridPills = ['year','type'];
-const _ratingsCache = {};
+// Pills: year/type from local data, the six scores from /api/ratings.
+let gridPills = ['year','type'];   // TEMP default — replaced in Task 6
+
+const PILL_ORDER  = ['year','type','imdb','tomatoes','audience','metacritic','letterboxd','mal'];
+const SCORE_SOURCES = ['imdb','tomatoes','audience','metacritic','letterboxd','mal'];
+const PILL_LABELS = { year:'Year', type:'Media type', imdb:'IMDb', tomatoes:'Tomatometer',
+  audience:'Popcornmeter', metacritic:'Metacritic', letterboxd:'Letterboxd', mal:'MyAnimeList' };
+const DEFAULT_PILLS = ['year','type','imdb','metacritic','tomatoes'];
+
+const SCORE_SVG = {
+  tomatoes:  '<svg class="spill-ic" viewBox="0 0 24 24" fill="#fa320a"><path d="M12 4c1-2 4-2 5-1-1 1-2 1-3 2 3 0 6 2 6 6 0 5-4 9-8 9s-8-4-8-9c0-4 3-6 6-6-1-1-2-1-3-2 1-1 4-1 5 1z"/></svg>',
+  audience:  '<svg class="spill-ic" viewBox="0 0 24 24"><path d="M5 8h14l-1.6 12H6.6z" fill="#fa6e1e"/><path d="M5 8l2-3.5 3 1.8 2-2.6 2 2.6 3-1.8 2 3.5z" fill="#ffd24d"/></svg>',
+  letterboxd:'<svg class="spill-ic" viewBox="0 0 36 12"><circle cx="6" cy="6" r="5" fill="#ff8000"/><circle cx="18" cy="6" r="5" fill="#00e054"/><circle cx="30" cy="6" r="5" fill="#40bcf4"/></svg>',
+};
+
+const _ratingsCache = {};   // "media_type:tmdb_id" -> ratings object
+
+// MDBList quota status. `exhausted` greys out MDBList pill options and pauses
+// new fetches (cached/persisted pills still render).
+let _mdblist = { has_key: false, limit: null, remaining: null, exhausted: false };
+async function refreshMdblistStatus() {
+  try {
+    const d = await fetch('/api/mdblist-status').then(r => r.json());
+    _mdblist = {
+      has_key: !!d.has_key, limit: d.limit, remaining: d.remaining,
+      exhausted: !!d.has_key && d.remaining !== null && d.remaining <= 0,
+    };
+  } catch {}
+  return _mdblist;
+}
+
+function _pillValue(src, ratings) {
+  const v = ratings ? ratings[src] : undefined;
+  if (v === undefined || v === null) return null;
+  if (src === 'tomatoes' || src === 'audience') return Math.round(v) + '%';
+  if (src === 'metacritic') return String(Math.round(v));
+  return Number(v).toFixed(1);   // imdb, mal, letterboxd
+}
+function _mcBand(v) { return v >= 61 ? 'good' : v >= 40 ? 'mixed' : 'bad'; }
+
 function renderPills(item, ratings, selected) {
-  let h = '';
-  if (selected.includes('year') && item.year) h += `<span class="poster-year-badge">${esc(String(item.year))}</span>`;
-  if (selected.includes('type')) h += `<span class="poster-type-badge ptb-${item.media_type}">${TYPE_SVG[item.media_type]} ${TYPE_LABEL[item.media_type]}</span>`;
-  return h;
+  const out = [];
+  for (const src of PILL_ORDER) {
+    if (!selected.includes(src)) continue;
+    if (src === 'year') { if (item.year) out.push(`<span class="poster-year-badge">${esc(String(item.year))}</span>`); continue; }
+    if (src === 'type') { out.push(`<span class="poster-type-badge ptb-${item.media_type}">${TYPE_SVG[item.media_type]} ${TYPE_LABEL[item.media_type]}</span>`); continue; }
+    const val = _pillValue(src, ratings);
+    if (val === null) continue;
+    if (src === 'imdb')       { out.push(`<span class="spill spill-imdb"><b>IMDb</b> ${val}</span>`); continue; }
+    if (src === 'mal')        { out.push(`<span class="spill spill-mal"><b>MAL</b> ${val}</span>`); continue; }
+    if (src === 'metacritic') { out.push(`<span class="spill spill-metacritic mc-${_mcBand(ratings.metacritic)}">${val}</span>`); continue; }
+    out.push(`<span class="spill spill-${src}">${SCORE_SVG[src] || ''}${val}</span>`);
+  }
+  return out.join('');
+}
+
+async function fetchRatings(mediaType, tmdbId) {
+  if (!tmdbId || (mediaType !== 'movie' && mediaType !== 'tv')) return {};
+  const k = `${mediaType}:${tmdbId}`;
+  if (k in _ratingsCache) return _ratingsCache[k];
+  // Out of quota: don't spend a failing call; show nothing new this session.
+  if (_mdblist.exhausted) return {};
+  try {
+    const res = await fetch(`/api/ratings/${mediaType}/${encodeURIComponent(tmdbId)}`);
+    const data = res.ok ? ((await res.json()).ratings || {}) : {};
+    _ratingsCache[k] = data;
+    return data;
+  } catch { _ratingsCache[k] = {}; return {}; }
+}
+
+// Lazily fill a pills container once ratings arrive.
+function hydratePills(hostId, item, selected) {
+  if (!selected.some(s => SCORE_SOURCES.includes(s))) return;
+  const tmdbId = item.tmdb_id || item.external_id;
+  if (!tmdbId || (item.media_type !== 'movie' && item.media_type !== 'tv')) return;
+  fetchRatings(item.media_type, tmdbId).then(r => {
+    const host = document.getElementById(hostId);
+    if (host) host.innerHTML = renderPills(item, r, selected);
+  });
 }
 
 // ─────────────────────────────────────────────
