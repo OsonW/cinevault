@@ -153,100 +153,42 @@ body {
       <button class="auth-tab active" id="tabLogin" onclick="setMode('login')">Sign In</button>
       <button class="auth-tab" id="tabRegister" onclick="setMode('register')">Create Account</button>
     </div>
-    <form id="authForm" onsubmit="submitAuth(); return false;">
-      <div class="auth-error" id="authError"></div>
-      <div class="auth-field">
-        <label>Username</label>
-        <input type="text" id="authUsername" placeholder="Username" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" minlength="4" maxlength="32" />
+    <form id="authForm" autocomplete="off" onsubmit="return false">
+    <div class="auth-error" id="authError"></div>
+    <div class="auth-field">
+      <label>Username</label>
+      <input type="text" id="authUsername" placeholder="Username" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" minlength="4" maxlength="32" />
+    </div>
+    <div class="auth-field">
+      <label>Password</label>
+      <div class="pw-wrap">
+        <input type="password" id="authPassword" placeholder="Password" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" minlength="4" maxlength="32" />
+        <button type="button" class="pw-eye-btn" id="eyePassword" onclick="togglePw('authPassword','eyePassword')" tabindex="-1" aria-label="Toggle password visibility">
+          <svg class="eye-on" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          <svg class="eye-off" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+        </button>
       </div>
-      <div class="auth-field">
-        <label>Password</label>
-        <div class="pw-wrap">
-          <input type="password" id="authPassword" placeholder="Password" autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false" minlength="4" maxlength="32" />
-          <button type="button" class="pw-eye-btn" id="eyePassword" onclick="togglePw('authPassword','eyePassword')" tabindex="-1" aria-label="Toggle password visibility">
-            <svg class="eye-on" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-            <svg class="eye-off" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-          </button>
-        </div>
+    </div>
+    <div class="auth-field" id="confirmField" style="display:none">
+      <label>Confirm Password</label>
+      <div class="pw-wrap">
+        <input type="password" id="authConfirm" placeholder="Confirm Password" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" minlength="4" maxlength="32" />
+        <button type="button" class="pw-eye-btn" id="eyeConfirm" onclick="togglePw('authConfirm','eyeConfirm')" tabindex="-1" aria-label="Toggle confirm password visibility">
+          <svg class="eye-on" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          <svg class="eye-off" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+        </button>
       </div>
-      <div class="auth-field" id="confirmField" style="display:none">
-        <label>Confirm Password</label>
-        <div class="pw-wrap">
-          <input type="password" id="authConfirm" placeholder="Confirm Password" autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false" minlength="4" maxlength="32" />
-          <button type="button" class="pw-eye-btn" id="eyeConfirm" onclick="togglePw('authConfirm','eyeConfirm')" tabindex="-1" aria-label="Toggle confirm password visibility">
-            <svg class="eye-on" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-            <svg class="eye-off" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-          </button>
-        </div>
-      </div>
-      <button type="submit" class="auth-submit" id="authSubmit">Sign In</button>
+    </div>
+    <button type="button" class="auth-submit" id="authSubmit" onclick="submitAuth()">Sign In</button>
     </form>
   </div>
 </div>
 <script>
 let mode = 'login';
 
-// Sign In uses real type=password fields so saved-password autofill works.
-// Create Account must offer nothing — and iOS attaches its "password for this
-// website" suggestion to ANY type=password field on the domain, ignoring
-// autocomplete hints. So in register mode we swap the password inputs for
-// bullet-masked text inputs: with no password field present, the browser has
-// nothing to autofill and shows no suggestions.
-const BULLET = '•';
-const realValue = {};   // input id -> actual typed value while masked
-const revealed = {};    // input id -> whether the eye is showing plain text
-
-function renderMask(inp) {
-  const v = realValue[inp.id] || '';
-  inp.value = revealed[inp.id] ? v : BULLET.repeat(v.length);
-}
-
-function onMaskInput(e) {
-  const inp = e.target;
-  if (revealed[inp.id]) { realValue[inp.id] = inp.value; return; }
-  const prev = realValue[inp.id] || '';
-  let next = '';
-  for (let i = 0; i < inp.value.length; i++) {
-    const ch = inp.value[i];
-    next += (ch === BULLET && i < prev.length) ? prev[i] : ch;  // keep stored chars, accept new ones
-  }
-  realValue[inp.id] = next;
-  inp.value = BULLET.repeat(next.length);
-}
-
-function setMasked(inp, on) {
-  if (on === (inp.dataset.masked === '1')) return;
-  if (on) {
-    realValue[inp.id] = inp.value || '';
-    revealed[inp.id] = false;
-    inp.type = 'text';
-    inp.setAttribute('autocomplete', 'off');
-    inp.dataset.masked = '1';
-    inp.addEventListener('input', onMaskInput);
-    renderMask(inp);
-  } else {
-    inp.removeEventListener('input', onMaskInput);
-    inp.type = 'password';
-    inp.value = realValue[inp.id] || '';
-    delete inp.dataset.masked;
-    delete revealed[inp.id];
-  }
-}
-
-function valueOf(id) {
-  const inp = document.getElementById(id);
-  return inp.dataset.masked === '1' ? (realValue[id] || '') : inp.value;
-}
-
 function togglePw(inputId, btnId) {
   const inp = document.getElementById(inputId);
   const btn = document.getElementById(btnId);
-  if (inp.dataset.masked === '1') {
-    revealed[inputId] = !revealed[inputId];
-    renderMask(inp);
-    btn.classList.toggle('shown', revealed[inputId]);
-    return;
-  }
   const show = inp.type === 'password';
   inp.type = show ? 'text' : 'password';
   btn.classList.toggle('shown', show);
@@ -257,54 +199,61 @@ function setMode(m) {
   document.getElementById('tabLogin').classList.toggle('active', m === 'login');
   document.getElementById('tabRegister').classList.toggle('active', m === 'register');
   document.getElementById('authSubmit').textContent = m === 'login' ? 'Sign In' : 'Create Account';
-
-  const user = document.getElementById('authUsername');
-  const pw = document.getElementById('authPassword');
-  const conf = document.getElementById('authConfirm');
-
-  if (m === 'register') {
-    user.setAttribute('autocomplete', 'off');
-    setMasked(pw, true);
-    setMasked(conf, true);
-  } else {
-    user.setAttribute('autocomplete', 'username');
-    setMasked(pw, false);
-    setMasked(conf, false);
-    pw.setAttribute('autocomplete', 'current-password');
-  }
-
-  // Clear every field (and any value autofilled in the other mode) on switch.
-  user.value = '';
-  realValue['authPassword'] = '';
-  realValue['authConfirm'] = '';
-  pw.value = '';
-  conf.value = '';
-
-  document.getElementById('confirmField').style.display = m === 'register' ? 'block' : 'none';
+  // 'new-password' is what triggers Safari's "Use Strong Password" overlay on signup;
+  // 'one-time-code' (set dynamically here, like the main field) lets the user type
+  // freely without that suggestion. Apply it to the confirm field too — setting it via
+  // JS when the field becomes visible is what actually suppresses the prompt.
+  document.getElementById('authPassword').autocomplete =
+    m === 'login' ? 'current-password' : 'one-time-code';
+  document.getElementById('authConfirm').autocomplete = 'off';
+  const confirmField = document.getElementById('confirmField');
+  confirmField.style.display = m === 'register' ? 'block' : 'none';
+  document.getElementById('authConfirm').value = '';
   document.getElementById('authError').classList.remove('show');
-  ['eyePassword', 'eyeConfirm'].forEach(id => document.getElementById(id).classList.remove('shown'));
+  ['authPassword','authConfirm'].forEach(id => {
+    const inp = document.getElementById(id);
+    if (inp) inp.type = 'password';
+  });
+  ['eyePassword','eyeConfirm'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (btn) btn.classList.remove('shown');
+  });
 }
 
 async function submitAuth() {
   const username = document.getElementById('authUsername').value.trim();
-  const password = valueOf('authPassword');
+  const password = document.getElementById('authPassword').value;
   const btn = document.getElementById('authSubmit');
   if (!username || !password) { showError('Please fill in all fields.'); return; }
   if (mode === 'register') {
-    if (username.length < 4 || username.length > 32) { showError('Username must be 4–32 characters.'); return; }
-    if (password.length < 4 || password.length > 32) { showError('Password must be 4–32 characters.'); return; }
-    if (/\s/.test(username)) { showError('Username cannot contain spaces.'); return; }
-    if (/\s/.test(password)) { showError('Password cannot contain spaces.'); return; }
-    if (password !== valueOf('authConfirm')) { showError('Passwords do not match.'); return; }
+    if (username.length < 4 || username.length > 32) {
+      showError('Username must be 4–32 characters.'); return;
+    }
+    if (password.length < 4 || password.length > 32) {
+      showError('Password must be 4–32 characters.'); return;
+    }
+    if (/\s/.test(username)) {
+      showError('Username cannot contain spaces.'); return;
+    }
+    if (/\s/.test(password)) {
+      showError('Password cannot contain spaces.'); return;
+    }
+    const confirm = document.getElementById('authConfirm').value;
+    if (password !== confirm) {
+      showError('Passwords do not match.'); return;
+    }
   }
   btn.disabled = true;
   btn.textContent = 'Please wait…';
   try {
-    const resp = await fetch(mode === 'login' ? '/auth/login' : '/auth/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
-    });
+    const resp = await fetch(
+      mode === 'login' ? '/auth/login' : '/auth/register',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      }
+    );
     const data = await resp.json();
     if (resp.ok) {
       window.location.href = '/';
@@ -325,6 +274,17 @@ function showError(msg) {
   el.textContent = msg;
   el.classList.add('show');
 }
+
+document.addEventListener('keydown', e => { if (e.key === 'Enter') submitAuth(); });
+
+// Tapping outside the fields blurs the active input so mobile keyboards dismiss.
+function dismissKeyboardOnOutside(e) {
+  if (e.target.closest && e.target.closest('input, button')) return;
+  const a = document.activeElement;
+  if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA')) a.blur();
+}
+document.addEventListener('touchend', dismissKeyboardOnOutside, { passive: true });
+document.addEventListener('click', dismissKeyboardOnOutside);
 </script>
 </body>
 </html>
