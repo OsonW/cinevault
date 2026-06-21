@@ -161,26 +161,34 @@ MDBList quota is per-user BYOK; `/api/mdblist-status` exposes `remaining`.
   - `< 7d`  → `Xd ago`
 - Only shown for movie/tv titles that have an MDBList key and a stored timestamp.
 
-### 6c. Proactive refresh on launch (7-day ceiling, ≤500/day)
-- On **every in-browser launch**, after the library list loads, a **one-time
-  background sweep** refreshes the MDBList ratings of all movie/tv items whose
+### 6c. Proactive hourly refresh sweep (7-day ceiling, ≤500/day)
+- A **background sweep** runs **on launch and then once per hour** while the tab
+  stays open. Each sweep refreshes the MDBList ratings of all movie/tv items whose
   ratings are **missing or ≥7 days old**, **oldest-first**.
+- The hourly cadence exists so items are picked up as they **newly cross** the
+  7-day line (e.g. an item at 6d23h this hour becomes eligible next hour).
 - Each refresh consumes one server lazy-refresh slot (see 6e). When the daily
   **500** cap is reached, the remaining stale items are **skipped and stay stale
   until the next day** — so 7 days is the effective freshness ceiling, bounded by
   500 refreshes/day.
-- The sweep:
-  - runs **once per page load** (guarded by a flag so the many `loadList()`
+- **Daily dormancy:** if a sweep reaches the 500 cap (or MDBList quota is
+  exhausted), **all sweeps pause for the rest of the UTC day** and resume after
+  the daily reset (tracked client-side by the UTC date on which the cap was hit).
+  The hourly timer keeps ticking but each tick is a no-op until the date rolls
+  over.
+- Each sweep:
+  - **starts once per page load** (a single scheduler; the many `loadList()`
     callers don't re-trigger it),
   - is **non-blocking** (fire-and-forget; the grid renders immediately),
   - **stops early** when it detects the cap is exhausted — a refreshed item whose
     `updated_at` did **not** advance to ~now signals the cap is hit, so the sweep
-    aborts the rest instead of firing hundreds of pointless requests,
+    aborts the rest (and marks the day dormant) instead of firing hundreds of
+    pointless requests,
   - is **skipped entirely** when there is no MDBList key or the quota is exhausted,
   - paces requests sequentially to stay under the per-endpoint rate limit.
-- **No scroll/viewport-triggered refresh.** Besides this launch sweep, ratings
-  also refresh via the manual button (6a) and whenever `/api/ratings` is hit by
-  normal grid pill hydration — all subject to the same 500/day cap.
+- **No scroll/viewport-triggered refresh.** Besides this sweep, ratings also
+  refresh via the manual button (6a) and whenever `/api/ratings` is hit by normal
+  grid pill hydration — all subject to the same 500/day cap.
 
 ### 6e. Daily cap on lazy refreshes (500/day)
 - A **per-user daily counter** caps the **automatic 7-day-on-access** refreshes at
@@ -207,8 +215,10 @@ MDBList quota is per-user BYOK; `/api/mdblist-status` exposes `remaining`.
 
 ### Tunables (chosen)
 - Manual-refresh debounce window: **60 seconds** ("just now").
-- Proactive launch refresh: items **missing or ≥7 days old**, oldest-first.
-- Daily cap on lazy/proactive refreshes: **500 per user per day** (manual exempt).
+- Proactive sweep cadence: **on launch + every 1 hour** while open.
+- Sweep eligibility: items **missing or ≥7 days old**, oldest-first.
+- Daily cap on lazy/proactive refreshes: **500 per user per day** (manual exempt);
+  sweeps go dormant for the rest of the UTC day once hit.
 
 ---
 
