@@ -171,7 +171,7 @@ body {
     <div class="auth-field" id="confirmField" style="display:none">
       <label>Confirm Password</label>
       <div class="pw-wrap">
-        <input type="password" id="authConfirm" placeholder="Confirm Password" autocomplete="one-time-code" autocorrect="off" autocapitalize="off" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" minlength="4" maxlength="32" />
+        <input type="password" id="authConfirm" placeholder="Confirm Password" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" minlength="4" maxlength="32" />
         <button type="button" class="pw-eye-btn" id="eyeConfirm" onclick="togglePw('authConfirm','eyeConfirm')" tabindex="-1" aria-label="Toggle confirm password visibility">
           <svg class="eye-on" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
           <svg class="eye-off" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
@@ -184,9 +184,28 @@ body {
 <script>
 let mode = 'login';
 
+// iOS Safari offers "Use Strong Password" for any type=password field in a signup
+// form (the confirm field included). Where supported, mask the confirm field with
+// -webkit-text-security on a plain text input so Safari never sees a password field.
+// Non-WebKit browsers (no such prompt) keep the normal type=password masking.
+const MASK_OK = !!(window.CSS && CSS.supports && CSS.supports('-webkit-text-security', 'disc'));
+function applyMask(inp) {
+  if (!MASK_OK || !inp) return;
+  inp.type = 'text';
+  inp.style.webkitTextSecurity = 'disc';
+  inp.dataset.mask = '1';
+}
+applyMask(document.getElementById('authConfirm'));
+
 function togglePw(inputId, btnId) {
   const inp = document.getElementById(inputId);
   const btn = document.getElementById(btnId);
+  if (inp.dataset.mask) {
+    const masked = inp.style.webkitTextSecurity !== 'none';
+    inp.style.webkitTextSecurity = masked ? 'none' : 'disc';
+    btn.classList.toggle('shown', masked);
+    return;
+  }
   const show = inp.type === 'password';
   inp.type = show ? 'text' : 'password';
   btn.classList.toggle('shown', show);
@@ -207,7 +226,9 @@ function setMode(m) {
   document.getElementById('authError').classList.remove('show');
   ['authPassword','authConfirm'].forEach(id => {
     const inp = document.getElementById(id);
-    if (inp) inp.type = 'password';
+    if (!inp) return;
+    if (inp.dataset.mask) inp.style.webkitTextSecurity = 'disc';  // re-mask without reverting to type=password
+    else inp.type = 'password';
   });
   ['eyePassword','eyeConfirm'].forEach(id => {
     const btn = document.getElementById(id);

@@ -369,7 +369,7 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 /* ── TMDB / search result grid ────────────────── */
 .sm-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(8.75rem, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));   /* always 5 per row, mobile + desktop */
   gap: 0.875rem;
 }
 
@@ -769,6 +769,8 @@ input[type="range"]::-webkit-slider-thumb {
   padding: 0.125rem 0.4rem; border-radius: var(--radius);
   border: 1px solid;
 }
+/* Scale the type icon with the pill text so it doesn't make the pill taller than the others. */
+.poster-type-badge svg { width: 1em; height: 1em; flex-shrink: 0; }
 .poster-year-badge {
   display: inline-flex; align-items: center;
   font-size: 0.66em; font-weight: 600; line-height: 1.45;
