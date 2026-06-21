@@ -156,12 +156,12 @@ body {
     <div class="auth-error" id="authError"></div>
     <div class="auth-field">
       <label>Username</label>
-      <input type="text" id="authUsername" placeholder="Username" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" minlength="4" maxlength="32" />
+      <input type="text" id="authUsername" placeholder="Username" autocomplete="username" autocorrect="off" autocapitalize="off" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" minlength="4" maxlength="32" />
     </div>
     <div class="auth-field">
       <label>Password</label>
       <div class="pw-wrap">
-        <input type="password" id="authPassword" placeholder="Password" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" minlength="4" maxlength="32" />
+        <input type="password" id="authPassword" placeholder="Password" autocomplete="current-password" autocorrect="off" autocapitalize="off" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" minlength="4" maxlength="32" />
         <button type="button" class="pw-eye-btn" id="eyePassword" onclick="togglePw('authPassword','eyePassword')" tabindex="-1" aria-label="Toggle password visibility">
           <svg class="eye-on" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
           <svg class="eye-off" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
@@ -265,15 +265,22 @@ function setMode(m) {
 
   const pw = document.getElementById('authPassword');
   const conf = document.getElementById('authConfirm');
+  const user = document.getElementById('authUsername');
   if (m === 'register') {
-    // Drop native password fields so iOS sees no login form.
+    // Create account: drop native password fields (mask to text) and turn off the
+    // username hint, so iOS sees no credential/sign-up form — no "Use Strong
+    // Password" and no suggested usernames on any field.
+    user.setAttribute('autocomplete', 'off');
     setMasked(pw, true);
     setMasked(conf, true);
     maskReal['authConfirm'] = ''; renderMasked(conf);
   } else {
+    // Sign in: standard login form so iOS shows the saved-login prompt on the
+    // username field and fills both username and password when tapped.
+    user.setAttribute('autocomplete', 'username');
     setMasked(pw, false);
     setMasked(conf, false);
-    pw.autocomplete = 'current-password';   // allow saved-password autofill on login
+    pw.autocomplete = 'current-password';
     conf.value = '';
   }
 
