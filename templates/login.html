@@ -186,9 +186,67 @@ body {
 <script>
 let mode = 'login';
 
+// Sign In uses real type=password fields so saved-password autofill works.
+// Create Account must offer nothing — and iOS attaches its "password for this
+// website" suggestion to ANY type=password field on the domain, ignoring
+// autocomplete hints. So in register mode we swap the password inputs for
+// bullet-masked text inputs: with no password field present, the browser has
+// nothing to autofill and shows no suggestions.
+const BULLET = '•';
+const realValue = {};   // input id -> actual typed value while masked
+const revealed = {};    // input id -> whether the eye is showing plain text
+
+function renderMask(inp) {
+  const v = realValue[inp.id] || '';
+  inp.value = revealed[inp.id] ? v : BULLET.repeat(v.length);
+}
+
+function onMaskInput(e) {
+  const inp = e.target;
+  if (revealed[inp.id]) { realValue[inp.id] = inp.value; return; }
+  const prev = realValue[inp.id] || '';
+  let next = '';
+  for (let i = 0; i < inp.value.length; i++) {
+    const ch = inp.value[i];
+    next += (ch === BULLET && i < prev.length) ? prev[i] : ch;  // keep stored chars, accept new ones
+  }
+  realValue[inp.id] = next;
+  inp.value = BULLET.repeat(next.length);
+}
+
+function setMasked(inp, on) {
+  if (on === (inp.dataset.masked === '1')) return;
+  if (on) {
+    realValue[inp.id] = inp.value || '';
+    revealed[inp.id] = false;
+    inp.type = 'text';
+    inp.setAttribute('autocomplete', 'off');
+    inp.dataset.masked = '1';
+    inp.addEventListener('input', onMaskInput);
+    renderMask(inp);
+  } else {
+    inp.removeEventListener('input', onMaskInput);
+    inp.type = 'password';
+    inp.value = realValue[inp.id] || '';
+    delete inp.dataset.masked;
+    delete revealed[inp.id];
+  }
+}
+
+function valueOf(id) {
+  const inp = document.getElementById(id);
+  return inp.dataset.masked === '1' ? (realValue[id] || '') : inp.value;
+}
+
 function togglePw(inputId, btnId) {
   const inp = document.getElementById(inputId);
   const btn = document.getElementById(btnId);
+  if (inp.dataset.masked === '1') {
+    revealed[inputId] = !revealed[inputId];
+    renderMask(inp);
+    btn.classList.toggle('shown', revealed[inputId]);
+    return;
+  }
   const show = inp.type === 'password';
   inp.type = show ? 'text' : 'password';
   btn.classList.toggle('shown', show);
@@ -200,20 +258,36 @@ function setMode(m) {
   document.getElementById('tabRegister').classList.toggle('active', m === 'register');
   document.getElementById('authSubmit').textContent = m === 'login' ? 'Sign In' : 'Create Account';
 
-  // Sign in offers saved passwords; create account offers a generated strong password.
-  document.getElementById('authPassword').autocomplete = m === 'login' ? 'current-password' : 'new-password';
+  const user = document.getElementById('authUsername');
+  const pw = document.getElementById('authPassword');
+  const conf = document.getElementById('authConfirm');
+
+  if (m === 'register') {
+    user.setAttribute('autocomplete', 'off');
+    setMasked(pw, true);
+    setMasked(conf, true);
+  } else {
+    user.setAttribute('autocomplete', 'username');
+    setMasked(pw, false);
+    setMasked(conf, false);
+    pw.setAttribute('autocomplete', 'current-password');
+  }
+
+  // Clear every field (and any value autofilled in the other mode) on switch.
+  user.value = '';
+  realValue['authPassword'] = '';
+  realValue['authConfirm'] = '';
+  pw.value = '';
+  conf.value = '';
 
   document.getElementById('confirmField').style.display = m === 'register' ? 'block' : 'none';
-  document.getElementById('authConfirm').value = '';
   document.getElementById('authError').classList.remove('show');
-
-  ['authPassword', 'authConfirm'].forEach(id => { document.getElementById(id).type = 'password'; });
   ['eyePassword', 'eyeConfirm'].forEach(id => document.getElementById(id).classList.remove('shown'));
 }
 
 async function submitAuth() {
   const username = document.getElementById('authUsername').value.trim();
-  const password = document.getElementById('authPassword').value;
+  const password = valueOf('authPassword');
   const btn = document.getElementById('authSubmit');
   if (!username || !password) { showError('Please fill in all fields.'); return; }
   if (mode === 'register') {
@@ -221,7 +295,7 @@ async function submitAuth() {
     if (password.length < 4 || password.length > 32) { showError('Password must be 4–32 characters.'); return; }
     if (/\s/.test(username)) { showError('Username cannot contain spaces.'); return; }
     if (/\s/.test(password)) { showError('Password cannot contain spaces.'); return; }
-    if (password !== document.getElementById('authConfirm').value) { showError('Passwords do not match.'); return; }
+    if (password !== valueOf('authConfirm')) { showError('Passwords do not match.'); return; }
   }
   btn.disabled = true;
   btn.textContent = 'Please wait…';
