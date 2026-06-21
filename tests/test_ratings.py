@@ -280,3 +280,55 @@ def test_search_includes_tmdb_rating(client, monkeypatch):
     monkeypatch.setattr(app_module, "_fetch_tmdb_director", lambda *a, **k: "")
     data = client.get("/api/search?q=matrix&type=movie").get_json()
     assert data[0]["tmdb_rating"] == 8.2
+
+
+def _store_stale_ratings(client, external_id="27205"):
+    """Add a movie and stamp it with old MDBList ratings (>7 days)."""
+    _add_movie(client, external_id=external_id)
+    item = client.get("/api/list").get_json()[0]
+    from flask import g
+    with flask_app.test_request_context():
+        from db import get_user_db_path
+        from users_db import get_user_by_username
+        uid = get_user_by_username("alice")["id"]
+        g.user_db_path = get_user_db_path(uid)
+        db.set_media_ratings(item["id"], json.dumps({"imdb": 5.0}),
+                             "2020-01-01T00:00:00+00:00")
+    return item
+
+
+def test_take_lazy_refresh_slot_caps_and_resets(monkeypatch):
+    import app as a
+    monkeypatch.setattr(a, "_LAZY_REFRESH_DAILY_CAP", 2)
+    a._lazy_refresh_counts.clear()
+    assert a._take_lazy_refresh_slot(1) is True
+    assert a._take_lazy_refresh_slot(1) is True
+    assert a._take_lazy_refresh_slot(1) is False      # cap hit
+    a._lazy_refresh_counts[1] = ("1999-01-01", 2)     # simulate old day
+    assert a._take_lazy_refresh_slot(1) is True        # rolls over, resets
+
+
+def test_ratings_force_refreshes_and_returns_updated_at(client, monkeypatch):
+    _register(client)
+    _set_mdblist_key()
+    _store_stale_ratings(client)
+    monkeypatch.setattr(app_module, "_fetch_mdblist_ratings",
+                        lambda *a, **k: {"imdb": 9.0})
+    resp = client.get("/api/ratings/movie/27205?force=1").get_json()
+    assert resp["ratings"] == {"imdb": 9.0}
+    assert resp["updated_at"]   # present and truthy
+
+
+def test_ratings_lazy_cap_serves_stale_without_fetch(client, monkeypatch):
+    _register(client)
+    _set_mdblist_key()
+    _store_stale_ratings(client)
+    calls = {"n": 0}
+    def spy(*a, **k):
+        calls["n"] += 1
+        return {"imdb": 9.0}
+    monkeypatch.setattr(app_module, "_fetch_mdblist_ratings", spy)
+    monkeypatch.setattr(app_module, "_take_lazy_refresh_slot", lambda uid: False)
+    resp = client.get("/api/ratings/movie/27205").get_json()
+    assert resp["ratings"] == {"imdb": 5.0}   # old stored value
+    assert calls["n"] == 0                     # cap blocked the fetch

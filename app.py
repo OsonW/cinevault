@@ -190,6 +190,24 @@ _RATINGS_MAX_AGE_DAYS = 7         # persisted library ratings refresh after this
 _mdblist_status_cache: dict[int, tuple[float, dict]] = {}
 _MDBLIST_STATUS_TTL = 120  # seconds
 
+# Per-user daily cap on AUTOMATIC (7-day-on-access) ratings refreshes. Manual
+# force refreshes are exempt. In-memory; resets when the UTC date rolls over.
+_LAZY_REFRESH_DAILY_CAP = 500
+_lazy_refresh_counts: dict[int, tuple[str, int]] = {}
+
+
+def _take_lazy_refresh_slot(uid: int) -> bool:
+    """True (and consume a slot) if the user is under today's lazy-refresh cap."""
+    today = datetime.now(timezone.utc).date().isoformat()
+    day, count = _lazy_refresh_counts.get(uid, (today, 0))
+    if day != today:
+        day, count = today, 0
+    if count >= _LAZY_REFRESH_DAILY_CAP:
+        _lazy_refresh_counts[uid] = (day, count)
+        return False
+    _lazy_refresh_counts[uid] = (day, count + 1)
+    return True
+
 _user_media_cache:   dict[int, dict] = {}
 
 _app_initialized    = False
@@ -781,9 +799,18 @@ def api_ratings(media_type, tmdb_id):
     if not key:
         return jsonify({"ratings": {}})
 
+    force = request.args.get("force") == "1"
+    uid = int(current_user.id)
+
     # Library item? Serve/refresh persisted ratings.
     row = get_media_by_external_id(str(tmdb_id), media_type)
     if row:
+        stored = {}
+        if row.get("ratings"):
+            try:
+                stored = json.loads(row["ratings"])
+            except Exception:
+                stored = {}
         fresh = False
         if row.get("ratings") and row.get("ratings_updated_at"):
             try:
@@ -791,14 +818,14 @@ def api_ratings(media_type, tmdb_id):
                 fresh = age.days < _RATINGS_MAX_AGE_DAYS
             except Exception:
                 fresh = False
-        if fresh:
-            try:
-                return jsonify({"ratings": json.loads(row["ratings"])})
-            except Exception:
-                pass
-        data = _fetch_mdblist_ratings(media_type, tmdb_id, key)
-        set_media_ratings(row["id"], json.dumps(data), datetime.now(timezone.utc).isoformat())
-        return jsonify({"ratings": data})
+        # Refresh when forced (manual button, exempt from cap) or stale-and-under-cap.
+        if force or (not fresh and _take_lazy_refresh_slot(uid)):
+            now = datetime.now(timezone.utc).isoformat()
+            data = _fetch_mdblist_ratings(media_type, tmdb_id, key)
+            set_media_ratings(row["id"], json.dumps(data), now)
+            return jsonify({"ratings": data, "updated_at": now})
+        # Fresh, or cap hit: serve what we have.
+        return jsonify({"ratings": stored, "updated_at": row.get("ratings_updated_at")})
 
     # Non-library (search result): TTL cache.
     ck = f"{media_type}:{tmdb_id}"
