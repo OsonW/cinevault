@@ -161,32 +161,25 @@ MDBList quota is per-user BYOK; `/api/mdblist-status` exposes `remaining`.
   - `< 7d`  → `Xd ago`
 - Only shown for movie/tv titles that have an MDBList key and a stored timestamp.
 
-### 6c. Viewport-based auto-refresh (replaces hardcoded top-of-tab)
-- An **IntersectionObserver** watches grid cards. When a card scrolls into view
-  and its ratings are **older than 3 days**, its MDBList ratings auto-refresh in
-  the background and the pills update in place.
-- Gated by:
-  - **Quota safety buffer = 250 calls:** skip if `remaining <= 250` (or
-    exhausted / no key). Keeps headroom for search and manual actions.
-  - **Once per item per session:** a session guard set so a card isn't
-    re-refreshed on every scroll.
-  - Throttled (small concurrency) so a fast scroll doesn't fire a burst.
-- Items not scrolled into view keep the existing lazy **7-day** path: opening a
-  ≥7-day-old title still auto-refreshes on access.
+### 6c. Automatic refresh on access (existing 7-day path)
+- Unchanged: opening a movie/tv title whose ratings are **≥7 days old**
+  auto-refreshes them on access and updates the label to "just now".
+- **No scroll/viewport-triggered refresh.** There is no IntersectionObserver and
+  no quota safety buffer — the only ways ratings refresh are the manual button
+  (6a) and this 7-day-on-access path.
 
 ### 6d. Backend support
 - `/api/ratings/<media_type>/<tmdb_id>` gains:
   - `?force=1` → bypass the 7-day freshness check **and** the TTL cache; always
-    re-fetch and persist. Used by manual refresh and the 3-day auto-refresh.
+    re-fetch and persist. Used by the manual refresh button.
   - Response includes `updated_at` (the persisted `ratings_updated_at`) so the
     client can render the label without a separate call.
 - TMDB refresh (item 4) is a separate free endpoint and never touches MDBList
   quota.
 
 ### Tunables (chosen)
-- Auto-refresh staleness threshold: **3 days**.
 - Manual-refresh debounce window: **60 seconds** ("just now").
-- Quota safety buffer for auto-refresh: **250 calls**.
+- Automatic refresh on access: **7 days** (unchanged).
 
 ---
 
@@ -206,8 +199,8 @@ MDBList quota is per-user BYOK; `/api/mdblist-status` exposes `remaining`.
 - **DB:** test the `tmdb_rating` migration is idempotent and that add/list
   round-trips the value.
 - **Rating format:** unit-test `fmtRating` (0 → Unrated, 10.0 → 10, 7.5 → 7.5).
-- Frontend behaviors (viewport refresh, debounce, iOS rem) are verified manually;
-  pure helpers are unit-tested where practical.
+- Frontend behaviors (manual-refresh debounce, "last updated" label, iOS rem) are
+  verified manually; pure helpers are unit-tested where practical.
 
 ## Out of scope
 - Server-side / background refresh while the user is away (no scheduler).
