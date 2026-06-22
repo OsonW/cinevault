@@ -188,7 +188,9 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   border: 1px solid var(--border-md);
   border-radius: var(--radius);
   z-index: 400;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  max-height: 60vh;          /* long match lists scroll instead of running off-screen */
   box-shadow: 0 8px 32px rgba(0,0,0,0.6);
   display: none;
 }
@@ -351,7 +353,11 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 }
 
 /* ── Library matches list ─────────────────────── */
-.sm-library-list { display: flex; flex-direction: column; gap: 0.375rem; margin-bottom: 1.5rem; }
+/* Cap the height so an expanded library list scrolls instead of pushing the search
+   results far down the modal. */
+.sm-library-list { display: flex; flex-direction: column; gap: 0.375rem; margin-bottom: 0.75rem;
+  max-height: 19rem; overflow-y: auto; }
+.sm-load-more-lib { margin-top: 0.25rem; margin-bottom: 1.25rem; }
 .sm-lib-row {
   display: flex;
   align-items: center;
@@ -788,7 +794,23 @@ input[type="range"]::-webkit-slider-thumb {
 .show-unrated-toggle input:focus-visible { outline: 2px solid var(--accent-dim); outline-offset: 1px; }
 
 .poster-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr)); gap: 0.875rem; }
-.poster-card img { width: 100%; aspect-ratio: 2/3; object-fit: cover; display: block; background: var(--subtle); }
+/* Posters shimmer while the image is in flight (same animation as the search modal),
+   then settle to a flat backing once .loaded is set onload. */
+.poster-card img { width: 100%; aspect-ratio: 2/3; object-fit: cover; display: block;
+  background: linear-gradient(90deg, var(--card) 25%, var(--subtle) 50%, var(--card) 75%);
+  background-size: 200% 100%; animation: shimmer 1.4s infinite; }
+.poster-card img.loaded { animation: none; background: var(--subtle); }
+/* Skeleton cards shown while the library list itself is loading. */
+.sk-card { pointer-events: none; }
+.sk-poster, .sk-line {
+  background: linear-gradient(90deg, var(--card) 25%, var(--subtle) 50%, var(--card) 75%);
+  background-size: 200% 100%; animation: shimmer 1.4s infinite;
+}
+.sk-poster { width: 100%; aspect-ratio: 2/3; display: block; }
+.sk-line { height: 0.66rem; border-radius: 4px; margin-bottom: 0.4rem; }
+.sk-line.sk-pill  { width: 42%; height: 0.9rem; }
+.sk-line.sk-title { width: 82%; }
+.sk-line.sk-sub   { width: 56%; margin-bottom: 0; }
 .poster-info { padding: 0.5rem 0.5625rem 0.625rem; }
 .poster-title {
   font-size: 1em; line-height: 1.3; font-weight: 500; margin-bottom: 0.1875rem;
@@ -920,6 +942,17 @@ input[type="range"]::-webkit-slider-thumb {
   vertical-align: middle;
   flex-shrink: 0;
 }
+
+/* ── Icon sizing ──────────────────────────────────
+   Chrome/action icons are sized here in rem (CSS wins over the inline width/height
+   presentation attributes), so every icon scales with the root font-size instead of
+   being pinned to a fixed pixel count. Keeps sibling icons visually consistent. */
+.key-btn svg            { width: 1.25rem;  height: 1.25rem;  }
+.search-magnify-btn svg { width: 1.25rem;  height: 1.25rem;  }
+.search-clear-btn svg   { width: 1rem;     height: 1rem;     }
+.grid-random-btn svg    { width: 1rem;     height: 1rem;     }
+.notes-expand-btn svg   { width: 0.875rem; height: 0.875rem; }
+.ratings-refresh svg    { width: 0.875rem; height: 0.875rem; }
 
 .detail-empty {
   flex: 1;
@@ -1827,6 +1860,10 @@ let _modalSearchToken = 0;
 // render also caps the per-card director/score lookups, keeping the modal snappy.
 const MODAL_ROW   = 5;
 let _modalShown   = MODAL_ROW * 2;
+// Library matches in the modal are capped too — "Show 5 more" reveals one batch at a
+// time. Keeps a big in-library match set from pushing the "Add from search" grid down.
+const MODAL_LIB_ROW = 5;
+let _modalLibShown  = MODAL_LIB_ROW;
 
 const tabLastSelected = { watchlist: null, watching: null, finished: null };
 
@@ -1896,7 +1933,27 @@ function fmtDate(dateStr) {
 // ─────────────────────────────────────────────
 // Data
 // ─────────────────────────────────────────────
+// Skeleton poster grid for the brief gap before the library list first lands — same
+// shimmer language as the search modal. Only shown on the very first load (below).
+function renderGridSkeleton(n) {
+  const cols = tabCardCols[currentTab];
+  const cells = Array(n || cols * 2).fill(0).map(() => `
+    <div class="poster-card sk-card">
+      <div class="sk-poster"></div>
+      <div class="poster-info">
+        <div class="sk-line sk-pill"></div>
+        <div class="sk-line sk-title"></div>
+        <div class="sk-line sk-sub"></div>
+      </div>
+    </div>`).join('');
+  return `<div class="poster-grid" style="grid-template-columns:repeat(${cols},minmax(0,1fr))">${cells}</div>`;
+}
+
 async function loadList() {
+  // First load only (allItems still empty): paint skeleton cards instead of a bare
+  // "Loading…" line. Later loadList() calls (after add/remove) keep the live grid.
+  const panel = document.getElementById('gridPanel');
+  if (!allItems.length && panel) panel.innerHTML = renderGridSkeleton();
   const res = await fetch('/api/list');
   allItems = await res.json();
   rebuildLibrarySet();
@@ -2497,11 +2554,16 @@ function _gridCardsHtml(items, size, cols) {
     const dateVerb = { watchlist: 'Added', watching: 'Updated', finished: 'Finished' }[currentTab] || 'Added';
     const dateHtml = dateStr ? `<div class="poster-date">${dateVerb} ${dateStr}</div>` : '';
 
-    const pillsHost = `<div class="poster-badge-row" id="pills-${item.id}">${renderPills(item, _ratingsCache[item.media_type+':'+(item.tmdb_id||item.external_id)] || {}, tabGridPills[currentTab])}</div>`;
+    const gridPills = tabGridPills[currentTab];
+    const realPills = renderPills(item, _ratingsCache[item.media_type+':'+(item.tmdb_id||item.external_id)] || {}, gridPills);
+    // Shimmer placeholder while MDBList score pills are still loading (mirrors the search
+    // card). hydratePills() replaces this row once the scores land.
+    const skelPill  = _gridPillsPending(item, gridPills) ? '<span class="spill spill-skeleton">&nbsp;</span>' : '';
+    const pillsHost = `<div class="poster-badge-row" id="pills-${item.id}">${realPills}${skelPill}</div>`;
 
     if (size === 'poster') {
       return `<div class="poster-card poster-only" id="pc-${item.id}" style="${cardFontStyle}" onclick="selectItem(${item.id})">
-        <img src="${posterUrl(item)}" referrerpolicy="no-referrer" onerror="this.src='${BROKEN_POSTER_FULL}'" loading="lazy">
+        <img src="${posterUrl(item)}" referrerpolicy="no-referrer" onload="this.classList.add('loaded')" onerror="this.src='${BROKEN_POSTER_FULL}'" loading="lazy">
       </div>`;
     }
 
@@ -2518,7 +2580,7 @@ function _gridCardsHtml(items, size, cols) {
     }
 
     return `<div class="poster-card" id="pc-${item.id}" style="${cardFontStyle}" onclick="selectItem(${item.id})">
-      <img src="${posterUrl(item)}" referrerpolicy="no-referrer" onerror="this.src='${BROKEN_POSTER_FULL}'" loading="lazy">
+      <img src="${posterUrl(item)}" referrerpolicy="no-referrer" onload="this.classList.add('loaded')" onerror="this.src='${BROKEN_POSTER_FULL}'" loading="lazy">
       <div class="poster-info">
         ${pillsHost}
         <div class="poster-title">${esc(item.title)}</div>
@@ -3333,7 +3395,7 @@ function clearMainSearch() {
 // Instant, synchronous, zero network: just the user's own library, filtered.
 function showLibraryDropdown(q) {
   const lower          = q.toLowerCase();
-  const libraryMatches = allItems.filter(i => i.title.toLowerCase().includes(lower)).slice(0, 6);
+  const libraryMatches = allItems.filter(i => i.title.toLowerCase().includes(lower)).slice(0, 50);
   const dd             = document.getElementById('searchDropdown');
   if (!dd) return;
   if (!libraryMatches.length) { closeDropdown(); return; }
@@ -3362,9 +3424,29 @@ function selectLibraryItem(id) {
   if (!item) return;
   closeDropdown();
   closeModal();
-  document.getElementById('searchInput').value = '';
+  // Clear the top-bar search AND hide its X — the field is now empty, so the X must go.
+  const inp = document.getElementById('searchInput');
+  if (inp) inp.value = '';
+  const x = document.getElementById('searchClearBtn');
+  if (x) x.hidden = true;
+
+  // The destination tab's own filters (media-type and/or title search) could otherwise
+  // hide the very item we're jumping to. Relax just enough to reveal it, then tell the
+  // user we did. (The grid title-search X re-syncs because renderGrid rebuilds the bar.)
+  const f = tabFilter[item.status];
+  let relaxed = false;
+  if (!f.types.has(item.media_type)) { f.types.add(item.media_type); relaxed = true; }
+  if (f.query && !item.title.toLowerCase().includes(f.query.toLowerCase())) { f.query = ''; relaxed = true; }
+  if (relaxed) {
+    const tabName = item.status.charAt(0).toUpperCase() + item.status.slice(1);
+    showToast(`Changed filters for ${tabName}`);
+  }
+
   if (item.status !== currentTab) {
-    switchTab(item.status, id);
+    switchTab(item.status, id);          // re-renders the destination tab (and its bar)
+  } else if (relaxed) {
+    pendingSelectId = id;                // re-render so cleared filters + bar X take effect
+    renderGrid();
   } else {
     selectItem(id);
   }
@@ -3434,10 +3516,14 @@ function runModalSearch(q) {
     _modalSearchController = new AbortController();
     const { signal } = _modalSearchController;
     const token = ++_modalSearchToken;
-    _modalShown = MODAL_ROW * 2;   // every fresh search starts capped at two rows
+    _modalShown = MODAL_ROW * 2;       // every fresh search starts capped at two rows
+    _modalLibShown = MODAL_LIB_ROW;    // …and the library section back to its first batch
 
     lastModalQuery = q;
     document.getElementById('smTitle').innerHTML = `Results for <em>${esc(q)}</em>`;
+    // A fresh search always starts you at the top — never inherits the prior scroll.
+    const _smBody = document.getElementById('smBody');
+    if (_smBody) _smBody.scrollTop = 0;
 
     const typesToSearch = [...modalActiveTypes];
     if (typesToSearch.length === 0) {
@@ -3492,9 +3578,10 @@ function renderModalResults(libMatches, tmdbResults, q, loading) {
   _lastModalArgs = { libMatches, tmdbResults, q };
   let html = '';
   if (libMatches.length) {
+    const shownLib = libMatches.slice(0, _modalLibShown);
     html += `<div class="sm-section-label">In your library</div>
       <div class="sm-library-list">`;
-    html += libMatches.map(i => {
+    html += shownLib.map(i => {
       const statusColor  = i.status==='watchlist'?'var(--blue)':i.status==='watching'?'var(--green)':'var(--purple)';
       const borderColor  = i.status==='watchlist'?'var(--blue-dim)':i.status==='watching'?'var(--green-dim)':'var(--purple-dim)';
       const prog = _progressLabel(i);
@@ -3507,6 +3594,10 @@ function renderModalResults(libMatches, tmdbResults, q, loading) {
       </div>`;
     }).join('');
     html += `</div>`;
+    if (libMatches.length > _modalLibShown) {
+      const remaining = libMatches.length - _modalLibShown;
+      html += `<button class="sm-load-more sm-load-more-lib" onclick="loadMoreModalLib()">Show 5 more <span class="sm-load-more-count">(${remaining})</span></button>`;
+    }
   }
   // Only the first _modalShown results are rendered (and hydrated). Capping the DOM
   // and the per-card director/score lookups is what keeps a big result set fast.
@@ -3556,6 +3647,13 @@ function renderModalResults(libMatches, tmdbResults, q, loading) {
 // deduped — already-shown cards hit the cache). Re-renders from the cached args.
 function loadMoreModal() {
   _modalShown += MODAL_ROW;
+  if (_lastModalArgs) renderModalResults(_lastModalArgs.libMatches, _lastModalArgs.tmdbResults, _lastModalArgs.q);
+}
+
+// Reveal one more batch of library matches (re-renders from the cached args). Mirrors
+// loadMoreModal but for the "In your library" section.
+function loadMoreModalLib() {
+  _modalLibShown += MODAL_LIB_ROW;
   if (_lastModalArgs) renderModalResults(_lastModalArgs.libMatches, _lastModalArgs.tmdbResults, _lastModalArgs.q);
 }
 
@@ -3619,6 +3717,17 @@ function _scorePillsPending(r) {
   if (!tid) return false;
   if ((`${r.media_type}:${tid}`) in _ratingsCache) return false;   // already loaded
   return searchPills.some(s => SCORE_SOURCES.includes(s));
+}
+
+// Grid equivalent of _scorePillsPending: true when a card's MDBList score pills are
+// selected but not yet cached, so we can show a single shimmer pill until they load.
+function _gridPillsPending(item, selected) {
+  if (!_mdblist.has_key || _mdblist.exhausted) return false;
+  if (item.media_type !== 'movie' && item.media_type !== 'tv') return false;
+  const tid = item.tmdb_id || item.external_id;
+  if (!tid) return false;
+  if ((item.media_type + ':' + tid) in _ratingsCache) return false;
+  return selected.some(s => SCORE_SOURCES.includes(s));
 }
 
 function renderSmCard(r) {
@@ -3842,7 +3951,10 @@ const DEFAULT_PILLS = ['year','type','tmdb','imdb','metacritic','tomatoes'];
 const SCORE_SVG = {
   tomatoes:  '<svg class="spill-ic" viewBox="0 0 24 24" fill="#fa320a"><path d="M12 4c1-2 4-2 5-1-1 1-2 1-3 2 3 0 6 2 6 6 0 5-4 9-8 9s-8-4-8-9c0-4 3-6 6-6-1-1-2-1-3-2 1-1 4-1 5 1z"/></svg>',
   audience:  '<svg class="spill-ic" viewBox="0 0 24 24"><path d="M5 8h14l-1.6 12H6.6z" fill="#fa6e1e"/><path d="M5 8l2-3.5 3 1.8 2-2.6 2 2.6 3-1.8 2 3.5z" fill="#ffd24d"/></svg>',
-  letterboxd:'<svg class="spill-ic" viewBox="0 0 36 12"><circle cx="6" cy="6" r="5" fill="#ff8000"/><circle cx="18" cy="6" r="5" fill="#00e054"/><circle cx="30" cy="6" r="5" fill="#40bcf4"/></svg>',
+  // Three overlapping dots (orange/green/blue), centres 8 apart so they overlap by 2;
+  // the intersections are filled white (drawn as lens paths over the circles) to match
+  // the real Letterboxd mark. Lens points: circles meet at x=9 and x=17, y=5±3.
+  letterboxd:'<svg class="spill-ic" viewBox="0 0 26 10"><circle cx="5" cy="5" r="5" fill="#ff8000"/><circle cx="13" cy="5" r="5" fill="#00e054"/><circle cx="21" cy="5" r="5" fill="#40bcf4"/><path d="M9 2A5 5 0 0 1 9 8 5 5 0 0 1 9 2Z" fill="#fff"/><path d="M17 2A5 5 0 0 1 17 8 5 5 0 0 1 17 2Z" fill="#fff"/></svg>',
 };
 
 const _ratingsCache = {};   // "media_type:tmdb_id" -> ratings object
