@@ -762,8 +762,11 @@ input[type="range"]::-webkit-slider-thumb {
 .spill-ic { height:1em; width:auto; }
 /* Shimmer placeholder shown in a search card's chip row while MDBList scores load. */
 .spill-skeleton {
-  /* Match a real .spill's box: content (line-height 1.45em) + its 0.125rem×2 padding. */
-  width: 3.4em; height: calc(1.45em + 0.25rem); padding: 0; border-color: transparent;
+  /* Inherit .spill's padding/border/line-height so the box height matches a real
+     pill exactly (auto height — the &nbsp; supplies the line box). Only the side
+     padding is zeroed so the fixed width is exact. */
+  width: 3.2em; padding-left: 0; padding-right: 0; border-color: transparent;
+  color: transparent;
   background: linear-gradient(90deg, var(--card) 25%, var(--subtle) 50%, var(--card) 75%);
   background-size: 200% 100%; animation: shimmer 1.4s infinite;
 }
@@ -3448,7 +3451,7 @@ function renderSmCard(r) {
   // Real pills from whatever's cached, plus a shimmer placeholder for each score pill
   // that's still loading. hydratePills replaces the whole row once ratings arrive.
   const realPills = renderPills(smItem, _ratingsCache[r.media_type+':'+(r.tmdb_id||r.external_id)] || {}, searchPills);
-  const skelPills = _scorePillsPending(r) ? '<span class="spill spill-skeleton"></span>' : '';
+  const skelPills = _scorePillsPending(r) ? '<span class="spill spill-skeleton">&nbsp;</span>' : '';
   const chipsHtml = `<div class="sm-chips" id="${pillsId}">${realPills}${skelPills}</div>`;
   // Movie/TV cards arrive without a director; show an animated "…" until it lands.
   const authorLoading = !r.author && (r.media_type === 'movie' || r.media_type === 'tv') && (r.tmdb_id || r.external_id);
