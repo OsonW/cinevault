@@ -3516,7 +3516,7 @@ function renderModalResults(libMatches, tmdbResults, q, loading) {
     // Offer to reveal another row if more remain.
     if (tmdbResults.length > _modalShown) {
       const remaining = tmdbResults.length - _modalShown;
-      html += `<button class="sm-load-more" onclick="loadMoreModal()">Load more <span class="sm-load-more-count">(${remaining})</span></button>`;
+      html += `<button class="sm-load-more" onclick="loadMoreModal()">Load 5 more <span class="sm-load-more-count">(${remaining})</span></button>`;
     }
   } else if (!libMatches.length) {
     html = `<div class="sm-status">No results found for "<em>${esc(q)}</em>".</div>`;
