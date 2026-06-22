@@ -762,7 +762,7 @@ input[type="range"]::-webkit-slider-thumb {
 .spill-ic { height:1em; width:auto; }
 /* Shimmer placeholder shown in a search card's chip row while MDBList scores load. */
 .spill-skeleton {
-  width: 2.6em; height: 1.45em; padding: 0; border-color: transparent;
+  width: 3.4em; height: 1.45em; padding: 0; border-color: transparent;
   background: linear-gradient(90deg, var(--card) 25%, var(--subtle) 50%, var(--card) 75%);
   background-size: 200% 100%; animation: shimmer 1.4s infinite;
 }
@@ -3418,16 +3418,16 @@ function hydrateSmAuthor(r) {
     .finally(() => _smAuthorPending.delete(ck));
 }
 
-// How many selected MDBList score pills are still pending for this card (so we can
-// draw that many shimmer placeholders until the ratings fetch resolves). Zero once
-// cached, or when scores can't load at all (no key / exhausted / not movie-or-tv).
-function _pendingScorePillCount(r) {
-  if (!_mdblist.has_key || _mdblist.exhausted) return 0;
-  if (r.media_type !== 'movie' && r.media_type !== 'tv') return 0;
+// Whether this card still has MDBList score pills loading, so we can show a single
+// shimmer placeholder until the ratings fetch resolves. False once cached, or when
+// scores can't load at all (no key / exhausted / not movie-or-tv / none selected).
+function _scorePillsPending(r) {
+  if (!_mdblist.has_key || _mdblist.exhausted) return false;
+  if (r.media_type !== 'movie' && r.media_type !== 'tv') return false;
   const tid = r.tmdb_id || r.external_id;
-  if (!tid) return 0;
-  if ((`${r.media_type}:${tid}`) in _ratingsCache) return 0;   // already loaded
-  return searchPills.filter(s => SCORE_SOURCES.includes(s)).length;
+  if (!tid) return false;
+  if ((`${r.media_type}:${tid}`) in _ratingsCache) return false;   // already loaded
+  return searchPills.some(s => SCORE_SOURCES.includes(s));
 }
 
 function renderSmCard(r) {
@@ -3447,7 +3447,7 @@ function renderSmCard(r) {
   // Real pills from whatever's cached, plus a shimmer placeholder for each score pill
   // that's still loading. hydratePills replaces the whole row once ratings arrive.
   const realPills = renderPills(smItem, _ratingsCache[r.media_type+':'+(r.tmdb_id||r.external_id)] || {}, searchPills);
-  const skelPills = '<span class="spill spill-skeleton"></span>'.repeat(_pendingScorePillCount(r));
+  const skelPills = _scorePillsPending(r) ? '<span class="spill spill-skeleton"></span>' : '';
   const chipsHtml = `<div class="sm-chips" id="${pillsId}">${realPills}${skelPills}</div>`;
   // Movie/TV cards arrive without a director; show an animated "…" until it lands.
   const authorLoading = !r.author && (r.media_type === 'movie' || r.media_type === 'tv') && (r.tmdb_id || r.external_id);
