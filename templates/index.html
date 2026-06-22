@@ -762,7 +762,8 @@ input[type="range"]::-webkit-slider-thumb {
 .spill-ic { height:1em; width:auto; }
 /* Shimmer placeholder shown in a search card's chip row while MDBList scores load. */
 .spill-skeleton {
-  width: 3.4em; height: 1.45em; padding: 0; border-color: transparent;
+  /* Match a real .spill's box: content (line-height 1.45em) + its 0.125rem×2 padding. */
+  width: 3.4em; height: calc(1.45em + 0.25rem); padding: 0; border-color: transparent;
   background: linear-gradient(90deg, var(--card) 25%, var(--subtle) 50%, var(--card) 75%);
   background-size: 200% 100%; animation: shimmer 1.4s infinite;
 }
