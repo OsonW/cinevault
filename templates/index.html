@@ -1889,6 +1889,7 @@ async function proactiveRefreshStale() {
     item.ratings = JSON.stringify(ratings);
     item.ratings_updated_at = d.updated_at || prev;
     _ratingsCache[item.media_type + ':' + tid] = ratings;
+    if (item.ratings_updated_at) _ratingsUpdatedAt[item.media_type + ':' + tid] = item.ratings_updated_at;
     // updated_at didn't advance -> server served stale (cap reached) -> stop and
     // go dormant until the MDBList quota resets (used-count drops).
     if (!d.updated_at || d.updated_at === prev) {
@@ -3765,6 +3766,7 @@ async function refreshRatingsNow(itemId) {
     item.ratings = JSON.stringify(ratings);
     item.ratings_updated_at = d.updated_at || new Date().toISOString();
     _ratingsCache[item.media_type + ':' + tid] = ratings;
+    _ratingsUpdatedAt[item.media_type + ':' + tid] = item.ratings_updated_at;
     // Keep the library grid card's pills in sync, not just the detail panel.
     const ghost = document.getElementById('pills-' + item.id);
     if (ghost) ghost.innerHTML = renderPills(item, ratings, tabGridPills[currentTab]);
