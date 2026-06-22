@@ -747,8 +747,9 @@ input[type="range"]::-webkit-slider-thumb {
 /* Random-pick (shuffle) button — watchlist tab only, right of the search field. */
 .grid-random-btn {
   flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
-  padding: 0.5625rem 0.75rem; border-radius: var(--radius); border: 1px solid var(--border-md);
-  background: var(--card); color: var(--muted); cursor: pointer; transition: all 0.15s;
+  gap: 0.3125rem; padding: 0.5625rem 0.875rem; border-radius: var(--radius);
+  border: 1px solid var(--border-md); background: var(--card); color: var(--muted);
+  font-family: 'DM Sans', sans-serif; font-size: 1rem; cursor: pointer; transition: all 0.15s;
 }
 .grid-random-btn:hover { color: var(--accent); border-color: var(--accent); background: var(--subtle); }
 .grid-random-btn:active { transform: scale(0.94); }
@@ -809,14 +810,16 @@ input[type="range"]::-webkit-slider-thumb {
 .ptb-manga { color: var(--pink);  border-color: var(--pink-dim);  background: var(--pink-glow); }
 
 .fin-stats { display: flex; gap: 1.25rem; align-items: stretch; margin-bottom: 1rem; padding: 0.9rem 1.1rem; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); }
-.fin-left { display: flex; flex-direction: column; justify-content: center; gap: 0.25rem; padding-right: 1.1rem; border-right: 1px solid var(--border); min-width: 7rem; }
-.fin-avg { font-size: 1.9rem; font-weight: 500; color: var(--accent); }
-.fin-tens { font-size: 0.95rem; color: var(--muted); }
+.fin-left { display: flex; flex-direction: column; justify-content: space-evenly; gap: 0.4rem; padding-right: 1.1rem; border-right: 1px solid var(--border); min-width: 7rem; }
+.fin-stat { display: flex; flex-direction: column; gap: 0.05rem; }
+.fin-avg { font-size: 1.4rem; font-weight: 500; color: var(--accent); line-height: 1.05; }
+.fin-tens { font-size: 0.85rem; color: var(--muted); }
 .fin-right { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.35rem; }
-.fh-bars { display: flex; align-items: flex-end; gap: 0.4rem; height: 4.5rem; }
+.fh-bars { display: flex; align-items: flex-end; gap: 0.4rem; height: 6.5rem; }
 .fh-bar-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; cursor: default; }
-.fh-bar { width: 100%; min-height: 0; background: var(--card); border-radius: 3px 3px 0 0; transition: background 0.12s; }
-.fh-bar.on { background: var(--accent); }
+/* --fill is set per bar to a progressive grey/purple gradient (the selected rating
+   sub-range is purple). Kept as a custom property so the hover rule still wins. */
+.fh-bar { width: 100%; min-height: 0; background: var(--fill, var(--card)); border-radius: 3px 3px 0 0; transition: background 0.12s; }
 .fh-lbl { font-size: 0.7rem; color: var(--muted); margin-top: 0.2rem; white-space: nowrap; }
 .fh-bar-wrap:hover .fh-bar { background: var(--accent-hover); }
 .fh-tip { position: absolute; top: -1.6rem; transform: translateX(-50%); background: var(--card); border: 1px solid var(--border-md); border-radius: var(--radius); padding: 0.15rem 0.5rem; font-size: 0.78rem; color: var(--text); white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity 0.12s; z-index: 5; }
@@ -2166,6 +2169,20 @@ function onFinRange(which, val) {
   _liveFilterGrid();
 }
 
+// Progressive grey→purple fill for histogram bar k (covers ratings k-1..k): the
+// part overlapping the [lo,hi] selection is purple, the rest grey — so a thumb that
+// lands mid-bar splits it instead of flipping the whole bar. Returned as a value for
+// the bar's --fill custom property.
+function _barFillStyle(k, lo, hi) {
+  const off = 'var(--card)', on = 'var(--accent)';
+  const s = Math.max(0, Math.min(1, Math.max(lo, k - 1) - (k - 1)));   // selected-start fraction
+  const e = Math.max(0, Math.min(1, Math.min(hi, k) - (k - 1)));       // selected-end fraction
+  if (e <= s)            return off;   // no overlap → all grey
+  if (s === 0 && e === 1) return on;   // fully selected → all purple
+  const sp = (s * 100).toFixed(2), ep = (e * 100).toFixed(2);
+  return `linear-gradient(to right, ${off} 0%, ${off} ${sp}%, ${on} ${sp}%, ${on} ${ep}%, ${off} ${ep}%, ${off} 100%)`;
+}
+
 // Sync labels, bar highlights and thumb stacking to finishedRange. The low thumb is
 // raised above the high thumb once it enters the upper half (or they meet) so it
 // never gets trapped under the high thumb and stays grabbable.
@@ -2185,7 +2202,7 @@ function _updateFinRangeUI() {
   document.querySelectorAll('.fh-bar-wrap').forEach(w => {
     const k = +w.dataset.k;
     const bar = w.querySelector('.fh-bar');
-    if (bar) bar.classList.toggle('on', (lo <= k) && (hi > k - 1));
+    if (bar) bar.style.setProperty('--fill', _barFillStyle(k, lo, hi));
   });
 }
 
@@ -2236,21 +2253,35 @@ function renderGrid() {
     const buckets  = Array(10).fill(0);
     rated.forEach(i => { const k = Math.min(10, Math.max(1, Math.ceil(i.rating))); buckets[k - 1]++; });
     const maxB = Math.max(1, ...buckets);
+    // Most-rated bucket (the tallest bar) and count of 10/10 "masterpieces".
+    let modeK = 0, modeC = -1;
+    buckets.forEach((c, idx) => { if (c > modeC) { modeC = c; modeK = idx + 1; } });
+    const mostRated    = rated.length ? String(modeK) : '—';
+    const masterpieces = rated.filter(i => i.rating >= 10).length;
     const [lo, hi] = finishedRange;
     const bars = buckets.map((c, idx) => {
       const k = idx + 1;
-      const on = (lo <= k) && (hi > k - 1);
       const h = c ? Math.max(8, Math.round(c / maxB * 100)) : 0;
       return `<div class="fh-bar-wrap" data-k="${k}" data-count="${c}"
                 onmouseenter="showHistTip(this)" onmouseleave="hideHistTip()">
-                <div class="fh-bar${on ? ' on' : ''}" style="height:${h}%"></div>
+                <div class="fh-bar" style="height:${h}%;--fill:${_barFillStyle(k, lo, hi)}"></div>
                 <div class="fh-lbl">${k}${STAR_SVG}</div>
               </div>`;
     }).join('');
     statsHtml = `<div class="fin-stats">
       <div class="fin-left">
-        <div class="fin-avg">${avg} ${STAR_SVG}</div>
-        <div class="fin-tens">average rating</div>
+        <div class="fin-stat">
+          <div class="fin-avg">${avg} ${STAR_SVG}</div>
+          <div class="fin-tens">average rating</div>
+        </div>
+        <div class="fin-stat">
+          <div class="fin-avg">${mostRated} ${STAR_SVG}</div>
+          <div class="fin-tens">most rated</div>
+        </div>
+        <div class="fin-stat">
+          <div class="fin-avg">${masterpieces}</div>
+          <div class="fin-tens">masterpiece${masterpieces !== 1 ? 's' : ''}</div>
+        </div>
       </div>
       <div class="fin-right">
         <div class="fh-tip" id="histTip"></div>
@@ -2275,6 +2306,7 @@ function renderGrid() {
     </div>
     ${currentTab === 'watchlist' ? `<button type="button" class="grid-random-btn" aria-label="Pick a random watchlist title" title="Pick something random" onclick="pickRandomWatchlist()">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
+      <span>Random</span>
     </button>` : ''}
     <div class="grid-right-group">
       ${renderGridControls()}
