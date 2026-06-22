@@ -2178,8 +2178,8 @@ function renderGrid() {
           `<span class="pstar ${(item.rating||0)>=s?'lit':''}">★</span>`).join('')}</div>` : '';
     const author = `<div class="poster-author" id="pa-${item.id}"${item.author ? '' : ' style="display:none"'}>${esc(item.author||'')}</div>`;
     const dateStr = fmtDate(item.date_added);
-
-    const dateHtml = dateStr ? `<div class="poster-date">${dateStr}</div>` : '';
+    const dateVerb = { watchlist: 'Added', watching: 'Updated', finished: 'Finished' }[currentTab] || 'Added';
+    const dateHtml = dateStr ? `<div class="poster-date">${dateVerb} ${dateStr}</div>` : '';
 
     const pillsHost = `<div class="poster-badge-row" id="pills-${item.id}">${renderPills(item, _ratingsCache[item.media_type+':'+(item.tmdb_id||item.external_id)] || {}, gridPills)}</div>`;
 
