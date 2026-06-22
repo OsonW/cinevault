@@ -3234,9 +3234,9 @@ function onBackdropClick(e) {
 
 // Streaming search: each media type is fetched independently and the modal is
 // repainted from a SINGLE code path (`paint`) every time the set of loaded results
-// or the pending count changes. Fast types (movie/tv) show immediately; while any
-// fetch is still in flight a trailing skeleton card signals "more loading". Fully
-// non-blocking — add/remove/close all work mid-load. Stale results guarded by token.
+// or the pending count changes. While any fetch is still in flight a full two-row
+// skeleton grid shows; the real (sorted) cards render once everything has landed.
+// Fully non-blocking — add/remove/close all work mid-load. Stale results guarded by token.
 function runModalSearch(q) {
     if (!q) return;
 
@@ -3322,24 +3322,22 @@ function renderModalResults(libMatches, tmdbResults, q, loading) {
   // Only the first _modalShown results are rendered (and hydrated). Capping the DOM
   // and the per-card director/score lookups is what keeps a big result set fast.
   const shownResults = tmdbResults.slice(0, _modalShown);
-  if (tmdbResults.length) {
+  if (loading) {
+    // Still fetching: show the full two-row skeleton grid (the modal loads up to
+    // _modalShown titles regardless of library matches) and hold off on real cards
+    // until every type-search returns — so there's no partial render or trailing
+    // single skeleton to flicker through.
+    html += renderSkeletons(_modalShown);
+  } else if (tmdbResults.length) {
     html += `<div class="sm-section-label" style="margin-top:${libMatches.length?'0.5rem':'0'}">Add from search</div>
       <div class="sm-grid">`;
     html += shownResults.map(r => renderSmCard(r)).join('');
-    // One trailing skeleton while more types are still loading — but only if the two
-    // visible rows aren't already full (no dangling 11th skeleton past a filled grid).
-    if (loading && shownResults.length < _modalShown) html += `<div><div class="sm-skeleton"></div></div>`;
     html += `</div>`;
-    // Once loading is done, offer to reveal another row if more remain.
-    if (!loading && tmdbResults.length > _modalShown) {
+    // Offer to reveal another row if more remain.
+    if (tmdbResults.length > _modalShown) {
       const remaining = tmdbResults.length - _modalShown;
       html += `<button class="sm-load-more" onclick="loadMoreModal()">Load more <span class="sm-load-more-count">(${remaining})</span></button>`;
     }
-  } else if (loading) {
-    // Nothing has arrived yet but fetches are in flight — show the loading grid.
-    // With library matches above, a single full row (5 = grid width) keeps the
-    // skeleton tidy; otherwise a fuller 10-card placeholder.
-    html += renderSkeletons(libMatches.length ? 5 : 10);
   } else if (!libMatches.length) {
     html = `<div class="sm-status">No results found for "<em>${esc(q)}</em>".</div>`;
   }
