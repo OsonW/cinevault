@@ -1892,7 +1892,7 @@ async function proactiveRefreshStale() {
     }
     // Repaint this card's pills + the detail panel if it's the open one.
     const host = document.getElementById('pills-' + item.id);
-    if (host) host.innerHTML = renderPills(item, ratings, gridPills);
+    if (host) host.innerHTML = renderPills(item, ratings, tabGridPills[currentTab]);
     if (selectedId === item.id) renderDetail(item);
   }
   refreshMdblistStatus();
@@ -2183,7 +2183,7 @@ function renderGrid() {
     const dateVerb = { watchlist: 'Added', watching: 'Updated', finished: 'Finished' }[currentTab] || 'Added';
     const dateHtml = dateStr ? `<div class="poster-date">${dateVerb} ${dateStr}</div>` : '';
 
-    const pillsHost = `<div class="poster-badge-row" id="pills-${item.id}">${renderPills(item, _ratingsCache[item.media_type+':'+(item.tmdb_id||item.external_id)] || {}, gridPills)}</div>`;
+    const pillsHost = `<div class="poster-badge-row" id="pills-${item.id}">${renderPills(item, _ratingsCache[item.media_type+':'+(item.tmdb_id||item.external_id)] || {}, tabGridPills[currentTab])}</div>`;
 
     if (size === 'poster') {
       return `<div class="poster-card poster-only" id="pc-${item.id}" style="${cardFontStyle}" onclick="selectItem(${item.id})">
@@ -2218,7 +2218,7 @@ function renderGrid() {
   panel.innerHTML = statsHtml + topBar + `<div class="poster-grid" id="posterGrid" style="${gridStyle}">${cards}</div>`;
 
   if (size !== 'poster') {
-    items.forEach(item => hydratePills(`pills-${item.id}`, item, gridPills));
+    items.forEach(item => hydratePills(`pills-${item.id}`, item, tabGridPills[currentTab]));
   }
 
   if (pendingSelectId !== null) {
@@ -2397,7 +2397,7 @@ function renderGridControls() {
           <div class="pill-dd-head">Search order</div>${sortRows}
           <div class="pill-dd-head">Grid type</div>${sizeRows}
         </div>
-        <div class="sfm-col sfm-col-pills">${_pillSectionsHtml(gridPills, 'grid')}</div>
+        <div class="sfm-col sfm-col-pills">${_pillSectionsHtml(tabGridPills[currentTab], 'grid')}</div>
       </div>
       ${clearRow}
     </div>
@@ -3448,7 +3448,7 @@ async function refreshRatingsNow(itemId) {
     _ratingsCache[item.media_type + ':' + tid] = ratings;
     // Keep the library grid card's pills in sync, not just the detail panel.
     const ghost = document.getElementById('pills-' + item.id);
-    if (ghost) ghost.innerHTML = renderPills(item, ratings, gridPills);
+    if (ghost) ghost.innerHTML = renderPills(item, ratings, tabGridPills[currentTab]);
     refreshMdblistStatus();
   } catch {
   } finally {
@@ -3491,14 +3491,35 @@ function _loadPills(storeKey) {
   } catch {}
   return DEFAULT_PILLS.slice();
 }
-let gridPills   = _loadPills('gridPills');
+const tabGridPills = {
+  watchlist: _loadPills('gridPills_watchlist'),
+  watching:  _loadPills('gridPills_watching'),
+  finished:  _loadPills('gridPills_finished'),
+};
+// Migrate a legacy global gridPills into any per-tab key that's unset.
+(function migrateGridPills() {
+  let legacy;
+  try { legacy = JSON.parse(localStorage.getItem('gridPills')); } catch {}
+  if (!Array.isArray(legacy)) return;
+  for (const tab of ['watchlist', 'watching', 'finished']) {
+    if (localStorage.getItem('gridPills_' + tab) === null) {
+      tabGridPills[tab] = legacy.filter(x => _VALID_PILLS.has(x));
+      localStorage.setItem('gridPills_' + tab, JSON.stringify(tabGridPills[tab]));
+    }
+  }
+})();
 let searchPills = _loadPills('searchPills');
 // One-time: turn the (free) TMDB pill on by default for users who saved pill
 // prefs before it existed. The flag means this runs once, so they can still turn
 // it back off afterward without it being re-added on the next load.
 (function ensureTmdbPillDefault() {
   if (localStorage.getItem('pills_tmdb_default_v1')) return;
-  if (!gridPills.includes('tmdb'))   { gridPills.push('tmdb');   localStorage.setItem('gridPills', JSON.stringify(gridPills)); }
+  for (const tab of ['watchlist', 'watching', 'finished']) {
+    if (!tabGridPills[tab].includes('tmdb')) {
+      tabGridPills[tab].push('tmdb');
+      localStorage.setItem('gridPills_' + tab, JSON.stringify(tabGridPills[tab]));
+    }
+  }
   if (!searchPills.includes('tmdb')) { searchPills.push('tmdb'); localStorage.setItem('searchPills', JSON.stringify(searchPills)); }
   localStorage.setItem('pills_tmdb_default_v1', '1');
 })();
@@ -3528,7 +3549,7 @@ function _quotaBar() {
 }
 
 function renderPillSelector(which) {
-  const sel = which === 'grid' ? gridPills : searchPills;
+  const sel = which === 'grid' ? tabGridPills[currentTab] : searchPills;
   const body = PILL_SECTIONS.map(sec => {
     const disabled = sec.limited && _mdblist.exhausted;
     let cap = '';
@@ -3576,10 +3597,10 @@ function _repaintSelectorOpen(which) {
 
 function togglePill(which, src, ev) {
   ev.stopPropagation();
-  const arr = which === 'grid' ? gridPills : searchPills;
+  const arr = which === 'grid' ? tabGridPills[currentTab] : searchPills;
   const i = arr.indexOf(src);
   if (i >= 0) arr.splice(i, 1); else arr.push(src);
-  localStorage.setItem(which === 'grid' ? 'gridPills' : 'searchPills', JSON.stringify(arr));
+  localStorage.setItem(which === 'grid' ? ('gridPills_' + currentTab) : 'searchPills', JSON.stringify(arr));
   if (which === 'grid') renderGrid(); else rerenderSearch();
   // The re-render rebuilds the selector; reopen its (fresh) menu so toggling
   // multiple pills doesn't close the dropdown each time.
