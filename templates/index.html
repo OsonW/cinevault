@@ -134,6 +134,19 @@ body {
 }
 .search-magnify-btn:hover { color: var(--accent); background: rgba(255,255,255,0.06); }
 
+/* Clear (X) button — sits just left of the magnify glass, only while there's text. */
+.search-clear-btn {
+  position: absolute; top: 50%; right: 2.6rem;
+  transform: translateY(-50%);
+  width: 1.9rem; height: 1.9rem;
+  border: none; background: none; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--muted); cursor: pointer; z-index: 2;
+  border-radius: 6px; transition: color 0.15s, background 0.15s;
+}
+.search-clear-btn:hover { color: var(--text); background: rgba(255,255,255,0.06); }
+.search-clear-btn[hidden] { display: none; }
+
 
 .field input,
 .field textarea {
@@ -152,7 +165,7 @@ body {
   color: var(--text);
   font-family: 'DM Sans', sans-serif;
   font-size: 1.1rem;
-  padding: 0.6875rem 2.6125rem 0.6875rem 1.03125rem;
+  padding: 0.6875rem 4.6rem 0.6875rem 1.03125rem;   /* room for clear + magnify */
   transition: border-color 0.2s;
 }
 .search-anchor input::placeholder,
@@ -736,14 +749,24 @@ input[type="range"]::-webkit-slider-thumb {
 }
 .gcm-clear:hover { color: var(--text); background: rgba(255,255,255,0.04); }
 
+.grid-filter-anchor { position: relative; flex-shrink: 0; display: flex; }
 .grid-filter-input {
-  width: 20rem; flex-shrink: 0; padding: 0.5625rem 0.9375rem;
+  width: 20rem; flex-shrink: 0; padding: 0.5625rem 2.25rem 0.5625rem 0.9375rem;
   background: var(--card); border: 1px solid var(--border-md);
   border-radius: var(--radius); color: var(--text);
   font-family: 'DM Sans', sans-serif; font-size: 1rem;
 }
 .grid-filter-input:focus { outline: none; border-color: var(--accent); }
 .grid-filter-input::placeholder { color: var(--muted); }
+/* Clear (X) for the grid title search — only rendered while there's a query. */
+.grid-filter-clear {
+  position: absolute; top: 50%; right: 0.4rem; transform: translateY(-50%);
+  width: 1.6rem; height: 1.6rem; border: none; background: none; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--muted); cursor: pointer; border-radius: 6px;
+  transition: color 0.15s, background 0.15s;
+}
+.grid-filter-clear:hover { color: var(--text); background: rgba(255,255,255,0.06); }
 .grid-type-btn {
   padding: 0.46875rem 0.78125rem; border-radius: var(--radius); border: 1px solid var(--border-md);
   background: var(--card); color: var(--muted); cursor: pointer; font-size: 0.9375rem;
@@ -846,8 +869,8 @@ input[type="range"]::-webkit-slider-thumb {
 .fh-slider .fh-range::-webkit-slider-runnable-track { background: transparent; border: none; height: 0.28rem; }
 .fh-slider .fh-range::-moz-range-track { background: transparent; border: none; height: 0.28rem; }
 /* margin-top centers the thumb on the 0.28rem track: -(thumb-track)/2 = -(0.8-0.28)/2 */
-.fh-slider .fh-range::-webkit-slider-thumb { -webkit-appearance: none; pointer-events: auto; width: 0.8rem; height: 0.8rem; margin-top: -0.26rem; border-radius: 50%; background: var(--accent); border: 2px solid var(--surface); cursor: grab; }
-.fh-slider .fh-range::-moz-range-thumb { pointer-events: auto; width: 0.8rem; height: 0.8rem; border-radius: 50%; background: var(--accent); border: 2px solid var(--surface); cursor: grab; }
+.fh-slider .fh-range::-webkit-slider-thumb { -webkit-appearance: none; pointer-events: auto; width: 0.95rem; height: 0.95rem; margin-top: -0.335rem; border-radius: 50%; background: var(--accent); border: 2px solid var(--surface); cursor: grab; }
+.fh-slider .fh-range::-moz-range-thumb { pointer-events: auto; width: 0.95rem; height: 0.95rem; border-radius: 50%; background: var(--accent); border: 2px solid var(--surface); cursor: grab; }
 .fh-slider .fh-range:active::-webkit-slider-thumb { cursor: grabbing; }
 .fh-range-lbls { display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--muted); }
 
@@ -1264,6 +1287,9 @@ body.entry-active .entry-cancel-account { display: block; }
       <div class="search-anchor">
         <input type="text" id="searchInput" placeholder="Search movies, shows, books, manga…"
                autocomplete="off" oninput="onSearchInput()" onkeydown="onSearchKey(event)">
+        <button type="button" class="search-clear-btn" id="searchClearBtn" aria-label="Clear search" onclick="clearMainSearch()" hidden>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
         <button type="button" class="search-magnify-btn" id="searchMainBtn" aria-label="Search" onclick="openModal()">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         </button>
@@ -2297,8 +2323,13 @@ function renderGrid() {
 
   const f = tabFilter[currentTab];
   const topBar = `<div class="grid-top-bar">
-    <input class="grid-filter-input" id="gridFilterInput" placeholder="Search titles…"
-      value="${esc(f.query)}" oninput="onGridFilter(this.value)">
+    <div class="grid-filter-anchor">
+      <input class="grid-filter-input" id="gridFilterInput" placeholder="Search titles…"
+        value="${esc(f.query)}" oninput="onGridFilter(this.value)">
+      ${f.query ? `<button type="button" class="grid-filter-clear" aria-label="Clear title search" onclick="clearGridQuery()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>` : ''}
+    </div>
     <div class="grid-right-group">
       ${renderGridControls()}
     </div>
@@ -2478,6 +2509,13 @@ function onGridFilter(val) {
   if (inp) { inp.focus(); const l = inp.value.length; inp.setSelectionRange(l, l); }
 }
 
+// Clear ONLY the title query (leave media-type filters alone). No refocus — this
+// is mostly used to drop the filter, not to start a fresh search.
+function clearGridQuery() {
+  tabFilter[currentTab].query = '';
+  renderGrid();
+}
+
 function toggleGridType(type, ev) {
   if (ev) ev.stopPropagation();
   const f = tabFilter[currentTab];
@@ -2506,7 +2544,7 @@ function setTabSize(size, ev) {
   if (ev) _reopenGridCtl();
 }
 
-// ── Consolidated grid Filter dropdown: media type, search order, pills, grid type ──
+// ── Consolidated grid Filter dropdown: media type, sort order, pills, grid type ──
 function _pillSectionsHtml(selArr, which) {
   return PILL_SECTIONS.map(sec => {
     const disabled = sec.limited && _mdblist.exhausted;
@@ -2536,10 +2574,11 @@ function renderGridControls() {
   const sortOpts = [{k:'name',l:'Alphabetical'},
                     {k:'added',l:currentTab==='watching'?'Last Progress':'Recently Added'}];
   if (currentTab === 'finished') sortOpts.push({k:'rating',l:'Top Rated'});
+  // Single-select (like Grid type) — the active highlight is the indicator, so
+  // no check mark (those are reserved for the multi-select rows above).
   const sortRows = sortOpts.map(o =>
-    `<div class="size-dd-item pill-dd-item${currentSort===o.k?' active':''}" onclick="setSort('${o.k}',event)">
-       <span>${o.l}</span><span class="pill-dd-check">${currentSort===o.k?'✓':''}</span>
-     </div>`).join('');
+    `<div class="size-dd-item${currentSort===o.k?' active':''}" onclick="setSort('${o.k}',event)">
+       <span>${o.l}</span></div>`).join('');
 
   const sizeOpts = [{k:'default',l:'Default'},
                     {k:'poster',l:'Poster only'},
@@ -2561,7 +2600,7 @@ function renderGridControls() {
       <div class="gcm-cols">
         <div class="sfm-col">
           <div class="pill-dd-head">Media type</div>${typeRows}
-          <div class="pill-dd-head">Search order</div>${sortRows}
+          <div class="pill-dd-head">Sort order</div>${sortRows}
           <div class="pill-dd-head">Grid type</div>${sizeRows}
         </div>
         <div class="sfm-col sfm-col-pills">${_pillSectionsHtml(tabGridPills[currentTab], 'grid')}</div>
@@ -3042,15 +3081,18 @@ async function changeStatus(id, status) {
   }
 }
 
-let deleteItemPending = false;
+// Per-id guard: a second click on the SAME item is ignored, but deletes of
+// different items never block each other (the old single boolean serialized all
+// deletes, so one slow delete stalled every other).
+const _deletePending = new Set();
 
 async function deleteItem(id) {
-    if (deleteItemPending) return;
-    deleteItemPending = true;
+    if (_deletePending.has(id)) return;
+    _deletePending.add(id);
     try {
         await _deleteItemImpl(id);
     } finally {
-        deleteItemPending = false;
+        _deletePending.delete(id);
     }
 }
 
@@ -3062,6 +3104,15 @@ async function _deleteItemImpl(id) {
     const item = allItems.find(i => i.id === id);
     if (!item) return;
 
+    // Drop the card from the UI immediately — don't make the click wait on the
+    // backup round-trip first. The row still exists server-side, so the backup
+    // fetch below (needed for Undo) still works.
+    const wasSelected = (selectedId === id);
+    allItems = allItems.filter(i => i.id !== id);
+    rebuildLibrarySet();
+    if (wasSelected) selectedId = null;
+    renderGrid();
+
     let backup = null;
     try {
         const res = await fetch(`/api/media-backup/${id}`);
@@ -3069,12 +3120,6 @@ async function _deleteItemImpl(id) {
     } catch (e) {
         console.warn("Could not fetch backup", e);
     }
-
-    const wasSelected = (selectedId === id);
-    allItems = allItems.filter(i => i.id !== id);
-    rebuildLibrarySet();
-    if (wasSelected) selectedId = null;
-    renderGrid();
 
     try {
         await fetch(`/api/delete/${id}`, { method: 'DELETE' });
@@ -3129,89 +3174,62 @@ async function undoMediaDelete() {
 }
 
 // ─────────────────────────────────────────────
-// Search — inline dropdown
+// Search — inline dropdown (library-only)
 // ─────────────────────────────────────────────
-let searchTimer;
-// The quick-suggest dropdown fires its own /api/search calls. They're aborted the
-// moment the dropdown is dismissed (including when the full modal opens) so they
-// can't compete with the modal's fetches for the limited sync workers.
-let _dropdownController = null;
-function _abortDropdown() {
-  if (_dropdownController) { _dropdownController.abort(); _dropdownController = null; }
-}
-
+// The dropdown now shows ONLY local library matches — a pure in-memory filter,
+// no network. The old TMDB quick-suggest fired four /api/search calls per
+// keystroke that held the deployment's few sync workers and stalled the modal's
+// own fetches; full TMDB search lives in the modal (opened with Enter / the
+// search button) where it streams non-blockingly.
 function onSearchKey(e) {
   if (e.key === 'Escape') { closeDropdown(); return; }
   if (e.key === 'Enter')  { e.target.blur(); openModal(); return; }  // blur dismisses the mobile keyboard
 }
 
 function onSearchInput() {
-  clearTimeout(searchTimer);
-  const q = document.getElementById('searchInput').value.trim();
+  const inp = document.getElementById('searchInput');
+  const q   = inp.value.trim();
+  const x   = document.getElementById('searchClearBtn');
+  if (x) x.hidden = !inp.value.length;   // X shows whenever the field has any text
   if (!q) { closeDropdown(); return; }
-  searchTimer = setTimeout(() => showDropdownSuggestions(q), 200);
+  showLibraryDropdown(q);
 }
 
-async function showDropdownSuggestions(q) {
-  if (document.getElementById('searchInput').value.trim() !== q) return;
-  _abortDropdown();
-  _dropdownController = new AbortController();
-  const { signal }     = _dropdownController;
+// Clear the top-bar search, then keep the bar focused so the user can fire off
+// another search immediately (searching again here is common).
+function clearMainSearch() {
+  const inp = document.getElementById('searchInput');
+  if (!inp) return;
+  inp.value = '';
+  const x = document.getElementById('searchClearBtn');
+  if (x) x.hidden = true;
+  closeDropdown();
+  inp.focus();
+}
+
+// Instant, synchronous, zero network: just the user's own library, filtered.
+function showLibraryDropdown(q) {
   const lower          = q.toLowerCase();
-  const libraryMatches = allItems.filter(i => i.title.toLowerCase().includes(lower)).slice(0, 4);
+  const libraryMatches = allItems.filter(i => i.title.toLowerCase().includes(lower)).slice(0, 6);
   const dd             = document.getElementById('searchDropdown');
-  const [movieRes, tvRes, bookRes, mangaRes] = await Promise.all([
-    fetch(`/api/search?q=${encodeURIComponent(q)}&type=movie`, { signal }).then(r => r.json()).catch(() => []),
-    fetch(`/api/search?q=${encodeURIComponent(q)}&type=tv`, { signal }).then(r => r.json()).catch(() => []),
-    fetch(`/api/search/books?q=${encodeURIComponent(q)}`, { signal }).then(r => r.json()).catch(() => []),
-    fetch(`/api/search/manga?q=${encodeURIComponent(q)}`, { signal }).then(r => r.json()).catch(() => []),
-  ]);
-  // Bail if aborted (dropdown dismissed / modal opened) or the query moved on.
-  if (signal.aborted || document.getElementById('searchInput').value.trim() !== q) return;
-  [...movieRes, ...tvRes, ...bookRes, ...mangaRes].forEach(r => {
-    const key = `${r.media_type}_${r.external_id || r.tmdb_id}`;
-    tmdbResultMap[key] = r;
-  });
-  const tmdbMatches = [...movieRes.slice(0,2), ...tvRes.slice(0,2), ...bookRes.slice(0,2), ...mangaRes.slice(0,2)];
-  if (!libraryMatches.length && !tmdbMatches.length) { closeDropdown(); return; }
-  let html = '';
-  if (libraryMatches.length) {
-    html += `<div style="padding:0.375rem 0.75rem 0.25rem;font-size:0.625rem;color:var(--muted);letter-spacing:0.05em">IN YOUR LIBRARY</div>`;
-    html += libraryMatches.map(i => {
-      const statusColor = i.status==='watchlist'?'var(--blue)':i.status==='watching'?'var(--green)':'var(--purple)';
-      return `<div class="sd-row" onclick="selectLibraryItem(${i.id})">
-        <div>
-          <div class="sd-title">${esc(i.title)}</div>
-          <div class="sd-sub">${TYPE_SVG[i.media_type]} ${TYPE_LABEL[i.media_type]} · <span style="color:${statusColor}">${i.status}</span></div>
-        </div>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
-      </div>`;
-    }).join('');
-  }
-  if (tmdbMatches.length) {
-    const sep = libraryMatches.length
-      ? `<div style="padding:0.375rem 0.75rem 0.25rem;font-size:0.625rem;color:var(--muted);letter-spacing:0.05em;border-top:1px solid var(--border);margin-top:0.25rem">ADD TO LIBRARY</div>`
-      : `<div style="padding:0.375rem 0.75rem 0.25rem;font-size:0.625rem;color:var(--muted);letter-spacing:0.05em">ADD TO LIBRARY</div>`;
-    html += sep;
-    html += tmdbMatches.map(r => {
-      const key     = `${r.media_type}_${r.external_id || r.tmdb_id}`;
-      const already = inLibrary.has(key);
-      return `<div class="sd-row" onclick="addFromDropdown('${key}')">
-        <div>
-          <div class="sd-title">${esc(r.title)} <span style="color:var(--muted);font-size:0.6875rem">(${r.year||'?'})</span></div>
-          <div class="sd-sub">${TYPE_SVG[r.media_type]} ${TYPE_LABEL[r.media_type]}${r.author?' · '+esc(r.author):''}</div>
-        </div>
-        <span style="font-size:0.6875rem;color:${already?'var(--green)':'var(--accent)'}">${already?'✓ In library':'+ Add'}</span>
-      </div>`;
-    }).join('');
-  }
+  if (!dd) return;
+  if (!libraryMatches.length) { closeDropdown(); return; }
+  let html = `<div style="padding:0.375rem 0.75rem 0.25rem;font-size:0.625rem;color:var(--muted);letter-spacing:0.05em">IN YOUR LIBRARY</div>`;
+  html += libraryMatches.map(i => {
+    const statusColor = i.status==='watchlist'?'var(--blue)':i.status==='watching'?'var(--green)':'var(--purple)';
+    return `<div class="sd-row" onclick="selectLibraryItem(${i.id})">
+      <div>
+        <div class="sd-title">${esc(i.title)}</div>
+        <div class="sd-sub">${TYPE_SVG[i.media_type]} ${TYPE_LABEL[i.media_type]} · <span style="color:${statusColor}">${i.status}</span></div>
+      </div>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+    </div>`;
+  }).join('');
   dd.innerHTML = html;
   dd.style.display = 'block';
 }
 
 function closeDropdown() {
-  clearTimeout(searchTimer);   // cancel a debounced suggestion that hasn't fired yet
-  _abortDropdown();
   const dd = document.getElementById('searchDropdown');
   if (dd) dd.style.display = 'none';
 }
@@ -3226,42 +3244,6 @@ function selectLibraryItem(id) {
     switchTab(item.status, id);
   } else {
     selectItem(id);
-  }
-}
-async function addFromDropdown(key) {
-  const r = tmdbResultMap[key];
-  if (!r) return;
-  if (inLibrary.has(key)) {
-    const existing = allItems.find(i => `${i.media_type}_${i.external_id || i.tmdb_id}` === key);
-    if (existing) selectLibraryItem(existing.id);
-    return;
-  }
-  inLibrary.add(key);
-  try {
-    await apiPost('/api/add', {
-      tmdb_id:     r.tmdb_id    || null,
-      external_id: r.external_id || String(r.tmdb_id || ''),
-      title:       r.title,
-      media_type:  r.media_type,
-      status:      'watchlist',
-      cover_url:   r.cover_url  || null,
-      author:      r.author     || null,
-      total_pages: r.total_pages || null,
-      overview:    r.overview   || null,
-    });
-    await loadList();
-    const newItem = allItems.find(i =>
-      i.media_type === r.media_type &&
-      (i.external_id === (r.external_id || String(r.tmdb_id || '')) || String(i.tmdb_id) === String(r.tmdb_id || ''))
-    );
-    closeDropdown();
-    document.getElementById('searchInput').value = '';
-    showToast(`"${r.title}" added to Watchlist`);
-    switchTab('watchlist', newItem ? newItem.id : null);
-  } catch {
-    inLibrary.delete(key);
-    showToast('Failed to add — please try again.', 'error');
-    return;
   }
 }
 
@@ -3411,7 +3393,9 @@ function renderModalResults(libMatches, tmdbResults, q, loading) {
     html += `</div>`;
   } else if (loading) {
     // Nothing has arrived yet but fetches are in flight — show the loading grid.
-    html += renderSkeletons(libMatches.length ? 4 : 10);
+    // With library matches above, a single full row (5 = grid width) keeps the
+    // skeleton tidy; otherwise a fuller 10-card placeholder.
+    html += renderSkeletons(libMatches.length ? 5 : 10);
   } else if (!libMatches.length) {
     html = `<div class="sm-status">No results found for "<em>${esc(q)}</em>".</div>`;
   }
@@ -3501,34 +3485,91 @@ function renderSmCard(r) {
     </div>
   </div>`;
 }
-async function addFromModal(key) {
-  const r = tmdbResultMap[key];
-  if (!r || inLibrary.has(key)) return;
-  inLibrary.add(key);
+// Add/remove a search result to/from the library. Both buttons funnel through a
+// single per-key toggle so rapid add↔remove clicks can't race: each key has its
+// own serial queue (an add fully resolves — and its server id is known — before a
+// following remove runs) and the queue always drives the server to the user's
+// LAST intent. Opposite clicks that cancel out collapse to a no-op (no wasted
+// add-then-delete round trip).
+const _modalKeyChain = new Map();   // key -> tail promise (per-key serialization)
+const _modalDesired  = new Map();   // key -> true(in) / false(out): last intent while a chain is live
+
+function addFromModal(key)    { return _modalToggle(key, true); }
+function removeFromModal(key) { return _modalToggle(key, false); }
+
+function _matchModalItem(r) {
+  const ext = r.external_id || String(r.tmdb_id || '');
+  return allItems.find(i =>
+    i.media_type === r.media_type &&
+    (i.external_id === ext || String(i.tmdb_id) === String(r.tmdb_id || ''))
+  );
+}
+
+// Reflect membership on the search card's button + card chrome.
+function _paintModalBtn(key, r, inLib) {
   const btnId = `smbtn-${r.media_type}-${((r.external_id||r.tmdb_id||'').toString().replace(/[^a-z0-9]/gi,'_'))}`;
   const btn   = document.getElementById(btnId);
-  if (btn) {
-    btn.textContent = '− Remove from watchlist';
-    btn.classList.add('remove');
-    btn.disabled    = false;
-    btn.onclick     = () => removeFromModal(key);
-    btn.closest('.sm-card').classList.add('in-library');
-  }
-  try {
+  if (!btn) return;
+  btn.disabled    = false;
+  btn.textContent = inLib ? '− Remove from watchlist' : '+ Add to Watchlist';
+  btn.classList.toggle('remove', inLib);
+  btn.onclick     = inLib ? (() => removeFromModal(key)) : (() => addFromModal(key));
+  const card = btn.closest('.sm-card');
+  if (card) card.classList.toggle('in-library', inLib);
+}
+
+function _modalToggle(key, wantIn) {
+  const r = tmdbResultMap[key];
+  if (!r) return Promise.resolve();
+  // Current intent = last queued desire, or actual membership when idle.
+  const current = _modalDesired.has(key) ? _modalDesired.get(key) : inLibrary.has(key);
+  if (current === wantIn) return Promise.resolve();   // already in/heading to that state
+
+  // Record intent + paint optimistically so the UI always reflects the LAST
+  // click instantly (never a dropped or stale one).
+  _modalDesired.set(key, wantIn);
+  if (wantIn) inLibrary.add(key); else inLibrary.delete(key);
+  _paintModalBtn(key, r, wantIn);
+
+  const prev = _modalKeyChain.get(key) || Promise.resolve();
+  const job  = prev.then(() => _reconcileModal(key, r));
+  const tail = job.catch(() => {}).finally(() => {
+    if (_modalKeyChain.get(key) === tail) {
+      _modalKeyChain.delete(key);
+      _modalDesired.delete(key);   // chain drained; inLibrary now matches intent
+    }
+  });
+  _modalKeyChain.set(key, tail);
+  return job;
+}
+
+async function _reconcileModal(key, r) {
+  const wantIn   = _modalDesired.get(key);
+  const existing = _matchModalItem(r);
+
+  if (wantIn && !existing) {
     const ext = r.external_id || String(r.tmdb_id || '');
-    const data = await apiPost('/api/add', {
-      tmdb_id:     r.tmdb_id    || null,
-      external_id: ext,
-      title:       r.title,
-      media_type:  r.media_type,
-      status:      'watchlist',
-      cover_url:   r.cover_url  || null,
-      author:      r.author     || null,
-      total_pages: r.total_pages || null,
-      overview:    r.overview   || null,
-      year:        r.year       || null,
-      tmdb_rating: r.tmdb_rating ?? null,
-    });
+    let data;
+    try {
+      data = await apiPost('/api/add', {
+        tmdb_id:     r.tmdb_id    || null,
+        external_id: ext,
+        title:       r.title,
+        media_type:  r.media_type,
+        status:      'watchlist',
+        cover_url:   r.cover_url  || null,
+        author:      r.author     || null,
+        total_pages: r.total_pages || null,
+        overview:    r.overview   || null,
+        year:        r.year       || null,
+        tmdb_rating: r.tmdb_rating ?? null,
+      });
+    } catch {
+      // Roll back the optimistic add unless a later click already flipped intent.
+      if (_modalDesired.get(key) === true) { inLibrary.delete(key); _paintModalBtn(key, r, false); }
+      showToast('Failed to add — please try again.', 'error');
+      return;
+    }
     const newItem = {
       id: data && data.id, tmdb_id: r.tmdb_id || null, external_id: ext,
       title: r.title, media_type: r.media_type, status: 'watchlist',
@@ -3538,59 +3579,29 @@ async function addFromModal(key) {
       date_added: data && data.date_added, ratings: null, ratings_updated_at: null,
     };
     if (newItem.id != null && !allItems.some(i => i.id === newItem.id)) allItems.push(newItem);
-    rebuildLibrarySet();
-    showToast(`"${r.title}" added to Watchlist`);
-    switchTab('watchlist', newItem.id != null ? newItem.id : null);
-  } catch {
-    inLibrary.delete(key);
-    if (btn) {
-      btn.textContent = '+ Add to Watchlist';
-      btn.classList.remove('remove');
-      btn.disabled    = false;
-      btn.onclick     = () => addFromModal(key);
-      btn.closest('.sm-card').classList.remove('in-library');
+    inLibrary.add(key);
+    // Don't yank the user to the new item if they've since asked to remove it.
+    if (_modalDesired.get(key) !== false) {
+      showToast(`"${r.title}" added to Watchlist`);
+      switchTab('watchlist', newItem.id != null ? newItem.id : null);
     }
-    showToast('Failed to add — please try again.', 'error');
-    return;
-  }
-}
-
-async function removeFromModal(key) {
-  const r = tmdbResultMap[key];
-  if (!r || !inLibrary.has(key)) return;
-  const item = allItems.find(i =>
-    i.media_type === r.media_type &&
-    (i.external_id === (r.external_id || String(r.tmdb_id || '')) ||
-     String(i.tmdb_id) === String(r.tmdb_id || ''))
-  );
-  if (!item) return;
-  inLibrary.delete(key);
-  const btnId = `smbtn-${r.media_type}-${((r.external_id||r.tmdb_id||'').toString().replace(/[^a-z0-9]/gi,'_'))}`;
-  const btn   = document.getElementById(btnId);
-  if (btn) {
-    btn.textContent = '+ Add to Watchlist';
-    btn.classList.remove('remove');
-    btn.onclick = () => addFromModal(key);
-    btn.closest('.sm-card').classList.remove('in-library');
-  }
-  try {
-    const res = await fetch(`/api/delete/${item.id}`, { method: 'DELETE' });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    allItems = allItems.filter(i => i.id !== item.id);
-    rebuildLibrarySet();
-    if (selectedId === item.id) selectedId = null;
+  } else if (!wantIn && existing) {
+    try {
+      const res = await fetch(`/api/delete/${existing.id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    } catch {
+      if (_modalDesired.get(key) === false) { inLibrary.add(key); _paintModalBtn(key, r, true); }
+      showToast('Failed to remove — please try again.', 'error');
+      return;
+    }
+    allItems = allItems.filter(i => i.id !== existing.id);
+    inLibrary.delete(key);
+    if (selectedId === existing.id) selectedId = null;
     renderGrid();
     showToast(`"${r.title}" removed from Watchlist`);
-  } catch {
-    inLibrary.add(key);
-    if (btn) {
-      btn.textContent = '− Remove from watchlist';
-      btn.classList.add('remove');
-      btn.onclick = () => removeFromModal(key);
-      btn.closest('.sm-card').classList.add('in-library');
-    }
-    showToast('Failed to remove — please try again.', 'error');
   }
+  // else: server already matches the desired state (e.g. add+remove cancelled
+  // out, or remove+add) — nothing to do.
 }
 
 // ─────────────────────────────────────────────
@@ -3699,6 +3710,11 @@ function renderPills(item, ratings, selected) {
   return out.join('');
 }
 
+// Server's last-refresh timestamp per title, captured alongside the ratings so
+// the detail panel's "Updated …" tag can appear even for freshly-added items
+// (which start life with no local ratings_updated_at).
+const _ratingsUpdatedAt = {};   // "media_type:tmdb_id" -> ISO string
+
 async function fetchRatings(mediaType, tmdbId) {
   if (!tmdbId || (mediaType !== 'movie' && mediaType !== 'tv')) return {};
   const k = `${mediaType}:${tmdbId}`;
@@ -3707,8 +3723,10 @@ async function fetchRatings(mediaType, tmdbId) {
   if (_mdblist.exhausted) return {};
   try {
     const res = await fetch(`/api/ratings/${mediaType}/${encodeURIComponent(tmdbId)}`);
-    const data = res.ok ? ((await res.json()).ratings || {}) : {};
+    const json = res.ok ? await res.json() : {};
+    const data = json.ratings || {};
     _ratingsCache[k] = data;
+    if (json.updated_at) _ratingsUpdatedAt[k] = json.updated_at;
     return data;
   } catch { _ratingsCache[k] = {}; return {}; }
 }
@@ -3779,7 +3797,27 @@ function hydratePills(hostId, item, selected) {
   fetchRatings(item.media_type, tmdbId).then(r => {
     const host = document.getElementById(hostId);
     if (host) host.innerHTML = renderPills(item, r, selected);
+    // Adopt the server's last-refresh time so the detail "Updated …" tag shows
+    // up — newly-added items have no timestamp until this first fetch resolves.
+    const stamp = _ratingsUpdatedAt[item.media_type + ':' + tmdbId];
+    if (stamp && stamp !== item.ratings_updated_at) {
+      item.ratings_updated_at = stamp;
+      if (hostId === 'detailScores' && selectedId === item.id) _rerenderRatingsMeta(item);
+    }
   });
+}
+
+// Swap the detail panel's ratings-meta block in place (the refresh button +
+// "Updated …" label) without re-rendering the whole panel.
+function _rerenderRatingsMeta(item) {
+  const html     = _ratingsMetaHtml(item);
+  const existing = document.querySelector('#detailPanel .ratings-meta');
+  if (existing) {
+    if (html) existing.outerHTML = html; else existing.remove();
+  } else if (html) {
+    const scores = document.getElementById('detailScores');
+    if (scores) scores.insertAdjacentHTML('afterend', html);
+  }
 }
 
 const _VALID_PILLS = new Set(PILL_ORDER);
