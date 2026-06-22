@@ -874,6 +874,10 @@ input[type="range"]::-webkit-slider-thumb {
    its inner edge) travels the full bar width — i.e. a dot's centre lines up with the
    bar-graph edges (and with the fill line) at the extremes, not inset by the radius. */
 .fh-slider .fh-range { position: absolute; left: -0.6rem; top: 0; width: calc(100% + 1.2rem); height: 100%; margin: 0; background: transparent; pointer-events: none; -webkit-appearance: none; appearance: none; z-index: 4; }
+/* The lower thumb is floored at value 0.1, which renders one tick (1% of the track)
+   in from the left. Nudge just this input one tick left so the floored dot reaches the
+   bar-graph's left edge — purely visual; the value/filter logic is unchanged. */
+.fh-slider #finLo { left: calc(-0.6rem - 1%); }
 .fh-slider .fh-range::-webkit-slider-runnable-track { background: transparent; border: none; height: 0.28rem; }
 .fh-slider .fh-range::-moz-range-track { background: transparent; border: none; height: 0.28rem; }
 /* margin-top centers the thumb on the 0.28rem track: -(thumb-track)/2 = -(0.8-0.28)/2 */
