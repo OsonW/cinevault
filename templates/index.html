@@ -496,6 +496,15 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 
 .sm-status { padding: 2.5rem 0; text-align: center; color: var(--muted); font-size: 0.8125rem; }
 
+.sm-load-more {
+  display: block; margin: 1.125rem auto 0.25rem; padding: 0.5rem 1.5rem;
+  background: var(--card); border: 1px solid var(--border-md); border-radius: var(--radius);
+  color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 0.875rem;
+  cursor: pointer; transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.sm-load-more:hover { border-color: var(--accent); background: var(--subtle); }
+.sm-load-more-count { color: var(--muted); }
+
 /* ── Detail Panel ─────────────────────────────── */
 .detail-panel {
   grid-area: detail;
@@ -1736,6 +1745,11 @@ let _modalSearchController = null;
 // Bumped on every search; stale fetches (slower types from an earlier query) compare
 // their token and bail instead of overwriting fresher results.
 let _modalSearchToken = 0;
+// Modal results render at most this many cards (the grid is 5-wide, so this is a row
+// count). Starts at two rows; "Load more" reveals one extra row at a time. Capping the
+// render also caps the per-card director/score lookups, keeping the modal snappy.
+const MODAL_ROW   = 5;
+let _modalShown   = MODAL_ROW * 2;
 
 const tabLastSelected = { watchlist: null, watching: null, finished: null };
 
@@ -3212,6 +3226,7 @@ function runModalSearch(q) {
     _modalSearchController = new AbortController();
     const { signal } = _modalSearchController;
     const token = ++_modalSearchToken;
+    _modalShown = MODAL_ROW * 2;   // every fresh search starts capped at two rows
 
     lastModalQuery = q;
     document.getElementById('smTitle').innerHTML = `Results for <em>${esc(q)}</em>`;
@@ -3285,13 +3300,21 @@ function renderModalResults(libMatches, tmdbResults, q, loading) {
     }).join('');
     html += `</div>`;
   }
+  // Only the first _modalShown results are rendered (and hydrated). Capping the DOM
+  // and the per-card director/score lookups is what keeps a big result set fast.
+  const shownResults = tmdbResults.slice(0, _modalShown);
   if (tmdbResults.length) {
     html += `<div class="sm-section-label" style="margin-top:${libMatches.length?'0.5rem':'0'}">Add from search</div>
       <div class="sm-grid">`;
-    html += tmdbResults.map(r => renderSmCard(r)).join('');
+    html += shownResults.map(r => renderSmCard(r)).join('');
     // One trailing skeleton while more types are still loading.
     if (loading) html += `<div><div class="sm-skeleton"></div></div>`;
     html += `</div>`;
+    // Once loading is done, offer to reveal another row if more remain.
+    if (!loading && tmdbResults.length > _modalShown) {
+      const remaining = tmdbResults.length - _modalShown;
+      html += `<button class="sm-load-more" onclick="loadMoreModal()">Load more <span class="sm-load-more-count">(${remaining})</span></button>`;
+    }
   } else if (loading) {
     // Nothing has arrived yet but fetches are in flight — show the loading grid.
     // With library matches above, a single full row (5 = grid width) keeps the
@@ -3312,14 +3335,21 @@ function renderModalResults(libMatches, tmdbResults, q, loading) {
   // results show fast and the extras backfill without blocking actions.
   if (!loading) {
     if (searchPills.some(s => SCORE_SOURCES.includes(s))) {
-      tmdbResults.forEach(r => {
+      shownResults.forEach(r => {
         const item = { media_type: r.media_type, year: r.year, tmdb_id: r.tmdb_id, external_id: r.external_id, tmdb_rating: r.tmdb_rating };
         const pillsId = `spills-${r.media_type}-${(r.external_id || r.tmdb_id || '').toString().replace(/[^a-z0-9]/gi,'_')}`;
         hydratePills(pillsId, item, searchPills);
       });
     }
-    tmdbResults.forEach(r => hydrateSmAuthor(r));
+    shownResults.forEach(r => hydrateSmAuthor(r));
   }
+}
+
+// Reveal one more row of results (and hydrate just that row, since hydration is
+// deduped — already-shown cards hit the cache). Re-renders from the cached args.
+function loadMoreModal() {
+  _modalShown += MODAL_ROW;
+  if (_lastModalArgs) renderModalResults(_lastModalArgs.libMatches, _lastModalArgs.tmdbResults, _lastModalArgs.q);
 }
 
 function _progressLabel(item) {
