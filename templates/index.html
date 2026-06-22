@@ -584,10 +584,12 @@ input[type="range"]::-webkit-slider-thumb {
 .field-notes { position: relative; }
 .field-notes textarea { resize: none; min-height: 6rem; transition: min-height 0.18s ease; }
 .field-notes textarea.expanded { min-height: 15rem; }
+/* Shrink-wrapped to the icon (line-height:0) so its gap from the textarea's right and
+   bottom edges is exactly the offset below — equal on both sides. */
 .notes-expand-btn {
-  position: absolute; right: 0.4rem; bottom: 0.4rem;
-  width: 1.7rem; height: 1.7rem; display: flex; align-items: center; justify-content: center;
-  border: none; background: none; padding: 0; cursor: pointer; border-radius: 6px;
+  position: absolute; right: 0.5rem; bottom: 0.5rem;
+  display: inline-flex; padding: 0.25rem; line-height: 0;
+  border: none; background: none; cursor: pointer; border-radius: 6px;
   color: var(--muted); transition: color 0.15s, background 0.15s;
 }
 .notes-expand-btn:hover { color: var(--accent); background: rgba(255,255,255,0.06); }
@@ -779,11 +781,10 @@ input[type="range"]::-webkit-slider-thumb {
   transition: background 0.15s, border-color 0.15s;
 }
 .show-unrated-toggle:hover input { border-color: var(--accent); }
-.show-unrated-toggle input:checked { background: var(--accent-glow); border-color: var(--accent); }
-.show-unrated-toggle input:checked::after {
-  content: ''; position: absolute; left: 0.34rem; top: 0.13rem;
-  width: 0.28rem; height: 0.55rem; border: solid var(--accent);
-  border-width: 0 2px 2px 0; transform: rotate(45deg);
+.show-unrated-toggle input:checked {
+  border-color: var(--accent); background-color: var(--accent-glow);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a78bfa' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: center; background-size: 0.72rem;
 }
 .show-unrated-toggle input:focus-visible { outline: 2px solid var(--accent-dim); outline-offset: 1px; }
 
@@ -854,11 +855,10 @@ input[type="range"]::-webkit-slider-thumb {
    sub-range is purple). Kept as a custom property so the hover rule still wins. No
    transition: tweening between gradients is what caused the flicker on fast drags. */
 .fh-bar { width: 100%; min-height: 0; --bar-on: var(--accent); background: var(--fill, var(--card)); border-radius: 3px 3px 0 0; }
-/* Labels mirror the bar's split via the same gradient, clipped to the text (muted→
-   accent) so the highlighted portion is purple too. */
-.fh-lbl { font-size: 0.7rem; margin-top: 0.2rem; white-space: nowrap;
-  background: var(--lblfill, var(--muted)); -webkit-background-clip: text; background-clip: text;
-  color: transparent; -webkit-text-fill-color: transparent; }
+/* Label = grey base text with a purple copy overlaid on top, clipped to a width that
+   tracks the dot's position in this bucket (see _lblFillPct). */
+.fh-lbl { position: relative; display: inline-block; font-size: 0.7rem; margin-top: 0.2rem; white-space: nowrap; color: var(--muted); }
+.fh-lbl-fill { position: absolute; left: 0; top: 0; width: 0; overflow: hidden; white-space: nowrap; color: var(--accent); pointer-events: none; }
 /* Hover deepens only the filled portion: --fill references --bar-on, so grey areas
    (and fully-grey bars, whose --fill is a plain colour) are untouched. */
 .fh-bar-wrap:hover .fh-bar { --bar-on: var(--accent-hover); }
@@ -2232,9 +2232,8 @@ function onFinRange(which, val) {
 
 // Progressive fill for histogram bar k (covers ratings k-1..k): the part overlapping
 // the [lo,hi] selection is the "on" colour, the rest "off" — so a thumb that lands
-// mid-bar splits it instead of flipping the whole bar. Returned as a value for a
-// --fill / --lblfill custom property. Bars use card→accent; labels use muted→accent
-// so the greyed text stays legible.
+// mid-bar splits it instead of flipping the whole bar. Returned as the bar's --fill
+// custom property value (card→--bar-on). Labels use a different model (_lblFillPct).
 function _fillGradient(k, lo, hi, off, on) {
   const s = Math.max(0, Math.min(1, Math.max(lo, k - 1) - (k - 1)));   // selected-start fraction
   const e = Math.max(0, Math.min(1, Math.min(hi, k) - (k - 1)));       // selected-end fraction
@@ -2247,19 +2246,15 @@ function _fillGradient(k, lo, hi, off, on) {
 // (grey stays grey; a half-filled bar deepens just its purple half).
 function _barFillStyle(k, lo, hi) { return _fillGradient(k, lo, hi, 'var(--card)', 'var(--bar-on)'); }
 
-// Labels behave differently from bars: the fill tracks the DOT, not the selection.
-// A label fills purple from its left edge up to a slider dot's position within this
-// bucket. Only the bucket a dot currently sits in lights up — so a dot halfway through
-// a label fills it halfway, and the label resets to grey once the dot passes into the
-// next bucket (fully-in and fully-out buckets are grey).
-function _lblFillStyle(k, lo, hi) {
-  const off = 'var(--muted)', on = 'var(--accent)';
+// Labels track the DOT, not the selection. A grey label is overlaid by a purple copy
+// clipped to this width: the fraction of THIS bucket a slider dot has reached. Only the
+// bucket a dot is currently in fills (others get 0%), so a dot halfway through a label
+// fills it halfway and it resets to grey the moment the dot crosses into the next one.
+function _lblFillPct(k, lo, hi) {
   let f = 0;
   if (lo > k - 1 && lo < k) f = Math.max(f, lo - (k - 1));
   if (hi > k - 1 && hi < k) f = Math.max(f, hi - (k - 1));
-  if (f <= 0) return off;
-  const fp = (f * 100).toFixed(2);
-  return `linear-gradient(to right, ${on} 0%, ${on} ${fp}%, ${off} ${fp}%, ${off} 100%)`;
+  return (Math.max(0, Math.min(1, f)) * 100).toFixed(2) + '%';
 }
 
 // Sync labels, bar highlights and thumb stacking to finishedRange. The low thumb is
@@ -2282,8 +2277,8 @@ function _updateFinRangeUI() {
     const k = +w.dataset.k;
     const bar = w.querySelector('.fh-bar');
     if (bar) bar.style.setProperty('--fill', _barFillStyle(k, lo, hi));
-    const lbl = w.querySelector('.fh-lbl');
-    if (lbl) lbl.style.setProperty('--lblfill', _lblFillStyle(k, lo, hi));
+    const fill = w.querySelector('.fh-lbl-fill');
+    if (fill) fill.style.width = _lblFillPct(k, lo, hi);
   });
 }
 
@@ -2357,7 +2352,7 @@ function renderGrid() {
       return `<div class="fh-bar-wrap" data-k="${k}" data-count="${c}"
                 onmouseenter="showHistTip(this)" onmouseleave="hideHistTip()">
                 <div class="fh-bar" style="height:${h}%;--fill:${_barFillStyle(k, lo, hi)}"></div>
-                <div class="fh-lbl" style="--lblfill:${_lblFillStyle(k, lo, hi)}">${k}★</div>
+                <div class="fh-lbl">${k}★<span class="fh-lbl-fill" style="width:${_lblFillPct(k, lo, hi)}">${k}★</span></div>
               </div>`;
     }).join('');
     statsHtml = `<div class="fin-stats">
