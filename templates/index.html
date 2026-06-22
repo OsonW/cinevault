@@ -568,6 +568,12 @@ input[type="range"]::-webkit-slider-thumb {
   border-radius: 50%; background: var(--accent); border: 2px solid var(--surface); cursor: pointer;
 }
 
+.star-slider { display: inline-flex; gap: 0.15rem; cursor: pointer; touch-action: none; user-select: none; font-size: 1.9rem; line-height: 1; }
+.star-slider:focus-visible { outline: 2px solid var(--accent-dim); outline-offset: 3px; border-radius: 4px; }
+.star-cell { position: relative; display: inline-block; }
+.star-base { color: var(--card); }
+.star-fill { position: absolute; left: 0; top: 0; width: 0; overflow: hidden; white-space: nowrap; color: var(--accent); }
+
 .field { margin-bottom: 1.3125rem; }
 .field label {
   display: block; font-size: 1.125rem; color: var(--muted); margin-bottom: 0.46875rem;
@@ -2477,6 +2483,54 @@ function _ratingsMetaHtml(item) {
   </div>`;
 }
 
+// Fill each of the 10 stars; the next star is partially filled for decimals.
+function _paintStars(slider, R) {
+  slider.querySelectorAll('.star-cell').forEach((cell, idx) => {
+    const frac = Math.max(0, Math.min(1, R - idx));
+    cell.querySelector('.star-fill').style.width = (frac * 100) + '%';
+  });
+}
+
+// Rating from the pointer x, snapped to 0.1 (never an infinite-step slider).
+function _starValueFromEvent(slider, e) {
+  const rect = slider.getBoundingClientRect();
+  const raw = (e.clientX - rect.left) / rect.width * 10;
+  return Math.max(0, Math.min(10, Math.round(raw * 10) / 10));
+}
+
+function _starApply(slider, id, R, commit) {
+  _paintStars(slider, R);
+  slider.setAttribute('aria-valuenow', R);
+  const rv = document.getElementById('rv');
+  if (rv) rv.textContent = ratingLabel(R);
+  if (commit) saveField(id, 'rating', R);
+}
+
+function starPointerDown(e, id) {
+  e.preventDefault();
+  const slider = document.getElementById('starSlider');
+  if (!slider) return;
+  try { slider.setPointerCapture(e.pointerId); } catch {}
+  _starApply(slider, id, _starValueFromEvent(slider, e), false);
+  slider.onpointermove = (ev) => _starApply(slider, id, _starValueFromEvent(slider, ev), false);
+  slider.onpointerup = (ev) => {
+    _starApply(slider, id, _starValueFromEvent(slider, ev), true);
+    slider.onpointermove = null;
+    slider.onpointerup = null;
+  };
+}
+
+function starKey(e, id) {
+  const slider = document.getElementById('starSlider');
+  if (!slider) return;
+  let R = Number(slider.getAttribute('aria-valuenow')) || 0;
+  if (e.key === 'ArrowRight' || e.key === 'ArrowUp')      R = Math.min(10, Math.round((R + 0.1) * 10) / 10);
+  else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') R = Math.max(0, Math.round((R - 0.1) * 10) / 10);
+  else return;
+  e.preventDefault();
+  _starApply(slider, id, R, true);
+}
+
 function renderDetail(item) {
   const panel = document.getElementById('detailPanel');
   panel.scrollTop = 0;
@@ -2486,9 +2540,13 @@ function renderDetail(item) {
       <div class="rating-label">Your rating
         <span class="rating-val" id="rv">${ratingLabel(item.rating)}</span>
       </div>
-      <input type="range" min="0" max="10" step="0.1" value="${item.rating||0}"
-             oninput="document.getElementById('rv').textContent=ratingLabel(this.value)"
-             onchange="saveField(${item.id},'rating',parseFloat(this.value))">
+      <div class="star-slider" id="starSlider" role="slider" tabindex="0"
+           aria-valuemin="0" aria-valuemax="10" aria-valuenow="${item.rating||0}"
+           onpointerdown="starPointerDown(event,${item.id})"
+           onkeydown="starKey(event,${item.id})">
+        ${[1,2,3,4,5,6,7,8,9,10].map(() =>
+          `<span class="star-cell"><span class="star-base">★</span><span class="star-fill">★</span></span>`).join('')}
+      </div>
     </div>` : '';
 
   let progressHtml = '';
@@ -2570,6 +2628,9 @@ function renderDetail(item) {
       <div class="divider"></div>
       <button class="delete-btn" onclick="deleteItem(${item.id})">Remove from library</button>
     </div>`;
+
+  const _ss = document.getElementById('starSlider');
+  if (_ss) _paintStars(_ss, item.rating || 0);
 
   hydratePills('detailScores', item, DETAIL_SCORES);
 
