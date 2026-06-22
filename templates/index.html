@@ -568,10 +568,12 @@ input[type="range"]::-webkit-slider-thumb {
   border-radius: 50%; background: var(--accent); border: 2px solid var(--surface); cursor: pointer;
 }
 
+.star-svg { width: 1em; height: 1em; display: inline-block; vertical-align: -0.12em; flex: none; }
 .star-slider { display: inline-flex; gap: 0.15rem; cursor: pointer; touch-action: none; user-select: none; font-size: 1.9rem; line-height: 1; }
 .star-slider:focus-visible { outline: 2px solid var(--accent-dim); outline-offset: 3px; border-radius: 4px; }
-.star-cell { position: relative; display: inline-block; }
+.star-cell { position: relative; display: inline-block; width: 1em; height: 1em; }
 .star-base { color: var(--card); }
+.star-base .star-svg, .star-fill .star-svg { display: block; }
 .star-fill { position: absolute; left: 0; top: 0; width: 0; overflow: hidden; white-space: nowrap; color: var(--accent); }
 
 .field { margin-bottom: 1.3125rem; }
@@ -835,9 +837,15 @@ input[type="range"]::-webkit-slider-thumb {
 .fh-tip { position: absolute; top: -1.6rem; transform: translateX(-50%); background: var(--card); border: 1px solid var(--border-md); border-radius: var(--radius); padding: 0.15rem 0.5rem; font-size: 0.78rem; color: var(--text); white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity 0.12s; z-index: 5; }
 .fh-tip.show { opacity: 1; }
 .fh-slider { position: relative; height: 1.4rem; }
-.fh-range { position: absolute; left: 0; top: 0; width: 100%; margin: 0; background: none; pointer-events: none; -webkit-appearance: none; appearance: none; height: 1.4rem; }
-.fh-range::-webkit-slider-thumb { pointer-events: auto; }
-.fh-range::-moz-range-thumb { pointer-events: auto; }
+/* Shared track behind both thumbs so the rail is visible even though each input's
+   own background is transparent (they're stacked). */
+.fh-slider::before { content: ''; position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); height: 0.3rem; border-radius: 99px; background: var(--card); pointer-events: none; }
+.fh-range { position: absolute; left: 0; top: 0; width: 100%; margin: 0; background: none; pointer-events: none; -webkit-appearance: none; appearance: none; height: 1.4rem; z-index: 4; }
+.fh-range::-webkit-slider-thumb { -webkit-appearance: none; pointer-events: auto; width: 1.05rem; height: 1.05rem; border-radius: 50%; background: var(--accent); border: 2px solid var(--surface); cursor: grab; }
+.fh-range::-webkit-slider-thumb:active { cursor: grabbing; }
+.fh-range::-moz-range-thumb { pointer-events: auto; width: 1.05rem; height: 1.05rem; border-radius: 50%; background: var(--accent); border: 2px solid var(--surface); cursor: grab; }
+.fh-range::-webkit-slider-runnable-track { background: none; }
+.fh-range::-moz-range-track { background: none; }
 .fh-range-lbls { display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--muted); }
 
 /* ── Toast ────────────────────────────────────── */
@@ -1779,6 +1787,9 @@ let pendingSelectId = null;
 let searchTypeActive = new Set(['movie', 'tv', 'book', 'manga']);
 let modalActiveTypes = new Set(['movie', 'tv', 'book', 'manga']);
 let _modalSearchController = null;
+// Bumped on every search; stale fetches (slower types from an earlier query) compare
+// their token and bail instead of overwriting fresher results.
+let _modalSearchToken = 0;
 
 const tabLastSelected = { watchlist: null, watching: null, finished: null };
 
@@ -1800,6 +1811,11 @@ const TYPE_SVG = {
   book:  `<svg class="icon-svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`,
   manga: `<svg class="icon-svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>`,
 };
+
+// Filled star, sized in `em` so it tracks the surrounding font-size. Used everywhere
+// a star is shown (histogram labels, range labels, poster rating, average, the
+// detail-panel rating slider) — no emoji glyphs, which render inconsistently.
+const STAR_SVG = `<svg class="star-svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26"/></svg>`;
 
 // ─────────────────────────────────────────────
 // Boot
@@ -1834,7 +1850,9 @@ function fmtDate(dateStr) {
   const month = months[parseInt(parts[1],10)-1];
   const day   = parseInt(parts[2],10);
   const yr    = parts[0].slice(2);
-  return `Added ${month} ${day}, '${yr}`;
+  // Bare date only — the tab-specific verb (Added/Updated/Finished) is prefixed by
+  // the caller in renderGrid.
+  return `${month} ${day}, '${yr}`;
 }
 
 function toggleSizeDropdown(e) {
@@ -2159,16 +2177,64 @@ let finishedRange = (function () {
 function _starLbl(v) {
   v = Number(v) || 0;
   if (v <= 0) return 'Unrated';
-  return (Math.round(v * 10) % 10 === 0 ? String(Math.round(v)) : v.toFixed(1)) + '⭐';
+  return (Math.round(v * 10) % 10 === 0 ? String(Math.round(v)) : v.toFixed(1)) + STAR_SVG;
 }
 
+// Live drag handler. Updates the range, labels, bar highlights and re-filters the
+// grid IN PLACE — it never rebuilds the slider DOM, so the drag stays smooth and the
+// thumb the user is holding is never destroyed mid-gesture.
 function onFinRange(which, val) {
   let [lo, hi] = finishedRange;
   val = Math.max(0, Math.min(10, Math.round(Number(val) * 10) / 10));
-  if (which === 'lo') lo = Math.min(val, hi);
-  else                hi = Math.max(val, lo);
+  if (which === 'lo') { lo = Math.min(val, hi); const el = document.getElementById('finLo'); if (el && +el.value !== lo) el.value = lo; }
+  else                { hi = Math.max(val, lo); const el = document.getElementById('finHi'); if (el && +el.value !== hi) el.value = hi; }
   finishedRange = [lo, hi];
   localStorage.setItem('finishedRatingRange', JSON.stringify(finishedRange));
+  _updateFinRangeUI();
+  _liveFilterGrid();
+}
+
+// Sync labels, bar highlights and thumb stacking to finishedRange. The low thumb is
+// raised above the high thumb once it enters the upper half (or they meet) so it
+// never gets trapped under the high thumb and stays grabbable.
+function _updateFinRangeUI() {
+  const [lo, hi] = finishedRange;
+  const loEl = document.getElementById('finLo');
+  const hiEl = document.getElementById('finHi');
+  if (loEl && hiEl) {
+    const loOnTop = lo >= hi || lo > 5;
+    loEl.style.zIndex = loOnTop ? 6 : 4;
+    hiEl.style.zIndex = loOnTop ? 4 : 6;
+  }
+  const loLbl = document.getElementById('finLoLbl');
+  const hiLbl = document.getElementById('finHiLbl');
+  if (loLbl) loLbl.innerHTML = _starLbl(lo);
+  if (hiLbl) hiLbl.innerHTML = _starLbl(hi);
+  document.querySelectorAll('.fh-bar-wrap').forEach(w => {
+    const k = +w.dataset.k;
+    const bar = w.querySelector('.fh-bar');
+    if (bar) bar.classList.toggle('on', (lo <= k) && (hi > k - 1));
+  });
+}
+
+// Re-filter and rebuild ONLY the poster grid (not the stats panel/slider). Pills are
+// already cached so renderPills is synchronous here; lazy hydration + selection are
+// restored by the full renderGrid() on slider release (onFinRangeCommit).
+function _liveFilterGrid() {
+  const grid = document.getElementById('posterGrid');
+  if (!grid) return;
+  const items = sortedItems();
+  const cnt = document.querySelector('.grid-count');
+  if (cnt) cnt.textContent = `${items.length} title${items.length !== 1 ? 's' : ''}`;
+  if (!items.length) {
+    grid.innerHTML = `<div class="grid-empty"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" style="opacity:0.2"><rect x="2" y="2" width="20" height="20" rx="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg>Nothing here yet — add something!</div>`;
+    return;
+  }
+  grid.innerHTML = _gridCardsHtml(items, tabSize[currentTab], tabCardCols[currentTab]);
+}
+
+// On release (change event), do one full render to restore pill hydration + selection.
+function onFinRangeCommit() {
   renderGrid();
 }
 
@@ -2195,7 +2261,6 @@ function renderGrid() {
     const rated    = finished.filter(i => i.rating > 0);
     const avg      = rated.length
       ? (rated.reduce((s, i) => s + i.rating, 0) / rated.length).toFixed(1) : '—';
-    const tens     = finished.filter(i => i.rating === 10).length;
     const buckets  = Array(10).fill(0);
     rated.forEach(i => { const k = Math.min(10, Math.max(1, Math.ceil(i.rating))); buckets[k - 1]++; });
     const maxB = Math.max(1, ...buckets);
@@ -2207,22 +2272,22 @@ function renderGrid() {
       return `<div class="fh-bar-wrap" data-k="${k}" data-count="${c}"
                 onmouseenter="showHistTip(this)" onmouseleave="hideHistTip()">
                 <div class="fh-bar${on ? ' on' : ''}" style="height:${h}%"></div>
-                <div class="fh-lbl">${k}⭐</div>
+                <div class="fh-lbl">${k}${STAR_SVG}</div>
               </div>`;
     }).join('');
     statsHtml = `<div class="fin-stats">
       <div class="fin-left">
-        <div class="fin-avg">★ ${avg}</div>
-        <div class="fin-tens">${tens} × 10/10</div>
+        <div class="fin-avg">${STAR_SVG} ${avg}</div>
+        <div class="fin-tens">average rating</div>
       </div>
       <div class="fin-right">
         <div class="fh-tip" id="histTip"></div>
         <div class="fh-bars">${bars}</div>
         <div class="fh-slider">
-          <input type="range" class="fh-range" id="finLo" min="0" max="10" step="0.1" value="${lo}" oninput="onFinRange('lo', this.value)">
-          <input type="range" class="fh-range" id="finHi" min="0" max="10" step="0.1" value="${hi}" oninput="onFinRange('hi', this.value)">
+          <input type="range" class="fh-range" id="finLo" min="0" max="10" step="0.1" value="${lo}" oninput="onFinRange('lo', this.value)" onchange="onFinRangeCommit()">
+          <input type="range" class="fh-range" id="finHi" min="0" max="10" step="0.1" value="${hi}" oninput="onFinRange('hi', this.value)" onchange="onFinRangeCommit()">
         </div>
-        <div class="fh-range-lbls"><span>${_starLbl(lo)}</span><span>${_starLbl(hi)}</span></div>
+        <div class="fh-range-lbls"><span id="finLoLbl">${_starLbl(lo)}</span><span id="finHiLbl">${_starLbl(hi)}</span></div>
       </div>
     </div>`;
   }
@@ -2264,10 +2329,35 @@ function renderGrid() {
   }
 
   const size     = tabSize[currentTab];
+  const cards = _gridCardsHtml(items, size, cols);
+
+  panel.innerHTML = statsHtml + topBar + `<div class="poster-grid" id="posterGrid" style="${gridStyle}">${cards}</div>`;
+  if (currentTab === 'finished') _updateFinRangeUI();
+
+  if (size !== 'poster') {
+    items.forEach(item => hydratePills(`pills-${item.id}`, item, tabGridPills[currentTab]));
+  }
+
+  if (pendingSelectId !== null) {
+    const id = pendingSelectId;
+    pendingSelectId = null;
+    const exists = items.some(i => i.id === id);
+    if (exists) selectItem(id);
+    else autoSelectFirst();
+  } else if (selectedId !== null && items.some(i => i.id === selectedId)) {
+    highlightCard(selectedId);
+  } else {
+    autoSelectFirst();
+  }
+}
+
+// Build just the poster-grid cards. Extracted so the finished-tab rating slider can
+// re-filter the grid live (drag) without rebuilding the slider DOM around it.
+function _gridCardsHtml(items, size, cols) {
   const cardFontStyle = `font-size:${CARD_FONT_REM[CARD_COL_STEPS.indexOf(cols)]}rem`;
-  const cards = items.map(item => {
+  return items.map(item => {
     const rRaw = item.rating || 0;
-    const ratingTxt = rRaw > 0 ? fmtRating(rRaw) + '⭐' : 'Unrated';
+    const ratingTxt = rRaw > 0 ? fmtRating(rRaw) + STAR_SVG : 'Unrated';
     const stars = currentTab === 'finished'
       ? `<div class="poster-rating">${ratingTxt}</div>` : '';
     const author = `<div class="poster-author" id="pa-${item.id}"${item.author ? '' : ' style="display:none"'}>${esc(item.author||'')}</div>`;
@@ -2306,24 +2396,6 @@ function renderGrid() {
       </div>
     </div>`;
   }).join('');
-
-  panel.innerHTML = statsHtml + topBar + `<div class="poster-grid" id="posterGrid" style="${gridStyle}">${cards}</div>`;
-
-  if (size !== 'poster') {
-    items.forEach(item => hydratePills(`pills-${item.id}`, item, tabGridPills[currentTab]));
-  }
-
-  if (pendingSelectId !== null) {
-    const id = pendingSelectId;
-    pendingSelectId = null;
-    const exists = items.some(i => i.id === id);
-    if (exists) selectItem(id);
-    else autoSelectFirst();
-  } else if (selectedId !== null && items.some(i => i.id === selectedId)) {
-    highlightCard(selectedId);
-  } else {
-    autoSelectFirst();
-  }
 }
 
 async function toggleDescription(itemId) {
@@ -2631,7 +2703,7 @@ function renderDetail(item) {
            onpointerdown="starPointerDown(event,${item.id})"
            onkeydown="starKey(event,${item.id})">
         ${[1,2,3,4,5,6,7,8,9,10].map(() =>
-          `<span class="star-cell"><span class="star-base">★</span><span class="star-fill">★</span></span>`).join('')}
+          `<span class="star-cell"><span class="star-base">${STAR_SVG}</span><span class="star-fill">${STAR_SVG}</span></span>`).join('')}
       </div>
     </div>` : '';
 
@@ -3228,19 +3300,23 @@ function onBackdropClick(e) {
   if (e.target === document.getElementById('searchModalBackdrop')) closeModal();
 }
 
-async function runModalSearch(q) {
+// Streaming search: each media type is fetched independently and rendered the moment
+// it lands, so fast types (movie/tv) appear immediately instead of waiting on the
+// slowest (book/manga). Fully non-blocking — the user can add/remove or close the
+// modal while later types are still loading. Stale results are guarded by token.
+function runModalSearch(q) {
     if (!q) return;
 
     // Abort any in-flight search so stale results can never overwrite fresh ones.
     if (_modalSearchController) _modalSearchController.abort();
     _modalSearchController = new AbortController();
     const { signal } = _modalSearchController;
+    const token = ++_modalSearchToken;
 
     lastModalQuery = q;
     const smTitle = document.getElementById('smTitle');
     const smBody  = document.getElementById('smBody');
     smTitle.innerHTML = `Results for <em>${esc(q)}</em>`;
-    smBody.innerHTML  = renderSkeletons();
 
     const typesToSearch = [...modalActiveTypes];
     if (typesToSearch.length === 0) {
@@ -3248,30 +3324,40 @@ async function runModalSearch(q) {
         return;
     }
 
-    const _th = { signal };
-    const fetches = [
-      typesToSearch.includes('movie') ? fetch(`/api/search?q=${encodeURIComponent(q)}&type=movie`, _th).then(r=>r.json()).catch(e=>e.name==='AbortError'?null:[]) : Promise.resolve([]),
-      typesToSearch.includes('tv')    ? fetch(`/api/search?q=${encodeURIComponent(q)}&type=tv`, _th).then(r=>r.json()).catch(e=>e.name==='AbortError'?null:[])    : Promise.resolve([]),
-      typesToSearch.includes('book')  ? fetch(`/api/search/books?q=${encodeURIComponent(q)}`, { signal }).then(r=>r.json()).catch(e=>e.name==='AbortError'?null:[]) : Promise.resolve([]),
-      typesToSearch.includes('manga') ? fetch(`/api/search/manga?q=${encodeURIComponent(q)}`, { signal }).then(r=>r.json()).catch(e=>e.name==='AbortError'?null:[]) : Promise.resolve([]),
-    ];
-
-    const [movieData, tvData, bookData, mangaData] = await Promise.all(fetches);
-
-    // null means this search was aborted — a newer search is already running.
-    if (movieData === null || tvData === null || bookData === null || mangaData === null) return;
-
-    const allResults = [...movieData, ...tvData, ...bookData, ...mangaData];
-    allResults.forEach(r => {
-        r.popularity = Number(r.popularity) || 0;
-        const key = `${r.media_type}_${r.external_id || r.tmdb_id}`;
-        tmdbResultMap[key] = r;
-    });
-    allResults.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
-
-    const lower     = q.toLowerCase();
+    // Library matches are local — show them instantly, before any network call.
+    const lower      = q.toLowerCase();
     const libMatches = allItems.filter(i => i.title.toLowerCase().includes(lower));
-    renderModalResults(libMatches, allResults, q);
+    const acc = [];
+    smBody.innerHTML = renderSkeletons();
+    if (libMatches.length) renderModalResults(libMatches, acc, q);
+
+    let pending = 0;
+    const merge = (data) => {
+        if (token !== _modalSearchToken) return;          // a newer search is running
+        if (Array.isArray(data) && data.length) {
+            data.forEach(r => {
+                r.popularity = Number(r.popularity) || 0;
+                tmdbResultMap[`${r.media_type}_${r.external_id || r.tmdb_id}`] = r;
+                acc.push(r);
+            });
+            acc.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+            renderModalResults(libMatches, acc, q);
+        }
+    };
+    const settle = () => {
+        if (token !== _modalSearchToken) return;
+        if (--pending === 0 && acc.length === 0 && libMatches.length === 0)
+            smBody.innerHTML = `<div class="sm-status">No results found for "<em>${esc(q)}</em>".</div>`;
+    };
+    const stream = (url) => {
+        pending++;
+        fetch(url, { signal }).then(r => r.json()).then(merge).catch(() => {}).finally(settle);
+    };
+
+    if (typesToSearch.includes('movie')) stream(`/api/search?q=${encodeURIComponent(q)}&type=movie`);
+    if (typesToSearch.includes('tv'))    stream(`/api/search?q=${encodeURIComponent(q)}&type=tv`);
+    if (typesToSearch.includes('book'))  stream(`/api/search/books?q=${encodeURIComponent(q)}`);
+    if (typesToSearch.includes('manga')) stream(`/api/search/manga?q=${encodeURIComponent(q)}`);
 }
 
 function renderSkeletons() {
@@ -3330,6 +3416,7 @@ function _progressLabel(item) {
 }
 
 const _smAuthorCache = {};   // "media_type:tmdb_id" -> author string
+const _smAuthorPending = new Set();  // in-flight director fetches (streaming re-renders call this repeatedly)
 
 // Movie/TV search cards arrive without a director (search is now fast); fetch it
 // lazily and fill the card when it lands. Deduped per session.
@@ -3353,9 +3440,12 @@ function hydrateSmAuthor(r) {
     }
   };
   if (ck in _smAuthorCache) { fill(_smAuthorCache[ck]); return; }
+  if (_smAuthorPending.has(ck)) return;
+  _smAuthorPending.add(ck);
   fetch(`/api/tmdb-director/${r.media_type}/${encodeURIComponent(tid)}`)
     .then(res => res.json()).then(d => { _smAuthorCache[ck] = d.author || ''; fill(d.author); })
-    .catch(() => {});
+    .catch(() => {})
+    .finally(() => _smAuthorPending.delete(ck));
 }
 
 function renderSmCard(r) {
