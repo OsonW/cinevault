@@ -862,8 +862,8 @@ input[type="range"]::-webkit-slider-thumb {
 .fh-slider .fh-range::-webkit-slider-runnable-track { background: transparent; border: none; height: 0.28rem; }
 .fh-slider .fh-range::-moz-range-track { background: transparent; border: none; height: 0.28rem; }
 /* margin-top centers the thumb on the 0.28rem track: -(thumb-track)/2 = -(0.8-0.28)/2 */
-.fh-slider .fh-range::-webkit-slider-thumb { -webkit-appearance: none; pointer-events: auto; width: 0.95rem; height: 0.95rem; margin-top: -0.335rem; border-radius: 50%; background: var(--accent); border: 2px solid var(--surface); cursor: grab; }
-.fh-slider .fh-range::-moz-range-thumb { pointer-events: auto; width: 0.95rem; height: 0.95rem; border-radius: 50%; background: var(--accent); border: 2px solid var(--surface); cursor: grab; }
+.fh-slider .fh-range::-webkit-slider-thumb { -webkit-appearance: none; pointer-events: auto; width: 1.2rem; height: 1.2rem; margin-top: -0.46rem; border-radius: 50%; background: var(--accent); border: 2px solid var(--surface); cursor: grab; }
+.fh-slider .fh-range::-moz-range-thumb { pointer-events: auto; width: 1.2rem; height: 1.2rem; border-radius: 50%; background: var(--accent); border: 2px solid var(--surface); cursor: grab; }
 .fh-slider .fh-range:active::-webkit-slider-thumb { cursor: grabbing; }
 .fh-range-lbls { display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--muted); }
 
@@ -2299,7 +2299,7 @@ function renderGrid() {
     }).join('');
     statsHtml = `<div class="fin-stats">
       <div class="fin-left">
-        <div class="fin-avg">${STAR_SVG} ${avg}</div>
+        <div class="fin-avg">${avg} ${STAR_SVG}</div>
         <div class="fin-tens">average rating</div>
       </div>
       <div class="fin-right">
