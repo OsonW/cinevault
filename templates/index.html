@@ -584,15 +584,14 @@ input[type="range"]::-webkit-slider-thumb {
 .field-notes { position: relative; }
 .field-notes textarea { resize: none; min-height: 6rem; transition: min-height 0.18s ease; }
 .field-notes textarea.expanded { min-height: 15rem; }
-/* Shrink-wrapped to the icon (line-height:0) so its gap from the textarea's right and
-   bottom edges is exactly the offset below — equal on both sides. */
+/* Bare icon (no box), nudged closer to the right edge and up off the bottom. */
 .notes-expand-btn {
-  position: absolute; right: 0.5rem; bottom: 0.5rem;
-  display: inline-flex; padding: 0.25rem; line-height: 0;
-  border: none; background: none; cursor: pointer; border-radius: 6px;
-  color: var(--muted); transition: color 0.15s, background 0.15s;
+  position: absolute; right: 0.6rem; bottom: 0.85rem;
+  display: inline-flex; padding: 0; line-height: 0;
+  border: none; background: none; cursor: pointer;
+  color: var(--muted); transition: color 0.15s;
 }
-.notes-expand-btn:hover { color: var(--accent); background: rgba(255,255,255,0.06); }
+.notes-expand-btn:hover { color: #fff; }
 .episode-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
 
 .divider { height: 1px; background: var(--border); margin: 1rem 0; }
@@ -855,10 +854,11 @@ input[type="range"]::-webkit-slider-thumb {
    sub-range is purple). Kept as a custom property so the hover rule still wins. No
    transition: tweening between gradients is what caused the flicker on fast drags. */
 .fh-bar { width: 100%; min-height: 0; --bar-on: var(--accent); background: var(--fill, var(--card)); border-radius: 3px 3px 0 0; }
-/* Label = grey base text with a purple copy overlaid on top, clipped to a width that
-   tracks the dot's position in this bucket (see _lblFillPct). */
+/* Label = grey base text with an exact purple copy overlaid on top; a clip-path
+   (set in _updateFinRangeUI → _labelClip) reveals only the portion inside [lo,hi].
+   Hidden by default until measured. */
 .fh-lbl { position: relative; display: inline-block; font-size: 0.7rem; margin-top: 0.2rem; white-space: nowrap; color: var(--muted); }
-.fh-lbl-fill { position: absolute; left: 0; top: 0; width: 0; overflow: hidden; white-space: nowrap; color: var(--accent); pointer-events: none; }
+.fh-lbl-fill { position: absolute; left: 0; top: 0; white-space: nowrap; color: var(--accent); pointer-events: none; clip-path: inset(0 100% 0 0); }
 /* Hover deepens only the filled portion: --fill references --bar-on, so grey areas
    (and fully-grey bars, whose --fill is a plain colour) are untouched. */
 .fh-bar-wrap:hover .fh-bar { --bar-on: var(--accent-hover); }
@@ -870,7 +870,10 @@ input[type="range"]::-webkit-slider-thumb {
 .fh-slider::before { content: ''; position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); height: 0.28rem; border-radius: 99px; background: var(--card); pointer-events: none; }
 /* Rules scoped under .fh-slider so they out-specify the global input[type=range]
    thumb/track styling (which otherwise forces a big, mis-positioned thumb). */
-.fh-slider .fh-range { position: absolute; left: 0; top: 0; width: 100%; height: 100%; margin: 0; background: transparent; pointer-events: none; -webkit-appearance: none; appearance: none; z-index: 4; }
+/* Widened by one thumb-width and shifted left by its radius so the THUMB CENTRE (not
+   its inner edge) travels the full bar width — i.e. a dot's centre lines up with the
+   bar-graph edges (and with the fill line) at the extremes, not inset by the radius. */
+.fh-slider .fh-range { position: absolute; left: -0.6rem; top: 0; width: calc(100% + 1.2rem); height: 100%; margin: 0; background: transparent; pointer-events: none; -webkit-appearance: none; appearance: none; z-index: 4; }
 .fh-slider .fh-range::-webkit-slider-runnable-track { background: transparent; border: none; height: 0.28rem; }
 .fh-slider .fh-range::-moz-range-track { background: transparent; border: none; height: 0.28rem; }
 /* margin-top centers the thumb on the 0.28rem track: -(thumb-track)/2 = -(0.8-0.28)/2 */
@@ -2233,7 +2236,7 @@ function onFinRange(which, val) {
 // Progressive fill for histogram bar k (covers ratings k-1..k): the part overlapping
 // the [lo,hi] selection is the "on" colour, the rest "off" — so a thumb that lands
 // mid-bar splits it instead of flipping the whole bar. Returned as the bar's --fill
-// custom property value (card→--bar-on). Labels use a different model (_lblFillPct).
+// custom property value (card→--bar-on). Labels use a different model (_labelClip).
 function _fillGradient(k, lo, hi, off, on) {
   const s = Math.max(0, Math.min(1, Math.max(lo, k - 1) - (k - 1)));   // selected-start fraction
   const e = Math.max(0, Math.min(1, Math.min(hi, k) - (k - 1)));       // selected-end fraction
@@ -2246,15 +2249,20 @@ function _fillGradient(k, lo, hi, off, on) {
 // (grey stays grey; a half-filled bar deepens just its purple half).
 function _barFillStyle(k, lo, hi) { return _fillGradient(k, lo, hi, 'var(--card)', 'var(--bar-on)'); }
 
-// Labels track the DOT, not the selection. A grey label is overlaid by a purple copy
-// clipped to this width: the fraction of THIS bucket a slider dot has reached. Only the
-// bucket a dot is currently in fills (others get 0%), so a dot halfway through a label
-// fills it halfway and it resets to grey the moment the dot crosses into the next one.
-function _lblFillPct(k, lo, hi) {
-  let f = 0;
-  if (lo > k - 1 && lo < k) f = Math.max(f, lo - (k - 1));
-  if (hi > k - 1 && hi < k) f = Math.max(f, hi - (k - 1));
-  return (Math.max(0, Math.min(1, f)) * 100).toFixed(2) + '%';
+// Label fill = treat the selection boundary as a vertical line at the dot's centre.
+// A label (centred under its bar, with a real pixel width) is purple where it lies
+// inside [lo,hi] and grey outside — so a boundary line BEHIND the label fills it fully,
+// PAST it leaves it grey, and THROUGH it fills only the inside portion (half when the
+// line is at the label's centre). Needs measured widths, so it runs post-layout and
+// returns a clip-path for the overlaid purple copy. barPx = one rating unit in px.
+function _labelClip(k, lo, hi, lblPx, barPx) {
+  if (!lblPx || !barPx) return 'inset(0 100% 0 0)';
+  const halfW = (lblPx / barPx) / 2;                 // half the label width, in rating units
+  const left  = (k - 0.5) - halfW, right = (k - 0.5) + halfW, width = right - left;
+  const a = Math.max(lo, left), b = Math.min(hi, right);
+  if (b <= a) return 'inset(0 100% 0 0)';            // wholly outside the selection → grey
+  const sFrac = (a - left) / width, eFrac = (b - left) / width;
+  return `inset(0 ${((1 - eFrac) * 100).toFixed(2)}% 0 ${(sFrac * 100).toFixed(2)}%)`;
 }
 
 // Sync labels, bar highlights and thumb stacking to finishedRange. The low thumb is
@@ -2273,12 +2281,17 @@ function _updateFinRangeUI() {
   const hiLbl = document.getElementById('finHiLbl');
   if (loLbl) loLbl.innerHTML = _starLbl(lo);
   if (hiLbl) hiLbl.innerHTML = _starLbl(hi);
-  document.querySelectorAll('.fh-bar-wrap').forEach(w => {
-    const k = +w.dataset.k;
-    const bar = w.querySelector('.fh-bar');
-    if (bar) bar.style.setProperty('--fill', _barFillStyle(k, lo, hi));
-    const fill = w.querySelector('.fh-lbl-fill');
-    if (fill) fill.style.width = _lblFillPct(k, lo, hi);
+  const wraps = [...document.querySelectorAll('.fh-bar-wrap')];
+  // Read all widths first, then write — avoids layout thrash from interleaving.
+  const geo = wraps.map(w => {
+    const lbl = w.querySelector('.fh-lbl');
+    return { w, k: +w.dataset.k, barPx: w.offsetWidth, lblPx: lbl ? lbl.offsetWidth : 0 };
+  });
+  geo.forEach(g => {
+    const bar = g.w.querySelector('.fh-bar');
+    if (bar) bar.style.setProperty('--fill', _barFillStyle(g.k, lo, hi));
+    const fill = g.w.querySelector('.fh-lbl-fill');
+    if (fill) fill.style.clipPath = _labelClip(g.k, lo, hi, g.lblPx, g.barPx);
   });
 }
 
@@ -2352,7 +2365,7 @@ function renderGrid() {
       return `<div class="fh-bar-wrap" data-k="${k}" data-count="${c}"
                 onmouseenter="showHistTip(this)" onmouseleave="hideHistTip()">
                 <div class="fh-bar" style="height:${h}%;--fill:${_barFillStyle(k, lo, hi)}"></div>
-                <div class="fh-lbl">${k}★<span class="fh-lbl-fill" style="width:${_lblFillPct(k, lo, hi)}">${k}★</span></div>
+                <div class="fh-lbl">${k}★<span class="fh-lbl-fill">${k}★</span></div>
               </div>`;
     }).join('');
     statsHtml = `<div class="fin-stats">
