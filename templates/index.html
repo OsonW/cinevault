@@ -3303,10 +3303,11 @@ function onBackdropClick(e) {
   if (e.target === document.getElementById('searchModalBackdrop')) closeModal();
 }
 
-// Streaming search: each media type is fetched independently and rendered the moment
-// it lands, so fast types (movie/tv) appear immediately instead of waiting on the
-// slowest (book/manga). Fully non-blocking — the user can add/remove or close the
-// modal while later types are still loading. Stale results are guarded by token.
+// Streaming search: each media type is fetched independently and the modal is
+// repainted from a SINGLE code path (`paint`) every time the set of loaded results
+// or the pending count changes. Fast types (movie/tv) show immediately; while any
+// fetch is still in flight a trailing skeleton card signals "more loading". Fully
+// non-blocking — add/remove/close all work mid-load. Stale results guarded by token.
 function runModalSearch(q) {
     if (!q) return;
 
@@ -3317,58 +3318,58 @@ function runModalSearch(q) {
     const token = ++_modalSearchToken;
 
     lastModalQuery = q;
-    const smTitle = document.getElementById('smTitle');
-    const smBody  = document.getElementById('smBody');
-    smTitle.innerHTML = `Results for <em>${esc(q)}</em>`;
+    document.getElementById('smTitle').innerHTML = `Results for <em>${esc(q)}</em>`;
 
     const typesToSearch = [...modalActiveTypes];
     if (typesToSearch.length === 0) {
-        smBody.innerHTML = '<div class="sm-status">Select at least one media type.</div>';
+        document.getElementById('smBody').innerHTML = '<div class="sm-status">Select at least one media type.</div>';
         return;
     }
 
-    // Library matches are local — show them instantly, before any network call.
+    // Library matches are local and known up front.
     const lower      = q.toLowerCase();
     const libMatches = allItems.filter(i => i.title.toLowerCase().includes(lower));
     const acc = [];
-    smBody.innerHTML = renderSkeletons();
-    if (libMatches.length) renderModalResults(libMatches, acc, q);
-
     let pending = 0;
-    const merge = (data) => {
-        if (token !== _modalSearchToken) return;          // a newer search is running
-        if (Array.isArray(data) && data.length) {
-            data.forEach(r => {
-                r.popularity = Number(r.popularity) || 0;
-                tmdbResultMap[`${r.media_type}_${r.external_id || r.tmdb_id}`] = r;
-                acc.push(r);
-            });
-            acc.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
-            renderModalResults(libMatches, acc, q);
-        }
-    };
-    const settle = () => {
-        if (token !== _modalSearchToken) return;
-        if (--pending === 0 && acc.length === 0 && libMatches.length === 0)
-            smBody.innerHTML = `<div class="sm-status">No results found for "<em>${esc(q)}</em>".</div>`;
-    };
-    const stream = (url) => {
-        pending++;
-        fetch(url, { signal }).then(r => r.json()).then(merge).catch(() => {}).finally(settle);
+
+    // The one and only render path. Reflects the current results + whether anything
+    // is still loading — so timing (cached vs slow) no longer changes the UX.
+    const paint = () => {
+        if (token === _modalSearchToken) renderModalResults(libMatches, acc, q, pending > 0);
     };
 
-    if (typesToSearch.includes('movie')) stream(`/api/search?q=${encodeURIComponent(q)}&type=movie`);
-    if (typesToSearch.includes('tv'))    stream(`/api/search?q=${encodeURIComponent(q)}&type=tv`);
-    if (typesToSearch.includes('book'))  stream(`/api/search/books?q=${encodeURIComponent(q)}`);
-    if (typesToSearch.includes('manga')) stream(`/api/search/manga?q=${encodeURIComponent(q)}`);
+    const urls = [];
+    if (typesToSearch.includes('movie')) urls.push(`/api/search?q=${encodeURIComponent(q)}&type=movie`);
+    if (typesToSearch.includes('tv'))    urls.push(`/api/search?q=${encodeURIComponent(q)}&type=tv`);
+    if (typesToSearch.includes('book'))  urls.push(`/api/search/books?q=${encodeURIComponent(q)}`);
+    if (typesToSearch.includes('manga')) urls.push(`/api/search/manga?q=${encodeURIComponent(q)}`);
+
+    pending = urls.length;
+    paint();   // initial skeleton state (and any library matches)
+
+    urls.forEach(url => {
+        fetch(url, { signal })
+            .then(r => r.json())
+            .then(data => {
+                if (token !== _modalSearchToken || !Array.isArray(data) || !data.length) return;
+                data.forEach(r => {
+                    r.popularity = Number(r.popularity) || 0;
+                    tmdbResultMap[`${r.media_type}_${r.external_id || r.tmdb_id}`] = r;
+                    acc.push(r);
+                });
+                acc.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+            })
+            .catch(() => {})
+            .finally(() => { if (token === _modalSearchToken) { pending--; paint(); } });
+    });
 }
 
-function renderSkeletons() {
-  return `<div class="sm-grid">${Array(10).fill(0).map(() =>
+function renderSkeletons(n) {
+  return `<div class="sm-grid">${Array(n || 10).fill(0).map(() =>
     `<div><div class="sm-skeleton"></div></div>`).join('')}</div>`;
 }
 
-function renderModalResults(libMatches, tmdbResults, q) {
+function renderModalResults(libMatches, tmdbResults, q, loading) {
   _lastModalArgs = { libMatches, tmdbResults, q };
   let html = '';
   if (libMatches.length) {
@@ -3392,7 +3393,12 @@ function renderModalResults(libMatches, tmdbResults, q) {
     html += `<div class="sm-section-label" style="margin-top:${libMatches.length?'0.5rem':'0'}">Add from search</div>
       <div class="sm-grid">`;
     html += tmdbResults.map(r => renderSmCard(r)).join('');
+    // One trailing skeleton while more types are still loading.
+    if (loading) html += `<div><div class="sm-skeleton"></div></div>`;
     html += `</div>`;
+  } else if (loading) {
+    // Nothing has arrived yet but fetches are in flight — show the loading grid.
+    html += renderSkeletons(libMatches.length ? 4 : 10);
   } else if (!libMatches.length) {
     html = `<div class="sm-status">No results found for "<em>${esc(q)}</em>".</div>`;
   }
