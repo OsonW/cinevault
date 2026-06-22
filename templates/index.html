@@ -2250,10 +2250,14 @@ function _fillGradient(k, lo, hi, off, on) {
   return `linear-gradient(to right, ${off} 0%, ${off} ${sp}%, ${on} ${sp}%, ${on} ${ep}%, ${off} ${ep}%, ${off} 100%)`;
 }
 // Bars use --bar-on for the "on" colour so :hover can deepen ONLY the filled portion
-// (grey stays grey; a half-filled bar deepens just its purple half). At the slider
-// floor, drop lo to 0 so bar 1 fills from its very bottom — no 0–0.1 dead-zone sliver.
+// (grey stays grey; a half-filled bar deepens just its purple half). The lower thumb is
+// rendered one step (FIN_LO_MIN) left of its value (the -1% CSS offset on #finLo), so the
+// floored 0.1 sits at the bar-graph's left edge. The fill boundary follows the thumb's
+// CENTRE — hence lo - FIN_LO_MIN — which keeps the line dot-aligned (one step of fill per
+// step of dot) and gives the inclusive lower bound a visible sliver: lo at 1★ fills the
+// right edge of bar 1, and lo == hi fills a one-step sliver at that exact rating.
 function _barFillStyle(k, lo, hi) {
-  return _fillGradient(k, lo <= FIN_LO_MIN ? 0 : lo, hi, 'var(--card)', 'var(--bar-on)');
+  return _fillGradient(k, lo - FIN_LO_MIN, hi, 'var(--card)', 'var(--bar-on)');
 }
 
 // Label fill = treat the selection boundary as a vertical line at the dot's centre.
@@ -2266,7 +2270,8 @@ function _labelClip(k, lo, hi, lblPx, barPx) {
   if (!lblPx || !barPx) return 'inset(0 100% 0 0)';
   const halfW = (lblPx / barPx) / 2;                 // half the label width, in rating units
   const left  = (k - 0.5) - halfW, right = (k - 0.5) + halfW, width = right - left;
-  const a = Math.max(lo, left), b = Math.min(hi, right);
+  // Lower boundary follows the thumb's CENTRE (lo - FIN_LO_MIN), matching the bar fill.
+  const a = Math.max(lo - FIN_LO_MIN, left), b = Math.min(hi, right);
   if (b <= a) return 'inset(0 100% 0 0)';            // wholly outside the selection → grey
   const sFrac = (a - left) / width, eFrac = (b - left) / width;
   return `inset(0 ${((1 - eFrac) * 100).toFixed(2)}% 0 ${(sFrac * 100).toFixed(2)}%)`;
@@ -2328,16 +2333,20 @@ function showHistTip(el) {
   if (!tip) return;
   const k = +el.dataset.k;
   const [lo, hi] = finishedRange;
-  // Selected sub-range of this bucket (ratings k-1 .. k]. Fully outside the slider
-  // selection -> the bar is all grey, so show nothing.
-  const sLo = Math.max(lo, k - 1), sHi = Math.min(hi, k);
+  // Selected sub-range of this bucket (ratings k-1 .. k]. Use the lower thumb's visual
+  // boundary (lo - FIN_LO_MIN) so the inclusive lower bound's sliver — lo at an integer,
+  // or lo == hi — stays hoverable. Fully outside the selection -> all grey, show nothing.
+  const sLo = Math.max(lo - FIN_LO_MIN, k - 1), sHi = Math.min(hi, k);
   if (sHi <= sLo) { hideHistTip(); return; }
   // Count only titles within the visible sub-range (matches what the grid shows).
   const count  = _finRated.filter(r => r > k - 1 && r <= k && r >= lo && r <= hi).length;
   // Clip the displayed bounds to a thumb that's sitting inside this bucket.
   const loDisp = lo <= k - 1 ? (k - 1 + 0.1) : lo;
   const hiDisp = hi >= k ? k : hi;
-  tip.textContent = `${count} title${count !== 1 ? 's' : ''} ${loDisp.toFixed(1)}–${hiDisp.toFixed(1)}`;
+  // Collapse an identical low/high into a single value: "3.5" not "3.5–3.5".
+  const loStr = loDisp.toFixed(1), hiStr = hiDisp.toFixed(1);
+  const rangeStr = loStr === hiStr ? loStr : `${loStr}–${hiStr}`;
+  tip.textContent = `${count} title${count !== 1 ? 's' : ''} ${rangeStr}`;
   tip.style.left = (el.offsetLeft + el.offsetWidth / 2) + 'px';
   tip.classList.add('show');
 }
