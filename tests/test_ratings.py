@@ -411,3 +411,62 @@ def test_ratings_cap_denied_never_fetched_returns_null_updated_at(client, monkey
     assert resp["ratings"] == {}
     assert resp["updated_at"] is None
     assert calls["n"] == 0
+
+
+def test_search_does_not_block_on_directors(client, monkeypatch):
+    _register(client)
+    _set_mdblist_key()  # also seeds a tmdb key
+
+    class FakeResp:
+        status_code = 200
+        def raise_for_status(self): pass
+        def json(self):
+            return {"results": [
+                {"id": 603, "title": "The Matrix", "release_date": "1999-03-30",
+                 "poster_path": "/x.jpg", "overview": "o", "popularity": 9, "vote_average": 8.2},
+            ]}
+
+    monkeypatch.setattr(app_module.requests, "get", lambda *a, **k: FakeResp())
+    called = {"n": 0}
+    def spy(*a, **k):
+        called["n"] += 1
+        return "Some Director"
+    monkeypatch.setattr(app_module, "_fetch_tmdb_director", spy)
+
+    data = client.get("/api/search?q=matrix&type=movie").get_json()
+    assert data[0]["title"] == "The Matrix"
+    assert called["n"] == 0                      # search must NOT fetch directors
+    assert not data[0].get("author")             # author absent/empty on search
+
+
+def test_tmdb_director_endpoint(client, monkeypatch):
+    _register(client)
+    _set_mdblist_key()
+    calls = {"n": 0}
+    def spy(media_type, tmdb_id, key):
+        calls["n"] += 1
+        return "Lana Wachowski"
+    monkeypatch.setattr(app_module, "_fetch_tmdb_director", spy)
+    first  = client.get("/api/tmdb-director/movie/603").get_json()
+    second = client.get("/api/tmdb-director/movie/603").get_json()
+    assert first == second == {"author": "Lana Wachowski"}
+    assert calls["n"] == 1                        # second served from cache
+
+
+def test_tmdb_director_no_tmdb_key(client):
+    _register(client)
+    resp = client.get("/api/tmdb-director/movie/603")
+    assert resp.status_code == 200
+    assert resp.get_json() == {"author": ""}
+
+
+def test_add_create_returns_id_and_date(client):
+    _register(client)
+    resp = client.post("/api/add", json={
+        "title": "Inception", "media_type": "movie",
+        "external_id": "27205", "tmdb_id": 27205, "status": "watchlist",
+    }).get_json()
+    assert isinstance(resp.get("id"), int)
+    assert resp.get("date_added")
+    item = client.get("/api/list").get_json()[0]
+    assert item["id"] == resp["id"]

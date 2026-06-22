@@ -162,6 +162,10 @@ def _fetch_mdblist_ratings(media_type: str, tmdb_id, key: str) -> dict:
 _tmdb_rating_cache: dict[str, tuple[float, object]] = {}
 _TMDB_RATING_TTL = 24 * 3600  # seconds
 
+# TMDB director/creator for search results. Keyed "media_type:tmdb_id".
+_tmdb_director_cache: dict[str, tuple[float, str]] = {}
+_TMDB_DIRECTOR_TTL = 24 * 3600  # seconds
+
 
 def _fetch_tmdb_rating(media_type: str, tmdb_id, api_key: str):
     """Return the TMDB vote_average (float) or None. Free; no MDBList quota."""
@@ -516,12 +520,6 @@ def search():
         items = []
 
     items = items[:10]
-
-    if items:
-        with ThreadPoolExecutor(max_workers=len(items)) as pool:
-            futs = {pool.submit(_fetch_tmdb_director, i["media_type"], i["tmdb_id"], tmdb_key): i for i in items}
-            for fut in as_completed(futs):
-                futs[fut]["author"] = fut.result()
 
     _cache_search(cache_key, items)
     return jsonify(items)
@@ -894,6 +892,26 @@ def api_tmdb_rating(media_type, tmdb_id):
     return jsonify({"tmdb": val})
 
 
+@app.route("/api/tmdb-director/<media_type>/<tmdb_id>")
+@login_required
+def api_tmdb_director(media_type, tmdb_id):
+    """Free TMDB director/creator name, fetched lazily so search stays fast."""
+    if media_type not in ("movie", "tv"):
+        return jsonify({"author": ""})
+    key = _get_tmdb_key()
+    if not key:
+        return jsonify({"author": ""})
+    ck = f"{media_type}:{tmdb_id}"
+    hit = _tmdb_director_cache.get(ck)
+    if hit and (time.time() - hit[0]) < _TMDB_DIRECTOR_TTL:
+        return jsonify({"author": hit[1]})
+    author = _fetch_tmdb_director(media_type, int(tmdb_id), key) or ""
+    if len(_tmdb_director_cache) > 2000:
+        _tmdb_director_cache.pop(next(iter(_tmdb_director_cache)))
+    _tmdb_director_cache[ck] = (time.time(), author)
+    return jsonify({"author": author})
+
+
 # ═══════════════════════════════════════════════════
 # TV / Manga constraint info
 # ═══════════════════════════════════════════════════
@@ -1028,7 +1046,7 @@ def add_media():
             # TMDB vote_average is always 0–10; reject inf/nan/out-of-range.
             if tmdb_rating is not None and not (0.0 <= tmdb_rating <= 10.0):
                 tmdb_rating = None
-        add_media_entry(
+        new_id = add_media_entry(
             title       = title,
             media_type  = media_type,
             status      = status,
@@ -1041,7 +1059,12 @@ def add_media():
             year        = data.get("year"),
             tmdb_rating = tmdb_rating,
         )
-    return jsonify({"status": "ok"})
+        created = get_media_by_id(new_id) if new_id else None
+        return jsonify({
+            "status": "ok",
+            "id": new_id,
+            "date_added": created["date_added"] if created else None,
+        })
 
 
 @app.route("/api/delete/<int:media_id>", methods=["DELETE"])
