@@ -129,9 +129,12 @@ _MDBLIST_SOURCE_ALIASES = {
 _MDBLIST_TYPE = {"movie": "movie", "tv": "show"}
 
 
-def _fetch_mdblist_ratings(media_type: str, tmdb_id, key: str) -> dict:
-    """Return {source: value} for the sources we display, or {} on any problem.
-    One detail call returns every rating, so cost is per-title, not per-source."""
+def _fetch_mdblist_ratings(media_type: str, tmdb_id, key: str):
+    """Return {source: value} for the sources we display. Returns None on a real
+    FAILURE (non-200 / timeout / exception) so callers can tell "the call failed" from
+    "the call succeeded but the title has no ratings" ({}) — and not persist/cache a
+    failure as authoritative. {} is also returned for inputs we never fetch (unsupported
+    type / missing id). One detail call returns every rating, so cost is per-title."""
     mtype = _MDBLIST_TYPE.get(media_type)
     if not mtype or not tmdb_id:
         return {}
@@ -142,10 +145,10 @@ def _fetch_mdblist_ratings(media_type: str, tmdb_id, key: str) -> dict:
             timeout=8,
         )
         if resp.status_code != 200:
-            return {}
+            return None
         ratings = resp.json().get("ratings") or []
     except Exception:
-        return {}
+        return None
     out = {}
     for r in ratings:
         if not isinstance(r, dict):
@@ -794,6 +797,10 @@ def api_ratings(media_type, tmdb_id):
         return jsonify({"ratings": {}})
 
     force = request.args.get("force") == "1"
+    # Read-only mode: serve stored/cached ratings (free) and NEVER attempt a live MDBList
+    # call. The client sends this when the MDBList quota is exhausted, so cached pills
+    # still render without spending a (doomed) call.
+    norefresh = request.args.get("norefresh") == "1"
     uid = int(current_user.id)
 
     # Library item? Serve/refresh persisted ratings.
@@ -812,10 +819,17 @@ def api_ratings(media_type, tmdb_id):
                 fresh = age.days < _RATINGS_MAX_AGE_DAYS
             except Exception:
                 fresh = False
-        # Refresh when forced (manual button, exempt from cap) or stale-and-under-cap.
-        if force or (not fresh and _take_lazy_refresh_slot(uid)):
-            now = datetime.now(timezone.utc).isoformat()
+        # Refresh when forced (manual button, exempt from cap) or stale-and-under-cap —
+        # but never in read-only mode.
+        if not norefresh and (force or (not fresh and _take_lazy_refresh_slot(uid))):
             data = _fetch_mdblist_ratings(media_type, tmdb_id, key)
+            if data is None:
+                # Upstream failed (throttle/timeout/error). Do NOT persist an empty,
+                # freshly-stamped result — that would blank this title's pills for 7
+                # days. Leave the stored ratings + stamp untouched so it retries next
+                # time (the null/old updated_at tells the client it's still pending).
+                return jsonify({"ratings": stored, "updated_at": row.get("ratings_updated_at")})
+            now = datetime.now(timezone.utc).isoformat()
             set_media_ratings(row["id"], json.dumps(data), now)
             return jsonify({"ratings": data, "updated_at": now})
         # Fresh, or cap hit: serve what we have.
@@ -826,7 +840,11 @@ def api_ratings(media_type, tmdb_id):
     hit = _ratings_cache.get(ck)
     if hit and (time.time() - hit[0]) < _RATINGS_TTL:
         return jsonify({"ratings": hit[1]})
+    if norefresh:
+        return jsonify({"ratings": {}})   # read-only: no cache hit, don't call MDBList
     data = _fetch_mdblist_ratings(media_type, tmdb_id, key)
+    if data is None:
+        return jsonify({"ratings": {}})   # transient failure — don't TTL-cache it
     if len(_ratings_cache) > 2000:
         _ratings_cache.pop(next(iter(_ratings_cache)))
     _ratings_cache[ck] = (time.time(), data)

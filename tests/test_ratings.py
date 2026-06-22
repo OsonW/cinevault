@@ -107,6 +107,30 @@ def test_fetch_mdblist_ratings_normalizes(monkeypatch):
                    "metacritic": 76, "letterboxd": 4.2, "mal": 8.5}
 
 
+def test_fetch_mdblist_ratings_returns_none_on_http_error(monkeypatch):
+    """A non-200 upstream response is a FAILURE, signalled as None — distinct from a
+    successful call that simply surfaced no ratings ({})."""
+    import app as a
+
+    class FakeResp:
+        status_code = 429
+        def json(self):
+            return {}
+
+    monkeypatch.setattr(a.requests, "get", lambda *args, **kw: FakeResp())
+    assert a._fetch_mdblist_ratings("movie", 27205, "fake-key") is None
+
+
+def test_fetch_mdblist_ratings_returns_none_on_exception(monkeypatch):
+    import app as a
+
+    def boom(*args, **kw):
+        raise RuntimeError("network down")
+
+    monkeypatch.setattr(a.requests, "get", boom)
+    assert a._fetch_mdblist_ratings("movie", 27205, "fake-key") is None
+
+
 def test_fetch_mdblist_ratings_unsupported_type(monkeypatch):
     import app as a
     called = {"n": 0}
@@ -395,6 +419,41 @@ def test_ratings_lazy_cap_serves_stale_without_fetch(client, monkeypatch):
     assert calls["n"] == 0                     # cap blocked the fetch
 
 
+def test_ratings_norefresh_serves_stored_without_calling_mdblist(client, monkeypatch):
+    """norefresh=1 (sent by the client when the MDBList quota is exhausted) must serve the
+    stored/persisted ratings for FREE — never attempting a live MDBList call — so cached
+    pills still render when quota is gone."""
+    _register(client)
+    _set_mdblist_key()
+    _store_stale_ratings(client)   # stored {"imdb": 5.0}, stale (>7 days)
+    calls = {"n": 0}
+
+    def spy(*a, **k):
+        calls["n"] += 1
+        return {"imdb": 9.0}
+
+    monkeypatch.setattr(app_module, "_fetch_mdblist_ratings", spy)
+    resp = client.get("/api/ratings/movie/27205?norefresh=1").get_json()
+    assert resp["ratings"] == {"imdb": 5.0}   # stored served, even though stale
+    assert calls["n"] == 0                     # no MDBList call attempted
+
+
+def test_ratings_norefresh_non_library_no_call(client, monkeypatch):
+    """norefresh on an unknown (non-library) title returns empty without a live call."""
+    _register(client)
+    _set_mdblist_key()
+    calls = {"n": 0}
+
+    def spy(*a, **k):
+        calls["n"] += 1
+        return {"imdb": 9.0}
+
+    monkeypatch.setattr(app_module, "_fetch_mdblist_ratings", spy)
+    resp = client.get("/api/ratings/movie/603?norefresh=1").get_json()
+    assert resp == {"ratings": {}}
+    assert calls["n"] == 0
+
+
 def test_ratings_cap_denied_never_fetched_returns_null_updated_at(client, monkeypatch):
     """Never-fetched library row + cap denied: serve empty ratings with a null
     updated_at. The client sweep relies on this null to detect the cap and stop."""
@@ -411,6 +470,47 @@ def test_ratings_cap_denied_never_fetched_returns_null_updated_at(client, monkey
     assert resp["ratings"] == {}
     assert resp["updated_at"] is None
     assert calls["n"] == 0
+
+
+def test_failed_upstream_does_not_poison_library_row(client, monkeypatch):
+    """A failed MDBList call must NOT overwrite a stored row with an empty, freshly
+    stamped result (which would blank its pills for 7 days). Stored data + stamp are
+    preserved so the next access retries."""
+    _register(client)
+    _set_mdblist_key()
+    _store_stale_ratings(client)   # stored {"imdb": 5.0}, stamp in 2020 (stale)
+
+    class FakeResp:
+        status_code = 429
+        def json(self):
+            return {}
+
+    monkeypatch.setattr(app_module.requests, "get", lambda *a, **k: FakeResp())
+    resp = client.get("/api/ratings/movie/27205").get_json()
+    assert resp["ratings"] == {"imdb": 5.0}            # stored served, not blanked
+    item = client.get("/api/list").get_json()[0]
+    assert json.loads(item["ratings"]) == {"imdb": 5.0}
+    assert item["ratings_updated_at"].startswith("2020")  # old stamp untouched -> retryable
+
+
+def test_failed_upstream_never_fetched_stays_retryable(client, monkeypatch):
+    """A never-fetched row whose first MDBList call fails stays unstamped (null
+    updated_at) so the client treats it as retryable rather than 'authoritative empty'."""
+    _register(client)
+    _set_mdblist_key()
+    _add_movie(client, external_id="27205")   # added, ratings never fetched
+
+    class FakeResp:
+        status_code = 500
+        def json(self):
+            return {}
+
+    monkeypatch.setattr(app_module.requests, "get", lambda *a, **k: FakeResp())
+    resp = client.get("/api/ratings/movie/27205").get_json()
+    assert resp["ratings"] == {}
+    assert resp["updated_at"] is None
+    item = client.get("/api/list").get_json()[0]
+    assert item["ratings"] is None            # not poisoned with an empty "fresh" value
 
 
 def test_search_does_not_block_on_directors(client, monkeypatch):

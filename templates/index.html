@@ -1999,10 +1999,15 @@ async function proactiveRefreshStale() {
     } catch { continue; }
     if (!d) continue;
     const ratings = d.ratings || {};
-    item.ratings = JSON.stringify(ratings);
-    item.ratings_updated_at = d.updated_at || prev;
-    _ratingsCache[item.media_type + ':' + tid] = ratings;
-    if (item.ratings_updated_at) _ratingsUpdatedAt[item.media_type + ':' + tid] = item.ratings_updated_at;
+    // Only adopt an authoritative answer (real scores, or a fresh server stamp). An
+    // empty, unstamped response = cap reached / upstream failed: don't cache it, so it
+    // stays retryable instead of blanking the card's pills.
+    if (_ratingsAuthoritative(ratings, d.updated_at)) {
+      item.ratings = JSON.stringify(ratings);
+      item.ratings_updated_at = d.updated_at || prev;
+      _ratingsCache[item.media_type + ':' + tid] = ratings;
+      if (item.ratings_updated_at) _ratingsUpdatedAt[item.media_type + ':' + tid] = item.ratings_updated_at;
+    }
     // updated_at didn't advance -> server served stale (cap reached) -> stop and
     // go dormant until the MDBList quota resets (used-count drops).
     if (!d.updated_at || d.updated_at === prev) {
@@ -3993,24 +3998,38 @@ function renderPills(item, ratings, selected) {
 const _ratingsUpdatedAt = {};   // "media_type:tmdb_id" -> ISO string
 const _ratingsInflight  = {};   // "media_type:tmdb_id" -> Promise (coalesce concurrent fetches)
 
+// Is a ratings response authoritative (safe to cache as final)? Yes when it carries real
+// scores, OR when the server stamped it (updated_at present = it confirmed the title's
+// ratings, even if genuinely empty). An empty + unstamped response means the server's
+// daily cap was hit OR the MDBList call failed — NOT cached, so the next render/reload
+// retries instead of leaving the pills blank for the whole session. This is what makes
+// the pills self-heal: transient failures no longer "stick".
+function _ratingsAuthoritative(data, updatedAt) {
+  return (!!data && Object.keys(data).length > 0) || !!updatedAt;
+}
+
 async function fetchRatings(mediaType, tmdbId) {
   if (!tmdbId || (mediaType !== 'movie' && mediaType !== 'tv')) return {};
   const k = `${mediaType}:${tmdbId}`;
   if (k in _ratingsCache) return _ratingsCache[k];
-  // Out of quota: don't spend a failing call; show nothing new this session.
-  if (_mdblist.exhausted) return {};
   // Coalesce: the grid card and detail panel often both ask for the same title at
   // once (e.g. a freshly-added item) — share one request, not two MDBList slots.
   if (k in _ratingsInflight) return _ratingsInflight[k];
+  // Out of quota: STILL ask the server — it serves persisted/cached ratings for free.
+  // Pass norefresh so it never attempts a (doomed) live call. Returning {} here instead
+  // (the old behaviour) blanked pills for any title not yet cached this session, even
+  // though the data was sitting on the server — the intermittent "pills don't show".
+  const qs = _mdblist.exhausted ? '?norefresh=1' : '';
   const p = (async () => {
     try {
-      const res = await fetch(`/api/ratings/${mediaType}/${encodeURIComponent(tmdbId)}`);
+      const res = await fetch(`/api/ratings/${mediaType}/${encodeURIComponent(tmdbId)}${qs}`);
       const json = res.ok ? await res.json() : {};
       const data = json.ratings || {};
-      _ratingsCache[k] = data;
+      // Only cache a definitive answer; a cap/failure empty stays uncached so it retries.
+      if (_ratingsAuthoritative(data, json.updated_at)) _ratingsCache[k] = data;
       if (json.updated_at) _ratingsUpdatedAt[k] = json.updated_at;
       return data;
-    } catch { _ratingsCache[k] = {}; return {}; }
+    } catch { return {}; }   // network error: leave uncached, retry on next render/reload
     finally { delete _ratingsInflight[k]; }
   })();
   _ratingsInflight[k] = p;
