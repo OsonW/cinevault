@@ -4097,8 +4097,15 @@ async function refreshRatingsNow(itemId) {
     // Re-render so the spinner clears (driven by _refreshingIds) and the fresh
     // pills/label show. Works whether the panel is the same one or re-opened.
     _refreshingIds.delete(itemId);
-    if (selectedId === itemId) renderDetail(item);
-    else { const b = document.getElementById('ratingsRefreshBtn'); if (b) b.classList.remove('spinning'); }
+    if (selectedId === itemId) {
+      // Re-render the open panel to show fresh pills + clear the spinner, but keep the
+      // user's scroll position — renderDetail() resets it to the top (right when you
+      // SELECT a title, jarring when you just refreshed the one you're already reading).
+      const dp = document.getElementById('detailPanel');
+      const sc = dp ? dp.scrollTop : 0;
+      renderDetail(item);
+      if (dp) dp.scrollTop = sc;
+    } else { const b = document.getElementById('ratingsRefreshBtn'); if (b) b.classList.remove('spinning'); }
   }
 }
 
