@@ -3132,6 +3132,13 @@ async function undoMediaDelete() {
 // Search — inline dropdown
 // ─────────────────────────────────────────────
 let searchTimer;
+// The quick-suggest dropdown fires its own /api/search calls. They're aborted the
+// moment the dropdown is dismissed (including when the full modal opens) so they
+// can't compete with the modal's fetches for the limited sync workers.
+let _dropdownController = null;
+function _abortDropdown() {
+  if (_dropdownController) { _dropdownController.abort(); _dropdownController = null; }
+}
 
 function onSearchKey(e) {
   if (e.key === 'Escape') { closeDropdown(); return; }
@@ -3147,16 +3154,20 @@ function onSearchInput() {
 
 async function showDropdownSuggestions(q) {
   if (document.getElementById('searchInput').value.trim() !== q) return;
+  _abortDropdown();
+  _dropdownController = new AbortController();
+  const { signal }     = _dropdownController;
   const lower          = q.toLowerCase();
   const libraryMatches = allItems.filter(i => i.title.toLowerCase().includes(lower)).slice(0, 4);
   const dd             = document.getElementById('searchDropdown');
   const [movieRes, tvRes, bookRes, mangaRes] = await Promise.all([
-    fetch(`/api/search?q=${encodeURIComponent(q)}&type=movie`).then(r => r.json()).catch(() => []),
-    fetch(`/api/search?q=${encodeURIComponent(q)}&type=tv`).then(r => r.json()).catch(() => []),
-    fetch(`/api/search/books?q=${encodeURIComponent(q)}`).then(r => r.json()).catch(() => []),
-    fetch(`/api/search/manga?q=${encodeURIComponent(q)}`).then(r => r.json()).catch(() => []),
+    fetch(`/api/search?q=${encodeURIComponent(q)}&type=movie`, { signal }).then(r => r.json()).catch(() => []),
+    fetch(`/api/search?q=${encodeURIComponent(q)}&type=tv`, { signal }).then(r => r.json()).catch(() => []),
+    fetch(`/api/search/books?q=${encodeURIComponent(q)}`, { signal }).then(r => r.json()).catch(() => []),
+    fetch(`/api/search/manga?q=${encodeURIComponent(q)}`, { signal }).then(r => r.json()).catch(() => []),
   ]);
-  if (document.getElementById('searchInput').value.trim() !== q) return;
+  // Bail if aborted (dropdown dismissed / modal opened) or the query moved on.
+  if (signal.aborted || document.getElementById('searchInput').value.trim() !== q) return;
   [...movieRes, ...tvRes, ...bookRes, ...mangaRes].forEach(r => {
     const key = `${r.media_type}_${r.external_id || r.tmdb_id}`;
     tmdbResultMap[key] = r;
@@ -3199,6 +3210,8 @@ async function showDropdownSuggestions(q) {
 }
 
 function closeDropdown() {
+  clearTimeout(searchTimer);   // cancel a debounced suggestion that hasn't fired yet
+  _abortDropdown();
   const dd = document.getElementById('searchDropdown');
   if (dd) dd.style.display = 'none';
 }
