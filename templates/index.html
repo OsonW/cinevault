@@ -355,9 +355,8 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 /* ── Library matches list ─────────────────────── */
 /* Cap the height so an expanded library list scrolls instead of pushing the search
    results far down the modal. */
-.sm-library-list { display: flex; flex-direction: column; gap: 0.375rem; margin-bottom: 0.75rem;
+.sm-library-list { display: flex; flex-direction: column; gap: 0.375rem; margin-bottom: 1.5rem;
   max-height: 19rem; overflow-y: auto; }
-.sm-load-more-lib { margin-top: 0.25rem; margin-bottom: 1.25rem; }
 .sm-lib-row {
   display: flex;
   align-items: center;
@@ -1860,10 +1859,6 @@ let _modalSearchToken = 0;
 // render also caps the per-card director/score lookups, keeping the modal snappy.
 const MODAL_ROW   = 5;
 let _modalShown   = MODAL_ROW * 2;
-// Library matches in the modal are capped too — "Show 5 more" reveals one batch at a
-// time. Keeps a big in-library match set from pushing the "Add from search" grid down.
-const MODAL_LIB_ROW = 5;
-let _modalLibShown  = MODAL_LIB_ROW;
 
 const tabLastSelected = { watchlist: null, watching: null, finished: null };
 
@@ -3517,7 +3512,6 @@ function runModalSearch(q) {
     const { signal } = _modalSearchController;
     const token = ++_modalSearchToken;
     _modalShown = MODAL_ROW * 2;       // every fresh search starts capped at two rows
-    _modalLibShown = MODAL_LIB_ROW;    // …and the library section back to its first batch
 
     lastModalQuery = q;
     document.getElementById('smTitle').innerHTML = `Results for <em>${esc(q)}</em>`;
@@ -3578,10 +3572,9 @@ function renderModalResults(libMatches, tmdbResults, q, loading) {
   _lastModalArgs = { libMatches, tmdbResults, q };
   let html = '';
   if (libMatches.length) {
-    const shownLib = libMatches.slice(0, _modalLibShown);
     html += `<div class="sm-section-label">In your library</div>
       <div class="sm-library-list">`;
-    html += shownLib.map(i => {
+    html += libMatches.map(i => {
       const statusColor  = i.status==='watchlist'?'var(--blue)':i.status==='watching'?'var(--green)':'var(--purple)';
       const borderColor  = i.status==='watchlist'?'var(--blue-dim)':i.status==='watching'?'var(--green-dim)':'var(--purple-dim)';
       const prog = _progressLabel(i);
@@ -3594,19 +3587,16 @@ function renderModalResults(libMatches, tmdbResults, q, loading) {
       </div>`;
     }).join('');
     html += `</div>`;
-    if (libMatches.length > _modalLibShown) {
-      const remaining = libMatches.length - _modalLibShown;
-      html += `<button class="sm-load-more sm-load-more-lib" onclick="loadMoreModalLib()">Show 5 more <span class="sm-load-more-count">(${remaining})</span></button>`;
-    }
   }
   // Only the first _modalShown results are rendered (and hydrated). Capping the DOM
   // and the per-card director/score lookups is what keeps a big result set fast.
   const shownResults = tmdbResults.slice(0, _modalShown);
   if (loading) {
-    // Still fetching: show the full two-row skeleton grid (the modal loads up to
-    // _modalShown titles regardless of library matches) and hold off on real cards
-    // until every type-search returns — so there's no partial render or trailing
-    // single skeleton to flicker through.
+    // Still fetching: show the "Add from search" label (so it's present throughout the
+    // load, not just after) above the full two-row skeleton grid. Hold off on real cards
+    // until every type-search returns — so there's no partial render or trailing single
+    // skeleton to flicker through.
+    html += `<div class="sm-section-label" style="margin-top:${libMatches.length?'0.5rem':'0'}">Add from search</div>`;
     html += renderSkeletons(_modalShown);
   } else if (tmdbResults.length) {
     html += `<div class="sm-section-label" style="margin-top:${libMatches.length?'0.5rem':'0'}">Add from search</div>
@@ -3647,13 +3637,6 @@ function renderModalResults(libMatches, tmdbResults, q, loading) {
 // deduped — already-shown cards hit the cache). Re-renders from the cached args.
 function loadMoreModal() {
   _modalShown += MODAL_ROW;
-  if (_lastModalArgs) renderModalResults(_lastModalArgs.libMatches, _lastModalArgs.tmdbResults, _lastModalArgs.q);
-}
-
-// Reveal one more batch of library matches (re-renders from the cached args). Mirrors
-// loadMoreModal but for the "In your library" section.
-function loadMoreModalLib() {
-  _modalLibShown += MODAL_LIB_ROW;
   if (_lastModalArgs) renderModalResults(_lastModalArgs.libMatches, _lastModalArgs.tmdbResults, _lastModalArgs.q);
 }
 
