@@ -821,6 +821,24 @@ input[type="range"]::-webkit-slider-thumb {
 .stat-box { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.75rem 0.875rem; }
 .stat-num { font-family: 'Fraunces', serif; font-size: 1.4rem; font-weight: 300; color: var(--accent); line-height: 1; }
 .stat-lbl { font-size: 0.625rem; color: var(--muted); margin-top: 0.25rem; text-transform: uppercase; letter-spacing: 0.05em; }
+.fin-stats { display: flex; gap: 1.25rem; align-items: stretch; margin-bottom: 1rem; padding: 0.9rem 1.1rem; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); }
+.fin-left { display: flex; flex-direction: column; justify-content: center; gap: 0.25rem; padding-right: 1.1rem; border-right: 1px solid var(--border); min-width: 7rem; }
+.fin-avg { font-size: 1.9rem; font-weight: 500; color: var(--accent); }
+.fin-tens { font-size: 0.95rem; color: var(--muted); }
+.fin-right { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.35rem; }
+.fh-bars { display: flex; align-items: flex-end; gap: 0.4rem; height: 4.5rem; }
+.fh-bar-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; cursor: default; }
+.fh-bar { width: 100%; min-height: 0; background: var(--card); border-radius: 3px 3px 0 0; transition: background 0.12s; }
+.fh-bar.on { background: var(--accent); }
+.fh-lbl { font-size: 0.7rem; color: var(--muted); margin-top: 0.2rem; white-space: nowrap; }
+.fh-bar-wrap:hover .fh-bar { background: var(--accent-hover); }
+.fh-tip { position: absolute; top: -1.6rem; transform: translateX(-50%); background: var(--card); border: 1px solid var(--border-md); border-radius: var(--radius); padding: 0.15rem 0.5rem; font-size: 0.78rem; color: var(--text); white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity 0.12s; z-index: 5; }
+.fh-tip.show { opacity: 1; }
+.fh-slider { position: relative; height: 1.4rem; }
+.fh-range { position: absolute; left: 0; top: 0; width: 100%; margin: 0; background: none; pointer-events: none; -webkit-appearance: none; appearance: none; height: 1.4rem; }
+.fh-range::-webkit-slider-thumb { pointer-events: auto; }
+.fh-range::-moz-range-thumb { pointer-events: auto; }
+.fh-range-lbls { display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--muted); }
 
 /* ── Toast ────────────────────────────────────── */
 .toast {
@@ -2111,6 +2129,11 @@ function sortedItems() {
   }
   if (f.types.size < _ALL_TYPES.length)
     items = items.filter(i => f.types.has(i.media_type));
+  if (currentTab === 'finished') {
+    const [lo, hi] = finishedRange;
+    if (!(lo === 0 && hi === 10))
+      items = items.filter(i => { const r = i.rating || 0; return r >= lo && r <= hi; });
+  }
   return items;
 }
 
@@ -2124,6 +2147,44 @@ function autoSelectFirst() {
 // ─────────────────────────────────────────────
 // Grid
 // ─────────────────────────────────────────────
+// Finished-tab rating range filter [lo, hi] (0–10, step 0.1). 0 == Unrated.
+let finishedRange = (function () {
+  try {
+    const a = JSON.parse(localStorage.getItem('finishedRatingRange'));
+    if (Array.isArray(a) && a.length === 2) return [Math.min(a[0], a[1]), Math.max(a[0], a[1])];
+  } catch {}
+  return [0, 10];
+})();
+
+function _starLbl(v) {
+  v = Number(v) || 0;
+  if (v <= 0) return 'Unrated';
+  return (Math.round(v * 10) % 10 === 0 ? String(Math.round(v)) : v.toFixed(1)) + '⭐';
+}
+
+function onFinRange(which, val) {
+  let [lo, hi] = finishedRange;
+  val = Math.max(0, Math.min(10, Math.round(Number(val) * 10) / 10));
+  if (which === 'lo') lo = Math.min(val, hi);
+  else                hi = Math.max(val, lo);
+  finishedRange = [lo, hi];
+  localStorage.setItem('finishedRatingRange', JSON.stringify(finishedRange));
+  renderGrid();
+}
+
+function showHistTip(el) {
+  const tip = document.getElementById('histTip');
+  if (!tip) return;
+  const k = +el.dataset.k, c = +el.dataset.count;
+  tip.textContent = `${c} title${c !== 1 ? 's' : ''} ${k - 1}.1–${k}.0`;
+  tip.style.left = (el.offsetLeft + el.offsetWidth / 2) + 'px';
+  tip.classList.add('show');
+}
+function hideHistTip() {
+  const tip = document.getElementById('histTip');
+  if (tip) tip.classList.remove('show');
+}
+
 function renderGrid() {
   const panel = document.getElementById('gridPanel');
   const items = sortedItems();
@@ -2134,10 +2195,35 @@ function renderGrid() {
     const rated    = finished.filter(i => i.rating > 0);
     const avg      = rated.length
       ? (rated.reduce((s, i) => s + i.rating, 0) / rated.length).toFixed(1) : '—';
-    statsHtml = `<div class="stats-bar">
-      <div class="stat-box"><div class="stat-num">${finished.length}</div><div class="stat-lbl">Finished</div></div>
-      <div class="stat-box"><div class="stat-num">${allItems.filter(i=>i.status==='watching').length}</div><div class="stat-lbl">Watching</div></div>
-      <div class="stat-box"><div class="stat-num">${avg}</div><div class="stat-lbl">Avg rating</div></div>
+    const tens     = finished.filter(i => i.rating === 10).length;
+    const buckets  = Array(10).fill(0);
+    rated.forEach(i => { const k = Math.min(10, Math.max(1, Math.ceil(i.rating))); buckets[k - 1]++; });
+    const maxB = Math.max(1, ...buckets);
+    const [lo, hi] = finishedRange;
+    const bars = buckets.map((c, idx) => {
+      const k = idx + 1;
+      const on = (lo <= k) && (hi > k - 1);
+      const h = c ? Math.max(8, Math.round(c / maxB * 100)) : 0;
+      return `<div class="fh-bar-wrap" data-k="${k}" data-count="${c}"
+                onmouseenter="showHistTip(this)" onmouseleave="hideHistTip()">
+                <div class="fh-bar${on ? ' on' : ''}" style="height:${h}%"></div>
+                <div class="fh-lbl">${k}⭐</div>
+              </div>`;
+    }).join('');
+    statsHtml = `<div class="fin-stats">
+      <div class="fin-left">
+        <div class="fin-avg">★ ${avg}</div>
+        <div class="fin-tens">${tens} × 10/10</div>
+      </div>
+      <div class="fin-right">
+        <div class="fh-tip" id="histTip"></div>
+        <div class="fh-bars">${bars}</div>
+        <div class="fh-slider">
+          <input type="range" class="fh-range" id="finLo" min="0" max="10" step="0.1" value="${lo}" oninput="onFinRange('lo', this.value)">
+          <input type="range" class="fh-range" id="finHi" min="0" max="10" step="0.1" value="${hi}" oninput="onFinRange('hi', this.value)">
+        </div>
+        <div class="fh-range-lbls"><span>${_starLbl(lo)}</span><span>${_starLbl(hi)}</span></div>
+      </div>
     </div>`;
   }
 
