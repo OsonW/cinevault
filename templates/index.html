@@ -3319,6 +3319,7 @@ function renderModalResults(libMatches, tmdbResults, q) {
       hydratePills(pillsId, item, searchPills);
     });
   }
+  tmdbResults.forEach(r => hydrateSmAuthor(r));
 }
 
 function _progressLabel(item) {
@@ -3326,6 +3327,35 @@ function _progressLabel(item) {
   if (item.media_type === 'manga' && item.last_volume) return `Vol.${item.last_volume}`;
   if (item.media_type === 'book'  && item.current_page) return `p.${item.current_page}`;
   return '';
+}
+
+const _smAuthorCache = {};   // "media_type:tmdb_id" -> author string
+
+// Movie/TV search cards arrive without a director (search is now fast); fetch it
+// lazily and fill the card when it lands. Deduped per session.
+function hydrateSmAuthor(r) {
+  if (r.author) return;
+  if (r.media_type !== 'movie' && r.media_type !== 'tv') return;
+  const tid = r.tmdb_id || r.external_id;
+  if (!tid) return;
+  const ck = `${r.media_type}:${tid}`;
+  const fill = (a) => {
+    if (!a) return;
+    r.author = a;
+    const safeId = (r.external_id || r.tmdb_id || '').toString().replace(/[^a-z0-9]/gi, '_');
+    const card = document.getElementById(`smbtn-${r.media_type}-${safeId}`)?.closest('.sm-card');
+    const titleEl = card && card.querySelector('.sm-card-title');
+    if (titleEl && !card.querySelector('.sm-card-author')) {
+      const div = document.createElement('div');
+      div.className = 'sm-card-author';
+      div.textContent = a;
+      titleEl.insertAdjacentElement('afterend', div);
+    }
+  };
+  if (ck in _smAuthorCache) { fill(_smAuthorCache[ck]); return; }
+  fetch(`/api/tmdb-director/${r.media_type}/${encodeURIComponent(tid)}`)
+    .then(res => res.json()).then(d => { _smAuthorCache[ck] = d.author || ''; fill(d.author); })
+    .catch(() => {});
 }
 
 function renderSmCard(r) {
