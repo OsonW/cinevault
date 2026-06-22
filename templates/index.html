@@ -3373,9 +3373,10 @@ async function addFromModal(key) {
     btn.closest('.sm-card').classList.add('in-library');
   }
   try {
-    await apiPost('/api/add', {
+    const ext = r.external_id || String(r.tmdb_id || '');
+    const data = await apiPost('/api/add', {
       tmdb_id:     r.tmdb_id    || null,
-      external_id: r.external_id || String(r.tmdb_id || ''),
+      external_id: ext,
       title:       r.title,
       media_type:  r.media_type,
       status:      'watchlist',
@@ -3386,13 +3387,18 @@ async function addFromModal(key) {
       year:        r.year       || null,
       tmdb_rating: r.tmdb_rating ?? null,
     });
-    await loadList();
-    const newItem = allItems.find(i =>
-      i.media_type === r.media_type &&
-      (i.external_id === (r.external_id || String(r.tmdb_id || '')) || String(i.tmdb_id) === String(r.tmdb_id || ''))
-    );
+    const newItem = {
+      id: data && data.id, tmdb_id: r.tmdb_id || null, external_id: ext,
+      title: r.title, media_type: r.media_type, status: 'watchlist',
+      rating: 0, author: r.author || null, overview: r.overview || null,
+      year: r.year || null, cover_url: r.cover_url || null,
+      tmdb_rating: r.tmdb_rating ?? null,
+      date_added: data && data.date_added, ratings: null, ratings_updated_at: null,
+    };
+    if (newItem.id != null && !allItems.some(i => i.id === newItem.id)) allItems.push(newItem);
+    rebuildLibrarySet();
     showToast(`"${r.title}" added to Watchlist`);
-    switchTab('watchlist', newItem ? newItem.id : null);
+    switchTab('watchlist', newItem.id != null ? newItem.id : null);
   } catch {
     inLibrary.delete(key);
     if (btn) {
@@ -3427,7 +3433,10 @@ async function removeFromModal(key) {
   }
   try {
     await fetch(`/api/delete/${item.id}`, { method: 'DELETE' });
-    await loadList();
+    allItems = allItems.filter(i => i.id !== item.id);
+    rebuildLibrarySet();
+    if (selectedId === item.id) selectedId = null;
+    renderGrid();
     showToast(`"${r.title}" removed from Watchlist`);
   } catch {
     inLibrary.add(key);
