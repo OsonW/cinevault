@@ -8,7 +8,6 @@ import requests
 from datetime import datetime, timezone
 from collections import OrderedDict
 from urllib.parse import urlparse
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import Flask, jsonify, Response, request, render_template, g, redirect, url_for, make_response
 from flask_login import login_required, current_user, logout_user
 

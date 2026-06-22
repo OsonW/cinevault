@@ -3462,7 +3462,8 @@ async function removeFromModal(key) {
     btn.closest('.sm-card').classList.remove('in-library');
   }
   try {
-    await fetch(`/api/delete/${item.id}`, { method: 'DELETE' });
+    const res = await fetch(`/api/delete/${item.id}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     allItems = allItems.filter(i => i.id !== item.id);
     rebuildLibrarySet();
     if (selectedId === item.id) selectedId = null;
