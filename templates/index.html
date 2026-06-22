@@ -766,6 +766,7 @@ input[type="range"]::-webkit-slider-thumb {
 .poster-stars { display: flex; gap: 0.125rem; }
 .pstar { font-size: 0.75em; color: var(--subtle); }
 .pstar.lit { color: var(--accent); }
+.poster-rating { font-size: 0.9em; color: var(--accent); text-align: right; margin-top: 0.125rem; }
 .poster-date { font-size: 0.833em; color: var(--muted); margin-bottom: 0.1875rem; }
 .poster-overview {
   font-size: 0.917em; color: var(--muted); line-height: 1.45; margin-top: 0.3125rem;
@@ -2173,9 +2174,10 @@ function renderGrid() {
   const size     = tabSize[currentTab];
   const cardFontStyle = `font-size:${CARD_FONT_REM[CARD_COL_STEPS.indexOf(cols)]}rem`;
   const cards = items.map(item => {
+    const rRaw = item.rating || 0;
+    const ratingTxt = rRaw > 0 ? fmtRating(rRaw) + '⭐' : 'Unrated';
     const stars = currentTab === 'finished'
-      ? `<div class="poster-stars">${[1,2,3,4,5,6,7,8,9,10].map(s =>
-          `<span class="pstar ${(item.rating||0)>=s?'lit':''}">★</span>`).join('')}</div>` : '';
+      ? `<div class="poster-rating">${ratingTxt}</div>` : '';
     const author = `<div class="poster-author" id="pa-${item.id}"${item.author ? '' : ' style="display:none"'}>${esc(item.author||'')}</div>`;
     const dateStr = fmtDate(item.date_added);
     const dateVerb = { watchlist: 'Added', watching: 'Updated', finished: 'Finished' }[currentTab] || 'Added';
