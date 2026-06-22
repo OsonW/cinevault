@@ -4068,20 +4068,31 @@ async function refreshRatingsNow(itemId) {
   if (_updatedAgo(item.ratings_updated_at) === 'just now') return;  // 60s debounce
   if (_refreshingIds.has(itemId)) return;   // already refreshing this title
   _refreshingIds.add(itemId);
+  const prevStamp = item.ratings_updated_at;
   const btn = document.getElementById('ratingsRefreshBtn');
   if (btn) btn.classList.add('spinning');
   try {
     const d = await fetch(`/api/ratings/${item.media_type}/${encodeURIComponent(tid)}?force=1`).then(r => r.json());
-    const ratings = d.ratings || {};
+    const incoming = d.ratings || {};
+    // Don't let an empty refresh wipe existing ratings — keep what we have unless the
+    // refresh actually returned scores. (_seedRatings reads the still-current values.)
+    const ratings = Object.keys(incoming).length ? incoming : _seedRatings(item);
     item.ratings = JSON.stringify(ratings);
-    item.ratings_updated_at = d.updated_at || new Date().toISOString();
+    item.ratings_updated_at = d.updated_at || prevStamp || new Date().toISOString();
     _ratingsCache[item.media_type + ':' + tid] = ratings;
     _ratingsUpdatedAt[item.media_type + ':' + tid] = item.ratings_updated_at;
     // Keep the library grid card's pills in sync, not just the detail panel.
     const ghost = document.getElementById('pills-' + item.id);
     if (ghost) ghost.innerHTML = renderPills(item, ratings, tabGridPills[currentTab]);
     refreshMdblistStatus();
+    // The server only advances the stamp when the refresh actually landed. If it didn't
+    // (upstream failed or returned nothing), the pills are unchanged — tell the user so
+    // they know to retry rather than assuming the title simply has no ratings.
+    if (!d.updated_at || d.updated_at === prevStamp) {
+      showToast('Couldn’t refresh ratings — try again in a moment', 'error');
+    }
   } catch {
+    showToast('Couldn’t refresh ratings — try again in a moment', 'error');
   } finally {
     // Re-render so the spinner clears (driven by _refreshingIds) and the fresh
     // pills/label show. Works whether the panel is the same one or re-opened.

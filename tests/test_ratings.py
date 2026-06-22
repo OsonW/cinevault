@@ -419,6 +419,32 @@ def test_ratings_lazy_cap_serves_stale_without_fetch(client, monkeypatch):
     assert calls["n"] == 0                     # cap blocked the fetch
 
 
+def test_force_refresh_empty_does_not_wipe_stored(client, monkeypatch):
+    """A force refresh that returns no ratings (MDBList occasionally 200s with an empty
+    set under load) must NOT wipe good stored ratings, and must NOT restamp the row (so
+    the user isn't locked out of retrying for 60s)."""
+    _register(client)
+    _set_mdblist_key()
+    _store_stale_ratings(client)   # stored {"imdb": 5.0}, stamp in 2020
+    monkeypatch.setattr(app_module, "_fetch_mdblist_ratings", lambda *a, **k: {})
+    resp = client.get("/api/ratings/movie/27205?force=1").get_json()
+    assert resp["ratings"] == {"imdb": 5.0}            # kept, not wiped
+    assert resp["updated_at"].startswith("2020")       # not restamped -> retry allowed
+    item = client.get("/api/list").get_json()[0]
+    assert json.loads(item["ratings"]) == {"imdb": 5.0}
+
+
+def test_force_refresh_with_scores_still_persists(client, monkeypatch):
+    """Sanity: a force refresh that DOES return scores still overwrites + restamps."""
+    _register(client)
+    _set_mdblist_key()
+    _store_stale_ratings(client)
+    monkeypatch.setattr(app_module, "_fetch_mdblist_ratings", lambda *a, **k: {"imdb": 9.0})
+    resp = client.get("/api/ratings/movie/27205?force=1").get_json()
+    assert resp["ratings"] == {"imdb": 9.0}
+    assert not resp["updated_at"].startswith("2020")   # restamped fresh
+
+
 def test_ratings_norefresh_serves_stored_without_calling_mdblist(client, monkeypatch):
     """norefresh=1 (sent by the client when the MDBList quota is exhausted) must serve the
     stored/persisted ratings for FREE — never attempting a live MDBList call — so cached

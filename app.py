@@ -823,11 +823,12 @@ def api_ratings(media_type, tmdb_id):
         # but never in read-only mode.
         if not norefresh and (force or (not fresh and _take_lazy_refresh_slot(uid))):
             data = _fetch_mdblist_ratings(media_type, tmdb_id, key)
-            if data is None:
-                # Upstream failed (throttle/timeout/error). Do NOT persist an empty,
-                # freshly-stamped result — that would blank this title's pills for 7
-                # days. Leave the stored ratings + stamp untouched so it retries next
-                # time (the null/old updated_at tells the client it's still pending).
+            # Never let a failed (None) OR empty ({}) upstream result overwrite good stored
+            # ratings: MDBList intermittently 200s with no ratings under load, and on
+            # failure data is None. Either would blank the title's pills (for 7 days, since
+            # a fresh stamp marks it "fresh") and lock the user out of retrying. Keep what
+            # we have and don't restamp, so the pills stay and a retry is allowed now.
+            if data is None or (not data and stored):
                 return jsonify({"ratings": stored, "updated_at": row.get("ratings_updated_at")})
             now = datetime.now(timezone.utc).isoformat()
             set_media_ratings(row["id"], json.dumps(data), now)
