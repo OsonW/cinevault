@@ -889,6 +889,10 @@ input[type="range"]::-webkit-slider-thumb {
 /* The ONE rail. Both range inputs are stacked, transparent, and have transparent
    native tracks — this pseudo-element is the only visible line. */
 .fh-slider::before { content: ''; position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); height: 0.28rem; border-radius: 99px; background: var(--card); pointer-events: none; }
+/* Purple segment of the rail between the two thumbs. Its left/width are set in
+   _updateFinRangeUI to the thumb centres: lo thumb at (10*lo - 1)% (the -1% offset on
+   #finLo below), hi thumb at (10*hi)%. Sits above the grey rail, below the thumbs. */
+.fh-slider-fill { position: absolute; top: 50%; transform: translateY(-50%); height: 0.28rem; border-radius: 99px; background: var(--accent); pointer-events: none; z-index: 1; }
 /* Rules scoped under .fh-slider so they out-specify the global input[type=range]
    thumb/track styling (which otherwise forces a big, mis-positioned thumb). */
 /* Widened by one thumb-width and shifted left by its radius so the THUMB CENTRE (not
@@ -2350,6 +2354,14 @@ function _updateFinRangeUI() {
   const hiLbl = document.getElementById('finHiLbl');
   if (loLbl) loLbl.innerHTML = _starLbl(lo);
   if (hiLbl) hiLbl.innerHTML = _starLbl(hi);
+  // Purple rail between the two thumbs. Left edge = lo thumb centre (10*lo - 1)% (the
+  // -1% #finLo offset); right edge = hi thumb centre (10*hi)%.
+  const fillBar = document.getElementById('finFill');
+  if (fillBar) {
+    const left = Math.max(0, 10 * lo - 1);
+    fillBar.style.left  = left + '%';
+    fillBar.style.width = Math.max(0, 10 * hi - left) + '%';
+  }
   const wraps = [...document.querySelectorAll('.fh-bar-wrap')];
   // Read all widths first, then write — avoids layout thrash from interleaving.
   const geo = wraps.map(w => {
@@ -2460,6 +2472,7 @@ function renderGrid() {
         <div class="fh-tip" id="histTip"></div>
         <div class="fh-bars">${bars}</div>
         <div class="fh-slider">
+          <div class="fh-slider-fill" id="finFill"></div>
           <input type="range" class="fh-range" id="finLo" min="0" max="10" step="0.1" value="${lo}" oninput="onFinRange('lo', this.value)" onchange="onFinRangeCommit()">
           <input type="range" class="fh-range" id="finHi" min="0" max="10" step="0.1" value="${hi}" oninput="onFinRange('hi', this.value)" onchange="onFinRangeCommit()">
         </div>
