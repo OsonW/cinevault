@@ -753,6 +753,13 @@ input[type="range"]::-webkit-slider-thumb {
 }
 .grid-random-btn:hover { color: var(--accent); border-color: var(--accent); background: var(--subtle); }
 .grid-random-btn:active { transform: scale(0.94); }
+/* "Show unrated" toggle — finished tab only, beside the search field. */
+.show-unrated-toggle {
+  flex-shrink: 0; display: inline-flex; align-items: center; gap: 0.4rem;
+  cursor: pointer; font-size: 0.9rem; color: var(--muted); user-select: none; white-space: nowrap;
+}
+.show-unrated-toggle:hover { color: var(--text); }
+.show-unrated-toggle input { width: 0.95rem; height: 0.95rem; margin: 0; accent-color: var(--accent); cursor: pointer; }
 
 .poster-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr)); gap: 0.875rem; }
 .poster-card img { width: 100%; aspect-ratio: 2/3; object-fit: cover; display: block; background: var(--subtle); }
@@ -820,13 +827,15 @@ input[type="range"]::-webkit-slider-thumb {
 /* --fill is set per bar to a progressive grey/purple gradient (the selected rating
    sub-range is purple). Kept as a custom property so the hover rule still wins. No
    transition: tweening between gradients is what caused the flicker on fast drags. */
-.fh-bar { width: 100%; min-height: 0; background: var(--fill, var(--card)); border-radius: 3px 3px 0 0; }
+.fh-bar { width: 100%; min-height: 0; --bar-on: var(--accent); background: var(--fill, var(--card)); border-radius: 3px 3px 0 0; }
 /* Labels mirror the bar's split via the same gradient, clipped to the text (muted→
    accent) so the highlighted portion is purple too. */
 .fh-lbl { font-size: 0.7rem; margin-top: 0.2rem; white-space: nowrap;
   background: var(--lblfill, var(--muted)); -webkit-background-clip: text; background-clip: text;
   color: transparent; -webkit-text-fill-color: transparent; }
-.fh-bar-wrap:hover .fh-bar { background: var(--accent-hover); }
+/* Hover deepens only the filled portion: --fill references --bar-on, so grey areas
+   (and fully-grey bars, whose --fill is a plain colour) are untouched. */
+.fh-bar-wrap:hover .fh-bar { --bar-on: var(--accent-hover); }
 .fh-tip { position: absolute; top: -1.6rem; transform: translateX(-50%); background: var(--card); border: 1px solid var(--border-md); border-radius: var(--radius); padding: 0.15rem 0.5rem; font-size: 0.78rem; color: var(--text); white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity 0.12s; z-index: 5; }
 .fh-tip.show { opacity: 1; }
 .fh-slider { position: relative; height: 1.1rem; }
@@ -2129,8 +2138,11 @@ function sortedItems() {
     items = items.filter(i => f.types.has(i.media_type));
   if (currentTab === 'finished') {
     const [lo, hi] = finishedRange;
-    if (!(lo === 0 && hi === 10))
-      items = items.filter(i => { const r = i.rating || 0; return r >= lo && r <= hi; });
+    items = items.filter(i => {
+      const r = i.rating || 0;
+      if (r <= 0) return showUnrated;        // unrated: shown only when the toggle is on
+      return r >= lo && r <= hi;             // rated: within the slider range
+    });
   }
   return items;
 }
@@ -2145,7 +2157,8 @@ function autoSelectFirst() {
 // ─────────────────────────────────────────────
 // Grid
 // ─────────────────────────────────────────────
-// Finished-tab rating range filter [lo, hi] (0–10, step 0.1). 0 == Unrated.
+// Finished-tab rating range filter [lo, hi] (0–10, step 0.1) over RATED titles only;
+// unrated titles are toggled separately via showUnrated.
 let finishedRange = (function () {
   try {
     const a = JSON.parse(localStorage.getItem('finishedRatingRange'));
@@ -2157,9 +2170,20 @@ let finishedRange = (function () {
 // hover tooltip can count titles within the slider's live sub-range.
 let _finRated = [];
 
+// Whether unrated finished items show in the grid. Decoupled from the slider (which
+// now covers only rated 0.1–10) and driven by the "Show unrated" checkbox. Default on.
+let showUnrated = (() => { try { return localStorage.getItem('finishedShowUnrated') !== '0'; } catch { return true; } })();
+function toggleShowUnrated(checked) {
+  showUnrated = !!checked;
+  try { localStorage.setItem('finishedShowUnrated', showUnrated ? '1' : '0'); } catch {}
+  renderGrid();
+}
+
 function _starLbl(v) {
   v = Number(v) || 0;
-  if (v <= 0) return 'Unrated';
+  // Bottom of the rating scale (lowest possible rating). Unrated items are no longer
+  // tied to the slider's lower bound — they're toggled separately via "Show unrated".
+  if (v <= 0) return '0.1' + STAR_SVG;
   return (Math.round(v * 10) % 10 === 0 ? String(Math.round(v)) : v.toFixed(1)) + STAR_SVG;
 }
 
@@ -2190,8 +2214,19 @@ function _fillGradient(k, lo, hi, off, on) {
   const sp = (s * 100).toFixed(2), ep = (e * 100).toFixed(2);
   return `linear-gradient(to right, ${off} 0%, ${off} ${sp}%, ${on} ${sp}%, ${on} ${ep}%, ${off} ${ep}%, ${off} 100%)`;
 }
-function _barFillStyle(k, lo, hi) { return _fillGradient(k, lo, hi, 'var(--card)',  'var(--accent)'); }
-function _lblFillStyle(k, lo, hi) { return _fillGradient(k, lo, hi, 'var(--muted)', 'var(--accent)'); }
+// Bars use --bar-on for the "on" colour so :hover can deepen ONLY the filled portion
+// (grey stays grey; a half-filled bar deepens just its purple half).
+function _barFillStyle(k, lo, hi) { return _fillGradient(k, lo, hi, 'var(--card)', 'var(--bar-on)'); }
+
+// Labels behave differently from bars: the highlight follows the dot. A label is grey
+// unless a slider thumb is currently INSIDE its bucket, in which case it shows the same
+// selected-portion split. So fully-in and fully-out buckets are grey, and a bucket
+// resets to grey the moment a thumb passes through it entirely.
+function _lblFillStyle(k, lo, hi) {
+  const hasThumb = (lo > k - 1 && lo < k) || (hi > k - 1 && hi < k);
+  if (!hasThumb) return 'var(--muted)';
+  return _fillGradient(k, lo, hi, 'var(--muted)', 'var(--accent)');
+}
 
 // Sync labels, bar highlights and thumb stacking to finishedRange. The low thumb is
 // raised above the high thumb once it enters the upper half (or they meet) so it
@@ -2331,6 +2366,10 @@ function renderGrid() {
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
       <span>Random</span>
     </button>` : ''}
+    ${currentTab === 'finished' ? `<label class="show-unrated-toggle" title="Show finished titles you haven't rated">
+      <input type="checkbox" ${showUnrated ? 'checked' : ''} onchange="toggleShowUnrated(this.checked)">
+      <span>Show unrated</span>
+    </label>` : ''}
     <div class="grid-right-group">
       ${renderGridControls()}
     </div>
