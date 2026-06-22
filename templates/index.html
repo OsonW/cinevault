@@ -818,9 +818,14 @@ input[type="range"]::-webkit-slider-thumb {
 .fh-bars { display: flex; align-items: flex-end; gap: 0.4rem; height: 6.5rem; }
 .fh-bar-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; cursor: default; }
 /* --fill is set per bar to a progressive grey/purple gradient (the selected rating
-   sub-range is purple). Kept as a custom property so the hover rule still wins. */
-.fh-bar { width: 100%; min-height: 0; background: var(--fill, var(--card)); border-radius: 3px 3px 0 0; transition: background 0.12s; }
-.fh-lbl { font-size: 0.7rem; color: var(--muted); margin-top: 0.2rem; white-space: nowrap; }
+   sub-range is purple). Kept as a custom property so the hover rule still wins. No
+   transition: tweening between gradients is what caused the flicker on fast drags. */
+.fh-bar { width: 100%; min-height: 0; background: var(--fill, var(--card)); border-radius: 3px 3px 0 0; }
+/* Labels mirror the bar's split via the same gradient, clipped to the text (muted→
+   accent) so the highlighted portion is purple too. */
+.fh-lbl { font-size: 0.7rem; margin-top: 0.2rem; white-space: nowrap;
+  background: var(--lblfill, var(--muted)); -webkit-background-clip: text; background-clip: text;
+  color: transparent; -webkit-text-fill-color: transparent; }
 .fh-bar-wrap:hover .fh-bar { background: var(--accent-hover); }
 .fh-tip { position: absolute; top: -1.6rem; transform: translateX(-50%); background: var(--card); border: 1px solid var(--border-md); border-radius: var(--radius); padding: 0.15rem 0.5rem; font-size: 0.78rem; color: var(--text); white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity 0.12s; z-index: 5; }
 .fh-tip.show { opacity: 1; }
@@ -2148,6 +2153,9 @@ let finishedRange = (function () {
   } catch {}
   return [0, 10];
 })();
+// Ratings of the finished+rated items, captured when the histogram renders, so the
+// hover tooltip can count titles within the slider's live sub-range.
+let _finRated = [];
 
 function _starLbl(v) {
   v = Number(v) || 0;
@@ -2169,19 +2177,21 @@ function onFinRange(which, val) {
   _liveFilterGrid();
 }
 
-// Progressive grey→purple fill for histogram bar k (covers ratings k-1..k): the
-// part overlapping the [lo,hi] selection is purple, the rest grey — so a thumb that
-// lands mid-bar splits it instead of flipping the whole bar. Returned as a value for
-// the bar's --fill custom property.
-function _barFillStyle(k, lo, hi) {
-  const off = 'var(--card)', on = 'var(--accent)';
+// Progressive fill for histogram bar k (covers ratings k-1..k): the part overlapping
+// the [lo,hi] selection is the "on" colour, the rest "off" — so a thumb that lands
+// mid-bar splits it instead of flipping the whole bar. Returned as a value for a
+// --fill / --lblfill custom property. Bars use card→accent; labels use muted→accent
+// so the greyed text stays legible.
+function _fillGradient(k, lo, hi, off, on) {
   const s = Math.max(0, Math.min(1, Math.max(lo, k - 1) - (k - 1)));   // selected-start fraction
   const e = Math.max(0, Math.min(1, Math.min(hi, k) - (k - 1)));       // selected-end fraction
-  if (e <= s)            return off;   // no overlap → all grey
-  if (s === 0 && e === 1) return on;   // fully selected → all purple
+  if (e <= s)             return off;   // no overlap → all off
+  if (s === 0 && e === 1) return on;    // fully selected → all on
   const sp = (s * 100).toFixed(2), ep = (e * 100).toFixed(2);
   return `linear-gradient(to right, ${off} 0%, ${off} ${sp}%, ${on} ${sp}%, ${on} ${ep}%, ${off} ${ep}%, ${off} 100%)`;
 }
+function _barFillStyle(k, lo, hi) { return _fillGradient(k, lo, hi, 'var(--card)',  'var(--accent)'); }
+function _lblFillStyle(k, lo, hi) { return _fillGradient(k, lo, hi, 'var(--muted)', 'var(--accent)'); }
 
 // Sync labels, bar highlights and thumb stacking to finishedRange. The low thumb is
 // raised above the high thumb once it enters the upper half (or they meet) so it
@@ -2203,6 +2213,8 @@ function _updateFinRangeUI() {
     const k = +w.dataset.k;
     const bar = w.querySelector('.fh-bar');
     if (bar) bar.style.setProperty('--fill', _barFillStyle(k, lo, hi));
+    const lbl = w.querySelector('.fh-lbl');
+    if (lbl) lbl.style.setProperty('--lblfill', _lblFillStyle(k, lo, hi));
   });
 }
 
@@ -2230,8 +2242,18 @@ function onFinRangeCommit() {
 function showHistTip(el) {
   const tip = document.getElementById('histTip');
   if (!tip) return;
-  const k = +el.dataset.k, c = +el.dataset.count;
-  tip.textContent = `${c} title${c !== 1 ? 's' : ''} ${k - 1}.1–${k}.0`;
+  const k = +el.dataset.k;
+  const [lo, hi] = finishedRange;
+  // Selected sub-range of this bucket (ratings k-1 .. k]. Fully outside the slider
+  // selection -> the bar is all grey, so show nothing.
+  const sLo = Math.max(lo, k - 1), sHi = Math.min(hi, k);
+  if (sHi <= sLo) { hideHistTip(); return; }
+  // Count only titles within the visible sub-range (matches what the grid shows).
+  const count  = _finRated.filter(r => r > k - 1 && r <= k && r >= lo && r <= hi).length;
+  // Clip the displayed bounds to a thumb that's sitting inside this bucket.
+  const loDisp = lo <= k - 1 ? (k - 1 + 0.1) : lo;
+  const hiDisp = hi >= k ? k : hi;
+  tip.textContent = `${count} title${count !== 1 ? 's' : ''} ${loDisp.toFixed(1)}–${hiDisp.toFixed(1)}`;
   tip.style.left = (el.offsetLeft + el.offsetWidth / 2) + 'px';
   tip.classList.add('show');
 }
@@ -2250,6 +2272,7 @@ function renderGrid() {
     const rated    = finished.filter(i => i.rating > 0);
     const avg      = rated.length
       ? (rated.reduce((s, i) => s + i.rating, 0) / rated.length).toFixed(1) : '—';
+    _finRated = rated.map(i => i.rating);   // for the histogram tooltip's live counts
     const buckets  = Array(10).fill(0);
     rated.forEach(i => { const k = Math.min(10, Math.max(1, Math.ceil(i.rating))); buckets[k - 1]++; });
     const maxB = Math.max(1, ...buckets);
@@ -2265,7 +2288,7 @@ function renderGrid() {
       return `<div class="fh-bar-wrap" data-k="${k}" data-count="${c}"
                 onmouseenter="showHistTip(this)" onmouseleave="hideHistTip()">
                 <div class="fh-bar" style="height:${h}%;--fill:${_barFillStyle(k, lo, hi)}"></div>
-                <div class="fh-lbl">${k}${STAR_SVG}</div>
+                <div class="fh-lbl" style="--lblfill:${_lblFillStyle(k, lo, hi)}">${k}★</div>
               </div>`;
     }).join('');
     statsHtml = `<div class="fin-stats">
