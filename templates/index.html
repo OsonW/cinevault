@@ -418,6 +418,15 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   overflow: hidden;
 }
 .sm-card-author { font-size: 0.6875rem; color: var(--muted); }
+.sm-card-author.sm-author-loading { display: inline-flex; align-items: center; height: 1.2em; }
+.author-dots { display: inline-flex; gap: 0.22em; }
+.author-dots span {
+  width: 0.3em; height: 0.3em; border-radius: 50%; background: var(--muted);
+  animation: author-bounce 1.1s infinite;
+}
+.author-dots span:nth-child(2) { animation-delay: 0.18s; }
+.author-dots span:nth-child(3) { animation-delay: 0.36s; }
+@keyframes author-bounce { 0%,70%,100% { opacity: 0.25; } 35% { opacity: 1; } }
 
 .sm-chips { display: flex; flex-wrap: wrap; gap: 0.25rem; }
 
@@ -751,6 +760,12 @@ input[type="range"]::-webkit-slider-thumb {
   border-radius:var(--radius); font-size:0.66em; font-weight:600; line-height:1.45;
   border:1px solid transparent; white-space:nowrap; }
 .spill-ic { height:1em; width:auto; }
+/* Shimmer placeholder shown in a search card's chip row while MDBList scores load. */
+.spill-skeleton {
+  width: 2.6em; height: 1.45em; padding: 0; border-color: transparent;
+  background: linear-gradient(90deg, var(--card) 25%, var(--subtle) 50%, var(--card) 75%);
+  background-size: 200% 100%; animation: shimmer 1.4s infinite;
+}
 .spill-imdb { background:rgba(245,197,24,0.16); color:#f5c518; border-color:rgba(245,197,24,0.4); }
 .spill-imdb b, .spill-mal b { font-weight:inherit; letter-spacing:0.01em; }
 .spill-mal { background:rgba(70,110,200,0.18); color:#8aa4e6; border-color:rgba(70,110,200,0.42); }
@@ -3372,16 +3387,26 @@ function hydrateSmAuthor(r) {
   if (!tid) return;
   const ck = `${r.media_type}:${tid}`;
   const fill = (a) => {
-    if (!a) return;
-    r.author = a;
     const safeId = (r.external_id || r.tmdb_id || '').toString().replace(/[^a-z0-9]/gi, '_');
     const card = document.getElementById(`smbtn-${r.media_type}-${safeId}`)?.closest('.sm-card');
-    const titleEl = card && card.querySelector('.sm-card-title');
-    if (titleEl && !card.querySelector('.sm-card-author')) {
-      const div = document.createElement('div');
-      div.className = 'sm-card-author';
-      div.textContent = a;
-      titleEl.insertAdjacentElement('afterend', div);
+    if (!card) return;
+    const existing = card.querySelector('.sm-card-author');
+    if (a) {
+      r.author = a;
+      if (existing) {                       // swap the loading "…" for the real name
+        existing.classList.remove('sm-author-loading');
+        existing.textContent = a;
+      } else {
+        const titleEl = card.querySelector('.sm-card-title');
+        if (titleEl) {
+          const div = document.createElement('div');
+          div.className = 'sm-card-author';
+          div.textContent = a;
+          titleEl.insertAdjacentElement('afterend', div);
+        }
+      }
+    } else if (existing && existing.classList.contains('sm-author-loading')) {
+      existing.remove();                    // no director found — drop the placeholder
     }
   };
   if (ck in _smAuthorCache) { fill(_smAuthorCache[ck]); return; }
@@ -3391,6 +3416,18 @@ function hydrateSmAuthor(r) {
     .then(res => res.json()).then(d => { _smAuthorCache[ck] = d.author || ''; fill(d.author); })
     .catch(() => {})
     .finally(() => _smAuthorPending.delete(ck));
+}
+
+// How many selected MDBList score pills are still pending for this card (so we can
+// draw that many shimmer placeholders until the ratings fetch resolves). Zero once
+// cached, or when scores can't load at all (no key / exhausted / not movie-or-tv).
+function _pendingScorePillCount(r) {
+  if (!_mdblist.has_key || _mdblist.exhausted) return 0;
+  if (r.media_type !== 'movie' && r.media_type !== 'tv') return 0;
+  const tid = r.tmdb_id || r.external_id;
+  if (!tid) return 0;
+  if ((`${r.media_type}:${tid}`) in _ratingsCache) return 0;   // already loaded
+  return searchPills.filter(s => SCORE_SOURCES.includes(s)).length;
 }
 
 function renderSmCard(r) {
@@ -3407,8 +3444,16 @@ function renderSmCard(r) {
   }
   const smItem = { media_type: r.media_type, year: r.year, tmdb_id: r.tmdb_id, external_id: r.external_id, tmdb_rating: r.tmdb_rating };
   const pillsId = `spills-${r.media_type}-${(r.external_id || r.tmdb_id || '').toString().replace(/[^a-z0-9]/gi,'_')}`;
-  const chipsHtml = `<div class="sm-chips" id="${pillsId}">${renderPills(smItem, _ratingsCache[r.media_type+':'+(r.tmdb_id||r.external_id)] || {}, searchPills)}</div>`;
-  const authorHtml = r.author ? `<div class="sm-card-author">${esc(r.author)}</div>` : '';
+  // Real pills from whatever's cached, plus a shimmer placeholder for each score pill
+  // that's still loading. hydratePills replaces the whole row once ratings arrive.
+  const realPills = renderPills(smItem, _ratingsCache[r.media_type+':'+(r.tmdb_id||r.external_id)] || {}, searchPills);
+  const skelPills = '<span class="spill spill-skeleton"></span>'.repeat(_pendingScorePillCount(r));
+  const chipsHtml = `<div class="sm-chips" id="${pillsId}">${realPills}${skelPills}</div>`;
+  // Movie/TV cards arrive without a director; show an animated "…" until it lands.
+  const authorLoading = !r.author && (r.media_type === 'movie' || r.media_type === 'tv') && (r.tmdb_id || r.external_id);
+  const authorHtml = r.author
+    ? `<div class="sm-card-author">${esc(r.author)}</div>`
+    : (authorLoading ? `<div class="sm-card-author sm-author-loading"><span class="author-dots"><span></span><span></span><span></span></span></div>` : '');
   const safeKey    = key.replace(/'/g, "\\'");
   return `<div class="sm-card ${already?'in-library':''}" data-media-type="${r.media_type}">
     <img class="sm-poster" src="${posterSrc}" referrerpolicy="no-referrer" onerror="this.src='${BROKEN_POSTER_FULL}'" loading="lazy">
