@@ -2555,7 +2555,10 @@ function _gridCardsHtml(items, size, cols) {
     const dateHtml = dateStr ? `<div class="poster-date">${dateVerb} ${dateStr}</div>` : '';
 
     const gridPills = tabGridPills[currentTab];
-    const realPills = renderPills(item, _ratingsCache[item.media_type+':'+(item.tmdb_id||item.external_id)] || {}, gridPills);
+    // Seed from the row's persisted ratings (like the detail panel), NOT just the session
+    // cache — so score pills render immediately on every paint instead of depending on an
+    // async hydrate that a quick tab-swap can race/drop.
+    const realPills = renderPills(item, _seedRatings(item), gridPills);
     // Shimmer placeholder while MDBList score pills are still loading (mirrors the search
     // card). hydratePills() replaces this row once the scores land.
     const skelPill  = _gridPillsPending(item, gridPills) ? '<span class="spill spill-skeleton">&nbsp;</span>' : '';
@@ -2829,12 +2832,16 @@ function ratingLabel(r) {
   return n <= 0 ? 'Unrated' : fmtRating(n) + ' / 10';
 }
 
+// Best ratings we can show RIGHT NOW, no fetch: a non-empty session cache entry, else
+// the row's persisted ratings (shipped on every /api/list item), else empty. Critically
+// an EMPTY cached object ({}) must NOT shadow item.ratings — objects are truthy, so the
+// old `if (_ratingsCache[k])` returned {} and blanked everything but tmdb.
 function _seedRatings(item) {
   const tid = item.tmdb_id || item.external_id;
   const k = item.media_type + ':' + tid;
-  if (_ratingsCache[k]) return _ratingsCache[k];
-  if (item.ratings) { try { return JSON.parse(item.ratings); } catch {} }
-  return {};
+  if (_ratingsCache[k] && Object.keys(_ratingsCache[k]).length) return _ratingsCache[k];
+  if (item.ratings) { try { const r = JSON.parse(item.ratings); if (r) return r; } catch {} }
+  return _ratingsCache[k] || {};
 }
 
 // Titles whose manual refresh is still in flight, so the spinner survives leaving
@@ -3707,14 +3714,15 @@ function _scorePillsPending(r) {
   return searchPills.some(s => SCORE_SOURCES.includes(s));
 }
 
-// Grid equivalent of _scorePillsPending: true when a card's MDBList score pills are
-// selected but not yet cached, so we can show a single shimmer pill until they load.
+// Grid equivalent of _scorePillsPending: true only when a card has score pills selected
+// but NOTHING to show yet — no session cache AND no persisted row ratings. Once we can
+// seed any scores (the common case), the pills render directly, so no skeleton.
 function _gridPillsPending(item, selected) {
   if (!_mdblist.has_key || _mdblist.exhausted) return false;
   if (item.media_type !== 'movie' && item.media_type !== 'tv') return false;
   const tid = item.tmdb_id || item.external_id;
   if (!tid) return false;
-  if ((item.media_type + ':' + tid) in _ratingsCache) return false;
+  if (Object.keys(_seedRatings(item)).length) return false;   // already have scores to show
   return selected.some(s => SCORE_SOURCES.includes(s));
 }
 
@@ -4093,7 +4101,7 @@ function hydratePills(hostId, item, selected) {
         .then(r => r.json()).then(d => {
           item.tmdb_rating = d.tmdb;
           const host = document.getElementById(hostId);
-          if (host) host.innerHTML = renderPills(item, _ratingsCache[item.media_type+':'+tid] || {}, selected);
+          if (host) host.innerHTML = renderPills(item, _seedRatings(item), selected);
         }).catch(() => {});
     }
   }
@@ -4102,7 +4110,10 @@ function hydratePills(hostId, item, selected) {
   if (!tmdbId || (item.media_type !== 'movie' && item.media_type !== 'tv')) return;
   fetchRatings(item.media_type, tmdbId).then(r => {
     const host = document.getElementById(hostId);
-    if (host) host.innerHTML = renderPills(item, r, selected);
+    // Never blank existing pills: if this fetch came back empty (cap/transient), fall
+    // back to whatever we can seed (persisted row ratings) rather than wiping them.
+    const show = (r && Object.keys(r).length) ? r : _seedRatings(item);
+    if (host) host.innerHTML = renderPills(item, show, selected);
     // Adopt the server's last-refresh time so the detail "Updated …" tag shows up —
     // newly-added items have no timestamp until this first fetch resolves. Don't gate
     // on the value changing: the grid card hydrates the SAME item object first, so by
