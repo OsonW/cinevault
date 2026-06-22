@@ -3307,8 +3307,9 @@ function renderModalResults(libMatches, tmdbResults, q, loading) {
     html += `<div class="sm-section-label" style="margin-top:${libMatches.length?'0.5rem':'0'}">Add from search</div>
       <div class="sm-grid">`;
     html += shownResults.map(r => renderSmCard(r)).join('');
-    // One trailing skeleton while more types are still loading.
-    if (loading) html += `<div><div class="sm-skeleton"></div></div>`;
+    // One trailing skeleton while more types are still loading — but only if the two
+    // visible rows aren't already full (no dangling 11th skeleton past a filled grid).
+    if (loading && shownResults.length < _modalShown) html += `<div><div class="sm-skeleton"></div></div>`;
     html += `</div>`;
     // Once loading is done, offer to reveal another row if more remain.
     if (!loading && tmdbResults.length > _modalShown) {
