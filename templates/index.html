@@ -2189,14 +2189,17 @@ function autoSelectFirst() {
 // ─────────────────────────────────────────────
 // Grid
 // ─────────────────────────────────────────────
-// Finished-tab rating range filter [lo, hi] (0–10, step 0.1) over RATED titles only;
-// unrated titles are toggled separately via showUnrated.
+// Finished-tab rating range filter [lo, hi] over RATED titles only (unrated titles are
+// toggled separately via showUnrated). The lower bound floors at 0.1 — the lowest
+// possible rating — so the thumb can't sit at 0, which would label "0.1" twice.
+const FIN_LO_MIN = 0.1;
 let finishedRange = (function () {
   try {
     const a = JSON.parse(localStorage.getItem('finishedRatingRange'));
-    if (Array.isArray(a) && a.length === 2) return [Math.min(a[0], a[1]), Math.max(a[0], a[1])];
+    if (Array.isArray(a) && a.length === 2)
+      return [Math.max(FIN_LO_MIN, Math.min(a[0], a[1])), Math.max(a[0], a[1])];
   } catch {}
-  return [0, 10];
+  return [FIN_LO_MIN, 10];
 })();
 // Ratings of the finished+rated items, captured when the histogram renders, so the
 // hover tooltip can count titles within the slider's live sub-range.
@@ -2212,10 +2215,7 @@ function toggleShowUnrated(checked) {
 }
 
 function _starLbl(v) {
-  v = Number(v) || 0;
-  // Bottom of the rating scale (lowest possible rating). Unrated items are no longer
-  // tied to the slider's lower bound — they're toggled separately via "Show unrated".
-  if (v <= 0) return '0.1' + STAR_SVG;
+  v = Math.max(FIN_LO_MIN, Number(v) || 0);   // floored at the lowest rating (0.1)
   return (Math.round(v * 10) % 10 === 0 ? String(Math.round(v)) : v.toFixed(1)) + STAR_SVG;
 }
 
@@ -2224,7 +2224,7 @@ function _starLbl(v) {
 // thumb the user is holding is never destroyed mid-gesture.
 function onFinRange(which, val) {
   let [lo, hi] = finishedRange;
-  val = Math.max(0, Math.min(10, Math.round(Number(val) * 10) / 10));
+  val = Math.max(FIN_LO_MIN, Math.min(10, Math.round(Number(val) * 10) / 10));
   if (which === 'lo') { lo = Math.min(val, hi); const el = document.getElementById('finLo'); if (el && +el.value !== lo) el.value = lo; }
   else                { hi = Math.max(val, lo); const el = document.getElementById('finHi'); if (el && +el.value !== hi) el.value = hi; }
   finishedRange = [lo, hi];
@@ -2246,8 +2246,11 @@ function _fillGradient(k, lo, hi, off, on) {
   return `linear-gradient(to right, ${off} 0%, ${off} ${sp}%, ${on} ${sp}%, ${on} ${ep}%, ${off} ${ep}%, ${off} 100%)`;
 }
 // Bars use --bar-on for the "on" colour so :hover can deepen ONLY the filled portion
-// (grey stays grey; a half-filled bar deepens just its purple half).
-function _barFillStyle(k, lo, hi) { return _fillGradient(k, lo, hi, 'var(--card)', 'var(--bar-on)'); }
+// (grey stays grey; a half-filled bar deepens just its purple half). At the slider
+// floor, drop lo to 0 so bar 1 fills from its very bottom — no 0–0.1 dead-zone sliver.
+function _barFillStyle(k, lo, hi) {
+  return _fillGradient(k, lo <= FIN_LO_MIN ? 0 : lo, hi, 'var(--card)', 'var(--bar-on)');
+}
 
 // Label fill = treat the selection boundary as a vertical line at the dot's centre.
 // A label (centred under its bar, with a real pixel width) is purple where it lies
