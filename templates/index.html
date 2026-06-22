@@ -2362,7 +2362,7 @@ function renderGrid() {
     const bars = buckets.map((c, idx) => {
       const k = idx + 1;
       const h = c ? Math.max(8, Math.round(c / maxB * 100)) : 0;
-      return `<div class="fh-bar-wrap" data-k="${k}" data-count="${c}"
+      return `<div class="fh-bar-wrap" data-k="${k}"
                 onmouseenter="showHistTip(this)" onmouseleave="hideHistTip()">
                 <div class="fh-bar" style="height:${h}%;--fill:${_barFillStyle(k, lo, hi)}"></div>
                 <div class="fh-lbl">${k}★<span class="fh-lbl-fill">${k}★</span></div>
