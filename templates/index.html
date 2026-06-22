@@ -3799,10 +3799,13 @@ function hydratePills(hostId, item, selected) {
   fetchRatings(item.media_type, tmdbId).then(r => {
     const host = document.getElementById(hostId);
     if (host) host.innerHTML = renderPills(item, r, selected);
-    // Adopt the server's last-refresh time so the detail "Updated …" tag shows
-    // up — newly-added items have no timestamp until this first fetch resolves.
+    // Adopt the server's last-refresh time so the detail "Updated …" tag shows up —
+    // newly-added items have no timestamp until this first fetch resolves. Don't gate
+    // on the value changing: the grid card hydrates the SAME item object first, so by
+    // the time the detail hydration runs the field is already set — but the rendered
+    // meta still needs refreshing. Always re-render the detail meta when a stamp exists.
     const stamp = _ratingsUpdatedAt[item.media_type + ':' + tmdbId];
-    if (stamp && stamp !== item.ratings_updated_at) {
+    if (stamp) {
       item.ratings_updated_at = stamp;
       if (hostId === 'detailScores' && selectedId === item.id) _rerenderRatingsMeta(item);
     }
