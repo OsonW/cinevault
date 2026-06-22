@@ -3566,6 +3566,13 @@ async function _reconcileModal(key, r) {
     };
     if (newItem.id != null && !allItems.some(i => i.id === newItem.id)) allItems.push(newItem);
     inLibrary.add(key);
+    // While it was a search result, this title's ratings were cached from the
+    // non-library endpoint, which omits the refresh timestamp. Drop that entry so the
+    // detail panel re-fetches via the library path (which returns `updated_at`) — that's
+    // what makes the "Updated …" tag appear for a freshly-added item.
+    const rk = `${r.media_type}:${r.tmdb_id || ext}`;
+    delete _ratingsCache[rk];
+    delete _ratingsUpdatedAt[rk];
     // Don't yank the user to the new item if they've since asked to remove it.
     if (_modalDesired.get(key) !== false) {
       showToast(`"${r.title}" added to Watchlist`);
@@ -3700,6 +3707,7 @@ function renderPills(item, ratings, selected) {
 // the detail panel's "Updated …" tag can appear even for freshly-added items
 // (which start life with no local ratings_updated_at).
 const _ratingsUpdatedAt = {};   // "media_type:tmdb_id" -> ISO string
+const _ratingsInflight  = {};   // "media_type:tmdb_id" -> Promise (coalesce concurrent fetches)
 
 async function fetchRatings(mediaType, tmdbId) {
   if (!tmdbId || (mediaType !== 'movie' && mediaType !== 'tv')) return {};
@@ -3707,14 +3715,22 @@ async function fetchRatings(mediaType, tmdbId) {
   if (k in _ratingsCache) return _ratingsCache[k];
   // Out of quota: don't spend a failing call; show nothing new this session.
   if (_mdblist.exhausted) return {};
-  try {
-    const res = await fetch(`/api/ratings/${mediaType}/${encodeURIComponent(tmdbId)}`);
-    const json = res.ok ? await res.json() : {};
-    const data = json.ratings || {};
-    _ratingsCache[k] = data;
-    if (json.updated_at) _ratingsUpdatedAt[k] = json.updated_at;
-    return data;
-  } catch { _ratingsCache[k] = {}; return {}; }
+  // Coalesce: the grid card and detail panel often both ask for the same title at
+  // once (e.g. a freshly-added item) — share one request, not two MDBList slots.
+  if (k in _ratingsInflight) return _ratingsInflight[k];
+  const p = (async () => {
+    try {
+      const res = await fetch(`/api/ratings/${mediaType}/${encodeURIComponent(tmdbId)}`);
+      const json = res.ok ? await res.json() : {};
+      const data = json.ratings || {};
+      _ratingsCache[k] = data;
+      if (json.updated_at) _ratingsUpdatedAt[k] = json.updated_at;
+      return data;
+    } catch { _ratingsCache[k] = {}; return {}; }
+    finally { delete _ratingsInflight[k]; }
+  })();
+  _ratingsInflight[k] = p;
+  return p;
 }
 
 // "just now" (<60s) / "Xm ago" / "Xh ago" / "Xd ago" from an ISO timestamp.
