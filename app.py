@@ -587,50 +587,6 @@ def search_books():
         return jsonify([])
 
 
-@app.route("/api/book/isbn/<isbn>")
-@login_required
-def get_book_by_isbn(isbn):
-    cache_key = f"isbn:{isbn}"
-    if cache_key in search_cache:
-        return jsonify(search_cache[cache_key])
-
-    try:
-        resp = requests.get(f"https://openlibrary.org/isbn/{isbn}.json", timeout=8)
-        if resp.status_code != 200:
-            return jsonify({"error": "Not found"}), 404
-        data = resp.json()
-        work_key = data.get("works", [{}])[0].get("key")
-        description = ""
-        if work_key:
-            work_resp = requests.get(f"https://openlibrary.org{work_key}.json", timeout=8)
-            if work_resp.status_code == 200:
-                work_data = work_resp.json()
-                description = work_data.get("description", "")
-                if isinstance(description, dict):
-                    description = description.get("value", "")
-
-        cover_url = None
-        if data.get("covers"):
-            cover_id = data["covers"][0]
-            cover_url = f"https://covers.openlibrary.org/b/id/{cover_id}-L.jpg"
-        result = {
-            "external_id": isbn,
-            "title": data.get("title", "Unknown"),
-            "author": ", ".join(data.get("authors", [])),
-            "year": str(data.get("publish_date", ""))[:4],
-            "media_type": "book",
-            "cover_url": cover_url,
-            "total_pages": data.get("number_of_pages"),
-            "overview": description[:500] if description else "",
-        }
-        search_cache[cache_key] = result
-        return jsonify(result)
-
-    except Exception as e:
-        print(f"ISBN lookup error: {e}")
-        return jsonify({"error": "An internal error occurred."}), 500
-
-
 @app.route("/api/search/manga")
 @login_required
 def search_manga():
@@ -744,6 +700,7 @@ def get_poster(media_type, item_id):
                 cover_url = _fetch_mangadex_cover_url(item_id)
                 if cover_url and row:
                     update_media_entry(row["id"], cover_url=cover_url)
+                    _invalidate_media_cache(row["id"])
             except Exception:
                 cover_url = ""
 
@@ -919,11 +876,15 @@ def api_tmdb_director(media_type, tmdb_id):
     key = _get_tmdb_key()
     if not key:
         return jsonify({"author": ""})
+    try:
+        tid = int(tmdb_id)
+    except (TypeError, ValueError):
+        return jsonify({"author": ""})
     ck = f"{media_type}:{tmdb_id}"
     hit = _tmdb_director_cache.get(ck)
     if hit and (time.time() - hit[0]) < _TMDB_DIRECTOR_TTL:
         return jsonify({"author": hit[1]})
-    author = _fetch_tmdb_director(media_type, int(tmdb_id), key) or ""
+    author = _fetch_tmdb_director(media_type, tid, key) or ""
     if len(_tmdb_director_cache) > 2000:
         _tmdb_director_cache.pop(next(iter(_tmdb_director_cache)))
     _tmdb_director_cache[ck] = (time.time(), author)
@@ -1014,8 +975,7 @@ def add_media():
             return jsonify({"error": "Invalid status"}), 400
         allowed = {
             "status", "rating", "last_timestamp",
-            "last_season", "last_episode",
-            "last_volume", "last_chapter",
+            "last_season", "last_episode", "last_chapter",
             "current_page", "total_pages",
             "notes", "cover_url", "author",
         }
@@ -1139,7 +1099,7 @@ def restore_media():
     update_fields = {
         k: media_data[k]
         for k in ("rating", "notes", "last_timestamp", "last_season",
-                  "last_episode", "last_volume", "last_chapter",
+                  "last_episode", "last_chapter",
                   "current_page", "total_pages")
         if k in media_data
     }

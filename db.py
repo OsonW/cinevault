@@ -148,8 +148,7 @@ def add_media_entry(
 
 _UPDATABLE = frozenset({
     "status", "rating", "last_timestamp",
-    "last_season", "last_episode",
-    "last_volume", "last_chapter",
+    "last_season", "last_episode", "last_chapter",
     "current_page", "total_pages",
     "notes", "cover_url", "author", "overview",
 })
@@ -157,7 +156,7 @@ _UPDATABLE = frozenset({
 # Changing any of these while an item is in "watching" counts as progress.
 _PROGRESS_FIELDS = frozenset({
     "last_timestamp", "last_season", "last_episode",
-    "last_volume", "last_chapter", "current_page",
+    "last_chapter", "current_page",
 })
 
 _STATUS_DATE_COL = {
