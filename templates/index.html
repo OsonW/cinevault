@@ -1634,7 +1634,7 @@ document.addEventListener('touchmove', e => {
 // ─────────────────────────────────────────────
 let _cachedKeys = { tmdb_key: '', mdblist_key: '', has_keys: false };
 let _keyModalMode = 'entry';  // 'entry' = mandatory first-time, 'update' = optional
-const _currentUsername = document.getElementById('entryGreeting').dataset.username;
+let _currentUsername = document.getElementById('entryGreeting').dataset.username;
 
 let _refreshKeysInflight = null;
 async function refreshKeys() {
@@ -1790,24 +1790,6 @@ function openKeyUpdate() {
   });
 }
 
-// ─────────────────────────────────────────────
-// Logout
-// ─────────────────────────────────────────────
-function openLogoutConfirm() {
-  document.getElementById('logoutConfirmBtn').disabled = false;
-  document.getElementById('logoutConfirmBtn').textContent = 'Log out';
-  document.getElementById('logoutCancelBtn').disabled = false;
-  document.getElementById('logoutConfirmBackdrop').classList.remove('hidden');
-}
-function closeLogoutConfirm() {
-  document.getElementById('logoutConfirmBackdrop').classList.add('hidden');
-  document.getElementById('logoutDeleteAccountLink').style.display = '';
-  document.getElementById('logoutDeleteSection').classList.add('hidden');
-  document.getElementById('logoutDeleteUsernameInput').value = '';
-  const dBtn = document.getElementById('logoutDeleteConfirmBtn');
-  dBtn.disabled = true;
-  dBtn.textContent = 'Delete Permanently';
-}
 // Abort every in-flight request that holds (or queues behind) a server
 // worker. The deployment runs only a few sync workers, so without this a
 // logout/redirect request can find no free worker and stall.
@@ -1816,38 +1798,192 @@ function abortInFlightRequests() {
   statusChangePending.forEach(c => c?.abort());
 }
 
-function doLogout() {
-  const btn    = document.getElementById('logoutConfirmBtn');
-  const cancel = document.getElementById('logoutCancelBtn');
-  if (btn.disabled) return;            // already triggered
+// ─────────────────────────────────────────────
+// Profile modal
+// ─────────────────────────────────────────────
+function openProfileModal() {
+  // Reset every editable section back to its collapsed default.
+  cancelUsernameEdit();
+  cancelPasswordEdit();
+  document.getElementById('profileDeleteLink').style.display = '';
+  document.getElementById('profileDeleteSection').classList.add('hidden');
+  document.getElementById('profileDeleteUsernameInput').value = '';
+  document.getElementById('profileDeleteConfirmBtn').disabled = true;
+
+  document.getElementById('profileUsernameDisplay').textContent = _currentUsername;
+  document.getElementById('profileUsernameValue').textContent   = _currentUsername;
+
+  const status = document.getElementById('profileKeysStatus');
+  status.textContent = _cachedKeys.has_keys ? 'TMDB set' : 'Not set';
+  refreshKeys().then(keys => {
+    if (document.getElementById('profileModalBackdrop').classList.contains('hidden')) return;
+    status.textContent = keys.has_keys ? 'TMDB set' : 'Not set';
+  });
+
+  document.getElementById('profileModalBackdrop').classList.remove('hidden');
+}
+
+function closeProfileModal() {
+  document.getElementById('profileModalBackdrop').classList.add('hidden');
+}
+
+function onProfileBackdropClick(e) {
+  if (e.target === document.getElementById('profileModalBackdrop')) closeProfileModal();
+}
+
+// ── Username editing ──
+function startUsernameEdit() {
+  document.getElementById('profileUsernameEditBtn').style.display = 'none';
+  const input = document.getElementById('profileUsernameInput');
+  input.value = _currentUsername;
+  document.getElementById('profileUsernameEdit').classList.remove('hidden');
+  validateUsernameEdit();
+  input.focus();
+  input.select();
+}
+function cancelUsernameEdit() {
+  document.getElementById('profileUsernameEdit').classList.add('hidden');
+  document.getElementById('profileUsernameInput').value = '';
+  document.getElementById('profileUsernameEditBtn').style.display = '';
+}
+function validateUsernameEdit() {
+  const val = document.getElementById('profileUsernameInput').value.trim();
+  // Enable once it's a valid length and actually different from the current name.
+  const ok = val.length >= 4 && val.length <= 32 && !/\s/.test(val) && val !== _currentUsername;
+  document.getElementById('profileUsernameSave').disabled = !ok;
+}
+async function saveUsername() {
+  const btn = document.getElementById('profileUsernameSave');
+  if (btn.disabled) return;
+  const username = document.getElementById('profileUsernameInput').value.trim();
   btn.disabled = true;
-  cancel.disabled = true;
-  btn.textContent = 'Logging out…';
-  abortInFlightRequests();             // free a worker so logout isn't queued
-  // Top-level navigation: the server clears the session and redirects to
-  // /login in one request, so we never land on a page while still
-  // authenticated (which would bounce us back to the library).
+  btn.textContent = 'Saving…';
+  let ok = false, errMsg = 'Something went wrong — please try again.';
+  try {
+    const res = await fetch('/auth/username', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username }),
+    });
+    ok = res.ok;
+    if (!ok) {
+      try {
+        const body = await res.json();
+        errMsg = res.status === 429
+          ? 'Too many attempts — please wait a moment and try again.'
+          : (body.error || errMsg);
+      } catch {}
+    } else {
+      const body = await res.json();
+      _currentUsername = body.username;
+    }
+  } catch { errMsg = 'Network error — please check your connection and try again.'; }
+
+  btn.textContent = 'Save';
+  if (ok) {
+    // Reflect the new name everywhere it's shown, without a reload.
+    document.getElementById('profileUsernameDisplay').textContent = _currentUsername;
+    document.getElementById('profileUsernameValue').textContent   = _currentUsername;
+    const greeting = document.getElementById('entryGreeting');
+    greeting.dataset.username = _currentUsername;
+    greeting.innerHTML = 'Hello, <strong></strong>';
+    greeting.querySelector('strong').textContent = _currentUsername;
+    cancelUsernameEdit();
+    showToast('Username updated.');
+  } else {
+    validateUsernameEdit();
+    showToast(errMsg, 'error');
+  }
+}
+
+// ── Password editing ──
+function startPasswordEdit() {
+  document.getElementById('profilePasswordBtn').style.display = 'none';
+  document.getElementById('profilePasswordEdit').classList.remove('hidden');
+  document.getElementById('profilePwCurrent').focus();
+}
+function cancelPasswordEdit() {
+  document.getElementById('profilePasswordEdit').classList.add('hidden');
+  ['profilePwCurrent', 'profilePwNew', 'profilePwConfirm'].forEach(id =>
+    document.getElementById(id).value = '');
+  document.getElementById('profilePasswordSave').disabled = true;
+  document.getElementById('profilePasswordBtn').style.display = '';
+}
+function validatePasswordEdit() {
+  const cur = document.getElementById('profilePwCurrent').value;
+  const nw  = document.getElementById('profilePwNew').value;
+  const cf  = document.getElementById('profilePwConfirm').value;
+  const ok = cur.length > 0 && nw.length >= 4 && nw.length <= 32 && !/\s/.test(nw) && nw === cf;
+  document.getElementById('profilePasswordSave').disabled = !ok;
+}
+async function savePassword() {
+  const btn = document.getElementById('profilePasswordSave');
+  if (btn.disabled) return;
+  const current_password = document.getElementById('profilePwCurrent').value;
+  const new_password     = document.getElementById('profilePwNew').value;
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  let ok = false, errMsg = 'Something went wrong — please try again.';
+  try {
+    const res = await fetch('/auth/password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ current_password, new_password }),
+    });
+    ok = res.ok;
+    if (!ok) {
+      try {
+        const body = await res.json();
+        errMsg = res.status === 429
+          ? 'Too many attempts — please wait a moment and try again.'
+          : (body.error || errMsg);
+      } catch {}
+    }
+  } catch { errMsg = 'Network error — please check your connection and try again.'; }
+
+  btn.textContent = 'Save';
+  if (ok) {
+    cancelPasswordEdit();
+    showToast('Password updated.');
+  } else {
+    validatePasswordEdit();
+    showToast(errMsg, 'error');
+  }
+}
+
+// ── API keys ──
+function manageKeysFromProfile() {
+  closeProfileModal();
+  openKeyUpdate();
+}
+
+// ── Logout ──
+// Abort in-flight fetches first so the navigation isn't queued behind a busy
+// worker (PythonAnywhere free tier has a single worker).
+function doLogout() {
+  abortInFlightRequests();
   window.location.href = '/auth/logout';
 }
 
-function showLogoutDeleteSection() {
-  document.getElementById('logoutDeleteAccountLink').style.display = 'none';
-  document.getElementById('logoutDeleteUsernameHint').textContent = _currentUsername;
-  document.getElementById('logoutDeleteSection').classList.remove('hidden');
-  document.getElementById('logoutDeleteUsernameInput').focus();
+// ── Delete account ──
+function showProfileDeleteSection() {
+  document.getElementById('profileDeleteLink').style.display = 'none';
+  document.getElementById('profileDeleteUsernameHint').textContent = _currentUsername;
+  document.getElementById('profileDeleteSection').classList.remove('hidden');
+  document.getElementById('profileDeleteUsernameInput').focus();
 }
-function validateLogoutDelete() {
-  const val = document.getElementById('logoutDeleteUsernameInput').value.trim();
-  document.getElementById('logoutDeleteConfirmBtn').disabled =
+function validateProfileDelete() {
+  const val = document.getElementById('profileDeleteUsernameInput').value.trim();
+  document.getElementById('profileDeleteConfirmBtn').disabled =
     val.toLowerCase() !== _currentUsername.toLowerCase();
 }
 async function doDeleteAccount() {
-  const btn = document.getElementById('logoutDeleteConfirmBtn');
+  const btn = document.getElementById('profileDeleteConfirmBtn');
   if (btn.disabled) return;
-  const username = document.getElementById('logoutDeleteUsernameInput').value.trim();
+  const username = document.getElementById('profileDeleteUsernameInput').value.trim();
   btn.disabled = true;
   btn.textContent = 'Deleting…';
-  abortInFlightRequests();             // free a worker so the delete isn't queued
+  abortInFlightRequests();
   try {
     await fetch('/auth/cancel-registration', {
       method: 'POST',
@@ -1855,7 +1991,6 @@ async function doDeleteAccount() {
       body: JSON.stringify({ username }),
     });
   } catch {}
-  // cancel_registration logs the user out server-side, so /login won't bounce.
   window.location.href = '/login';
 }
 
