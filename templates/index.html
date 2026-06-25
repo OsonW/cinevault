@@ -829,9 +829,10 @@ input[type="range"]::-webkit-slider-thumb {
 .spill { display:inline-flex; align-items:center; gap:0.2em; padding:0.125rem 0.4rem;
   border-radius:var(--radius); font-size:0.66em; font-weight:600; line-height:1.45;
   border:1px solid transparent; white-space:nowrap; }
-/* A score pill that links out to its official site. Keeps the pill's own colour
-   (inherits from the spill-<src> class) and just adds affordance on hover. */
-a.spill { text-decoration:none; color:inherit; cursor:pointer;
+/* A score pill that links out to its official site. Must NOT set its own `color`
+   (e.g. inherit) — that would out-specify the .spill-<src> colour and wash the text
+   white. The per-source class keeps the colour; we only add link affordance here. */
+a.spill { text-decoration:none; cursor:pointer;
   transition:filter .12s ease, box-shadow .12s ease; }
 a.spill:hover { filter:brightness(1.18); box-shadow:0 0 0 1px currentColor inset; }
 .spill-ic { height:1em; width:auto; }
@@ -2079,7 +2080,14 @@ async function doCancelAccount() {
 document.addEventListener('DOMContentLoaded', async () => {
   await refreshKeys();
   if (!_cachedKeys.has_keys) showKeyModal('entry');
-  refreshMdblistStatus();
+  // The detail panel can render (autoSelectFirst on first load) before MDBList status
+  // resolves, and _ratingsMetaHtml hides the refresh button + "Updated …" label while
+  // has_key is still false. Re-render the meta for the open item once status lands.
+  refreshMdblistStatus().then(() => {
+    if (selectedId === null) return;
+    const it = allItems.find(i => i.id === selectedId);
+    if (it) _rerenderRatingsMeta(it);
+  });
   const _sfh = document.getElementById('searchFilterHost');
   if (_sfh) _sfh.innerHTML = renderSearchFilter();
 });
@@ -2176,7 +2184,18 @@ const NOTES_COLLAPSE_SVG = `<svg width="14" height="14" viewBox="0 0 24 24" fill
 // ─────────────────────────────────────────────
 // Boot
 // ─────────────────────────────────────────────
+// Restore the tab + highlighted item from the last visit so a page reload doesn't
+// snap back to the first watchlist title. The selection is applied once the grid
+// loads (pendingSelectId), and falls back to autoSelectFirst if that item is gone.
+const _savedTab = localStorage.getItem('lastTab');
+if (_savedTab && ['watchlist', 'watching', 'finished'].includes(_savedTab)) currentTab = _savedTab;
+const _savedSel = parseInt(localStorage.getItem('lastSelectedId'), 10);
+if (!isNaN(_savedSel)) pendingSelectId = _savedSel;
+
 document.body.dataset.tab = currentTab;
+// The tab bar's active button is hardcoded to Watchlist in the markup; sync it to the
+// restored tab so the highlight matches the grid we're about to render.
+document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === currentTab));
 // Apply the persisted sort for the initial tab. The boot path renders the grid
 // directly without going through switchTab (which is what normally syncs
 // currentSort from tabSort), so without this the saved preference is ignored
@@ -2474,6 +2493,8 @@ function switchTab(tab, selectId = null) {
 
   currentTab = tab;
   selectedId = null;
+  // Remember the active tab across page reloads (restored on boot).
+  try { localStorage.setItem('lastTab', tab); } catch {}
   document.body.dataset.tab = tab;
   document.querySelectorAll('.tab').forEach(t =>
     t.classList.toggle('active', t.dataset.tab === tab)
@@ -3122,6 +3143,8 @@ function highlightCard(id) {
 function selectItem(id) {
   selectedId = id;
   tabLastSelected[currentTab] = id;
+  // Remember the highlighted item across page reloads (restored on boot).
+  try { localStorage.setItem('lastSelectedId', String(id)); } catch {}
   highlightCard(id);
   const item = allItems.find(i => i.id === id);
   if (item) renderDetail(item);
