@@ -63,6 +63,31 @@ def delete_user(user_id: int) -> None:
         conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
 
 
+def update_username(user_id: int, new_username: str) -> bool:
+    """Rename a user. Returns True on success, False if the username is already
+    taken. Uniqueness is case-insensitive (the column is UNIQUE COLLATE NOCASE),
+    and SQLite only conflicts a row against *other* rows — so a user may change
+    only the capitalization of their own name."""
+    try:
+        with _get_users_conn() as conn:
+            conn.execute(
+                "UPDATE users SET username = ? WHERE id = ?",
+                (new_username, user_id),
+            )
+        return True
+    except sqlite3.IntegrityError:
+        return False
+
+
+def update_password(user_id: int, new_password: str) -> None:
+    pw_hash = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
+    with _get_users_conn() as conn:
+        conn.execute(
+            "UPDATE users SET password_hash = ? WHERE id = ?",
+            (pw_hash, user_id),
+        )
+
+
 def create_user(username: str, password: str) -> int | None:
     """Returns new user_id on success, None if username is taken."""
     pw_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
