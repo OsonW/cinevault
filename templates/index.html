@@ -1288,7 +1288,7 @@ body.entry-active .entry-cancel-account { display: block; }
 .profile-row:first-child { border-top: none; }
 .profile-row-main { display: flex; flex-direction: column; gap: 0.125rem; min-width: 0; }
 .profile-row-label { font-size: 0.6875rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
-.profile-row-value { font-size: 0.8125rem; color: var(--text); overflow: hidden; text-overflow: ellipsis; }
+.profile-row-value { font-size: 0.8125rem; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .profile-row-action {
   background: none; border: 1px solid var(--border-md);
   border-radius: var(--radius); padding: 0.3125rem 0.75rem;
@@ -1303,9 +1303,10 @@ body.entry-active .entry-cancel-account { display: block; }
   border-radius: var(--radius); padding: 0.4375rem 0.625rem;
   color: var(--text); font-size: 0.75rem; font-family: 'DM Sans', sans-serif; outline: none;
 }
-.profile-input:focus { border-color: var(--border-md); }
+.profile-input:focus { border-color: var(--accent); }
 .profile-edit-actions { display: flex; gap: 0.5rem; justify-content: flex-end; }
 .profile-save { background: var(--accent, #6c5ce7); }
+.key-confirm-delete.profile-save:hover { background: var(--accent-hover); }
 .profile-actions { margin-top: 1rem; }
 .profile-logout-btn {
   width: 100%; background: none; border: 1px solid var(--border-md);
