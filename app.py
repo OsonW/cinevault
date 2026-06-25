@@ -131,6 +131,21 @@ _MDBLIST_SOURCE_ALIASES = {
 _MDBLIST_TYPE = {"movie": "movie", "tv": "show"}
 
 
+def _extract_imdb_id(payload) -> str | None:
+    """Best-effort IMDb tconst ('tt…') from an MDBList payload, tolerant of shape
+    differences across API versions (flat `imdbid` or nested `ids.imdb`). Returns
+    None when absent/malformed so the IMDb pill falls back to a search link."""
+    if not isinstance(payload, dict):
+        return None
+    cand = payload.get("imdbid")
+    if not cand:
+        ids = payload.get("ids")
+        if isinstance(ids, dict):
+            cand = ids.get("imdb") or ids.get("imdbid")
+    cand = str(cand).strip() if cand else ""
+    return cand if cand.startswith("tt") else None
+
+
 def _fetch_mdblist_ratings(media_type: str, tmdb_id, key: str):
     """Return {source: value} for the sources we display. Returns None on a real
     FAILURE (non-200 / timeout / exception) so callers can tell "the call failed" from
@@ -148,7 +163,8 @@ def _fetch_mdblist_ratings(media_type: str, tmdb_id, key: str):
         )
         if resp.status_code != 200:
             return None
-        ratings = resp.json().get("ratings") or []
+        payload = resp.json()
+        ratings = payload.get("ratings") or []
     except Exception:
         return None
     out = {}
@@ -159,6 +175,15 @@ def _fetch_mdblist_ratings(media_type: str, tmdb_id, key: str):
         val = r.get("value")
         if canon and val is not None and canon not in out:
             out[canon] = val
+    # Attach the IMDb tconst so the IMDb pill can deep-link to the exact title page.
+    # Only when we actually have scores: keeping `imdb_id` out of an otherwise-empty
+    # result preserves the invariant "non-empty dict == has ratings" that the caching
+    # and don't-overwrite-good-ratings guards rely on. It's ignored by pill rendering
+    # (which only iterates known score sources).
+    if out:
+        imdb_id = _extract_imdb_id(payload)
+        if imdb_id:
+            out["imdb_id"] = imdb_id
     return out
 
 

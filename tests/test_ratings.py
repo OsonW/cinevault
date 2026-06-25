@@ -119,6 +119,42 @@ def test_fetch_mdblist_ratings_normalizes(monkeypatch):
                    "metacritic": 76, "letterboxd": 4.2, "mal": 8.5}
 
 
+def test_fetch_mdblist_ratings_attaches_imdb_id(monkeypatch):
+    """When scores are present, the IMDb tconst rides along under `imdb_id` so the
+    IMDb pill can deep-link. Tolerant of both flat `imdbid` and nested `ids.imdb`."""
+    import app as a
+
+    class FlatResp:
+        status_code = 200
+        def json(self):
+            return {"imdbid": "tt1375666", "ratings": [{"source": "imdb", "value": 8.8}]}
+
+    monkeypatch.setattr(a.requests, "get", lambda *args, **kw: FlatResp())
+    assert a._fetch_mdblist_ratings("movie", 27205, "k") == {"imdb": 8.8, "imdb_id": "tt1375666"}
+
+    class NestedResp:
+        status_code = 200
+        def json(self):
+            return {"ids": {"imdb": "tt0111161"}, "ratings": [{"source": "imdb", "value": 9.3}]}
+
+    monkeypatch.setattr(a.requests, "get", lambda *args, **kw: NestedResp())
+    assert a._fetch_mdblist_ratings("movie", 278, "k") == {"imdb": 9.3, "imdb_id": "tt0111161"}
+
+
+def test_fetch_mdblist_ratings_no_imdb_id_when_no_scores(monkeypatch):
+    """An imdb id without any scores must NOT make the result non-empty — downstream
+    caching/overwrite guards treat a non-empty dict as 'has ratings'."""
+    import app as a
+
+    class FakeResp:
+        status_code = 200
+        def json(self):
+            return {"imdbid": "tt1375666", "ratings": []}
+
+    monkeypatch.setattr(a.requests, "get", lambda *args, **kw: FakeResp())
+    assert a._fetch_mdblist_ratings("movie", 27205, "k") == {}
+
+
 def test_fetch_mdblist_ratings_returns_none_on_http_error(monkeypatch):
     """A non-200 upstream response is a FAILURE, signalled as None — distinct from a
     successful call that simply surfaced no ratings ({})."""

@@ -829,6 +829,11 @@ input[type="range"]::-webkit-slider-thumb {
 .spill { display:inline-flex; align-items:center; gap:0.2em; padding:0.125rem 0.4rem;
   border-radius:var(--radius); font-size:0.66em; font-weight:600; line-height:1.45;
   border:1px solid transparent; white-space:nowrap; }
+/* A score pill that links out to its official site. Keeps the pill's own colour
+   (inherits from the spill-<src> class) and just adds affordance on hover. */
+a.spill { text-decoration:none; color:inherit; cursor:pointer;
+  transition:filter .12s ease, box-shadow .12s ease; }
+a.spill:hover { filter:brightness(1.18); box-shadow:0 0 0 1px currentColor inset; }
 .spill-ic { height:1em; width:auto; }
 /* Shimmer placeholder shown in a search card's chip row while MDBList scores load. */
 .spill-skeleton {
@@ -4071,7 +4076,7 @@ function renderSmCard(r) {
   } else if (r.poster_path) {
     posterSrc = `https://image.tmdb.org/t/p/w500${r.poster_path}`;
   }
-  const smItem = { media_type: r.media_type, year: r.year, tmdb_id: r.tmdb_id, external_id: r.external_id, tmdb_rating: r.tmdb_rating };
+  const smItem = { media_type: r.media_type, title: r.title, year: r.year, tmdb_id: r.tmdb_id, external_id: r.external_id, tmdb_rating: r.tmdb_rating };
   const pillsId = `spills-${r.media_type}-${(r.external_id || r.tmdb_id || '').toString().replace(/[^a-z0-9]/gi,'_')}`;
   // Real pills from whatever's cached, plus a shimmer placeholder for each score pill
   // that's still loading. hydratePills replaces the whole row once ratings arrive.
@@ -4326,8 +4331,50 @@ function _pillValue(src, ratings) {
 }
 function _mcBand(v) { return v >= 61 ? 'good' : v >= 40 ? 'mixed' : 'bad'; }
 
+// The "official site" URL a score pill links to, opened in a new tab on click.
+// Deep-links where we have a stable id — TMDB and Letterboxd from the tmdb_id we
+// already store, IMDb from the tconst MDBList hands back in `ratings.imdb_id`.
+// The sites that don't expose a stable id we can fetch (Rotten Tomatoes,
+// Metacritic, MyAnimeList) fall back to that site's search for the title.
+// Returns null when no sensible link can be built — the pill stays a plain span.
+function pillUrl(src, item, ratings) {
+  const tid   = item.tmdb_id || item.external_id;
+  const title = item.title || '';
+  const q     = encodeURIComponent(title);
+  const mt    = item.media_type === 'tv' ? 'tv' : 'movie';
+  switch (src) {
+    case 'tmdb':
+      return tid ? `https://www.themoviedb.org/${mt}/${encodeURIComponent(tid)}` : null;
+    case 'letterboxd':   // /tmdb/<id> redirects to the film's Letterboxd page
+      return tid ? `https://letterboxd.com/tmdb/${encodeURIComponent(tid)}/` : null;
+    case 'imdb': {
+      const tt = ratings && ratings.imdb_id;
+      if (tt) return `https://www.imdb.com/title/${encodeURIComponent(tt)}/`;
+      return title ? `https://www.imdb.com/find/?q=${q}&s=tt` : null;
+    }
+    case 'tomatoes':
+    case 'audience':     // both come from the same Rotten Tomatoes title page
+      return title ? `https://www.rottentomatoes.com/search?search=${q}` : null;
+    case 'metacritic':
+      return title ? `https://www.metacritic.com/search/${q}/` : null;
+    case 'mal':
+      return title ? `https://myanimelist.net/search/all?q=${q}` : null;
+    default:
+      return null;
+  }
+}
+
 function renderPills(item, ratings, selected) {
   const out = [];
+  // Render one score pill: an <a> linking to its official site when pillUrl can
+  // build one (stopPropagation so it doesn't also trigger the card's open-detail
+  // click), otherwise the plain <span> it used to be.
+  const spill = (cls, inner, src) => {
+    const url = pillUrl(src, item, ratings);
+    return url
+      ? `<a class="${cls}" href="${url}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">${inner}</a>`
+      : `<span class="${cls}">${inner}</span>`;
+  };
   for (const src of PILL_ORDER) {
     if (!selected.includes(src)) continue;
     if (src === 'year') { if (item.year) out.push(`<span class="poster-year-badge">${esc(String(item.year))}</span>`); continue; }
@@ -4335,15 +4382,15 @@ function renderPills(item, ratings, selected) {
     if (src === 'tmdb') {
       const tv = item.tmdb_rating;
       if (tv !== undefined && tv !== null && Number(tv) > 0)
-        out.push(`<span class="spill spill-tmdb"><b>TMDB</b> ${Number(tv).toFixed(1)}</span>`);
+        out.push(spill('spill spill-tmdb', `<b>TMDB</b> ${Number(tv).toFixed(1)}`, 'tmdb'));
       continue;
     }
     const val = _pillValue(src, ratings);
     if (val === null) continue;
-    if (src === 'imdb')       { out.push(`<span class="spill spill-imdb"><b>IMDb</b> ${val}</span>`); continue; }
-    if (src === 'mal')        { out.push(`<span class="spill spill-mal"><b>MAL</b> ${val}</span>`); continue; }
-    if (src === 'metacritic') { out.push(`<span class="spill spill-metacritic mc-${_mcBand(ratings.metacritic)}">${val}</span>`); continue; }
-    out.push(`<span class="spill spill-${src}">${SCORE_SVG[src] || ''}${val}</span>`);
+    if (src === 'imdb')       { out.push(spill('spill spill-imdb', `<b>IMDb</b> ${val}`, 'imdb')); continue; }
+    if (src === 'mal')        { out.push(spill('spill spill-mal', `<b>MAL</b> ${val}`, 'mal')); continue; }
+    if (src === 'metacritic') { out.push(spill(`spill spill-metacritic mc-${_mcBand(ratings.metacritic)}`, val, 'metacritic')); continue; }
+    out.push(spill(`spill spill-${src}`, `${SCORE_SVG[src] || ''}${val}`, src));
   }
   return out.join('');
 }
