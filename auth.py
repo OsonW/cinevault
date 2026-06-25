@@ -25,6 +25,28 @@ def _as_str(value) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
+def _validate_username(username: str) -> str | None:
+    """Returns an error message, or None if the username is valid."""
+    if not username:
+        return "Username required"
+    if len(username) < 4 or len(username) > 32:
+        return "Username must be 4–32 characters"
+    if not _NO_WHITESPACE_RE.match(username):
+        return "Username cannot contain spaces"
+    return None
+
+
+def _validate_password(password: str) -> str | None:
+    """Returns an error message, or None if the password is valid."""
+    if not password:
+        return "Password required"
+    if len(password) < 4 or len(password) > 32:
+        return "Password must be 4–32 characters"
+    if not _NO_WHITESPACE_RE.match(password):
+        return "Password cannot contain spaces"
+    return None
+
+
 # ─── Rate limiter ────────────────────────────────────────────────────────────
 # Small in-process sliding-window limiter. Keyed by (client IP, route name).
 # Fine for a single-process Flask deployment; swap for Flask-Limiter + Redis
@@ -119,14 +141,9 @@ def register():
     password = _as_str(data.get("password"))
     if not username or not password:
         return jsonify({"error": "Username and password required"}), 400
-    if len(username) < 4 or len(username) > 32:
-        return jsonify({"error": "Username must be 4–32 characters"}), 400
-    if len(password) < 4 or len(password) > 32:
-        return jsonify({"error": "Password must be 4–32 characters"}), 400
-    if not _NO_WHITESPACE_RE.match(username):
-        return jsonify({"error": "Username cannot contain spaces"}), 400
-    if not _NO_WHITESPACE_RE.match(password):
-        return jsonify({"error": "Password cannot contain spaces"}), 400
+    err = _validate_username(username) or _validate_password(password)
+    if err:
+        return jsonify({"error": err}), 400
     user_id = create_user(username, password)
     if user_id is None:
         return jsonify({"error": "Username already taken"}), 409
