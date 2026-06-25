@@ -1594,7 +1594,8 @@ body.entry-active .entry-cancel-account { display: block; }
       <div class="profile-row">
         <div class="profile-row-main">
           <span class="profile-row-label">API keys</span>
-          <span class="profile-row-value" id="profileKeysStatus">—</span>
+          <span class="profile-row-value" id="profileTmdbStatus"></span>
+          <span class="profile-row-value" id="profileMdblistStatus"></span>
         </div>
         <button class="profile-row-action" onclick="manageKeysFromProfile()">Manage</button>
       </div>
@@ -1824,11 +1825,10 @@ function openProfileModal() {
   document.getElementById('profileUsernameDisplay').textContent = _currentUsername;
   document.getElementById('profileUsernameValue').textContent   = _currentUsername;
 
-  const status = document.getElementById('profileKeysStatus');
-  status.textContent = _cachedKeys.has_keys ? 'TMDB set' : 'Not set';
+  _renderProfileKeys(_cachedKeys);
   refreshKeys().then(keys => {
     if (document.getElementById('profileModalBackdrop').classList.contains('hidden')) return;
-    status.textContent = keys.has_keys ? 'TMDB set' : 'Not set';
+    _renderProfileKeys(keys);
   });
 
   document.getElementById('profileModalBackdrop').classList.remove('hidden');
@@ -1840,6 +1840,13 @@ function closeProfileModal() {
 
 function onProfileBackdropClick(e) {
   if (e.target === document.getElementById('profileModalBackdrop')) closeProfileModal();
+}
+
+// Show the masked keys (e.g. "TMDB: a1b2c3...wxyz"). MDBList is optional, so it
+// falls back to "Not set"; TMDB is required but guards the same way for safety.
+function _renderProfileKeys(keys) {
+  document.getElementById('profileTmdbStatus').textContent    = 'TMDB: '    + (keys.tmdb_key    || 'Not set');
+  document.getElementById('profileMdblistStatus').textContent = 'MDBList: ' + (keys.mdblist_key || 'Not set');
 }
 
 // ── Username editing ──
