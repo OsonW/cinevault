@@ -1268,6 +1268,53 @@ body.entry-active .entry-cancel-account { display: block; }
 }
 .logout-delete-input:focus { border-color: var(--red); }
 
+/* ── Profile modal ─────────────────────────────── */
+.profile-box { width: 22rem; }
+.profile-head {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 0.5rem; margin-bottom: 1.125rem;
+}
+.profile-avatar {
+  width: 3.25rem; height: 3.25rem; border-radius: 50%;
+  border: 1px solid var(--border-md); color: var(--muted);
+  display: flex; align-items: center; justify-content: center;
+}
+.profile-username { font-size: 0.9375rem; font-weight: 600; color: var(--text); }
+.profile-rows { display: flex; flex-direction: column; }
+.profile-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0.625rem 0; border-top: 1px solid var(--border);
+}
+.profile-row:first-child { border-top: none; }
+.profile-row-main { display: flex; flex-direction: column; gap: 0.125rem; min-width: 0; }
+.profile-row-label { font-size: 0.6875rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+.profile-row-value { font-size: 0.8125rem; color: var(--text); overflow: hidden; text-overflow: ellipsis; }
+.profile-row-action {
+  background: none; border: 1px solid var(--border-md);
+  border-radius: var(--radius); padding: 0.3125rem 0.75rem;
+  color: var(--muted); font-size: 0.75rem; cursor: pointer;
+  font-family: 'DM Sans', sans-serif; transition: all 0.12s; flex-shrink: 0;
+}
+.profile-row-action:hover { color: var(--text); border-color: var(--border-md); background: rgba(255,255,255,0.04); }
+.profile-edit { padding: 0 0 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.profile-edit.hidden { display: none; }
+.profile-input {
+  background: var(--surface); border: 1px solid var(--border-md);
+  border-radius: var(--radius); padding: 0.4375rem 0.625rem;
+  color: var(--text); font-size: 0.75rem; font-family: 'DM Sans', sans-serif; outline: none;
+}
+.profile-input:focus { border-color: var(--border-md); }
+.profile-edit-actions { display: flex; gap: 0.5rem; justify-content: flex-end; }
+.profile-save { background: var(--accent, #6c5ce7); }
+.profile-actions { margin-top: 1rem; }
+.profile-logout-btn {
+  width: 100%; background: none; border: 1px solid var(--border-md);
+  border-radius: var(--radius); padding: 0.5625rem 1rem;
+  color: var(--text); font-size: 0.8125rem; cursor: pointer;
+  font-family: 'DM Sans', sans-serif; font-weight: 500; transition: all 0.12s;
+}
+.profile-logout-btn:hover { background: rgba(255,255,255,0.05); border-color: var(--border); }
+
 /* ── Current key hint in key modal ─────────────── */
 .key-current-hint { font-size: 0.6875rem; color: var(--muted); margin-top: 0.125rem; }
 
@@ -1343,18 +1390,10 @@ body.entry-active .entry-cancel-account { display: block; }
       <button class="tab" data-tab="finished" onclick="switchTab('finished')">Finished</button>
     </nav>
     <div class="settings-cluster">
-      <button class="key-btn" onclick="openKeyUpdate()">
+      <button class="key-btn" onclick="openProfileModal()" aria-label="Profile">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="7.5" cy="15.5" r="5.5"/>
-          <path d="M21 2l-9.6 9.6"/>
-          <path d="M15.5 7.5l3 3L22 7l-3-3"/>
-        </svg>
-      </button>
-      <button class="key-btn" onclick="openLogoutConfirm()">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-          <polyline points="16 17 21 12 16 7"/>
-          <line x1="21" y1="12" x2="9" y2="12"/>
+          <circle cx="12" cy="8" r="4"/>
+          <path d="M4 20c0-4 3.6-6 8-6s8 2 8 6"/>
         </svg>
       </button>
     </div>
@@ -1506,23 +1545,72 @@ body.entry-active .entry-cancel-account { display: block; }
   </div>
 </div>
 
-<!-- ── Logout Confirm ──────────────────────────── -->
-<div class="key-confirm-backdrop hidden" id="logoutConfirmBackdrop">
-  <div class="key-confirm-box">
-    <div class="key-confirm-title">Log out of CineVault?</div>
-    <div class="key-confirm-body">You'll need to sign in again to access your library.</div>
-    <div class="key-confirm-actions">
-      <button class="key-confirm-cancel" id="logoutCancelBtn" onclick="closeLogoutConfirm()">Cancel</button>
-      <button class="key-confirm-delete" id="logoutConfirmBtn" onclick="doLogout()">Log out</button>
+<!-- ── Profile Modal ───────────────────────────── -->
+<div class="key-confirm-backdrop hidden" id="profileModalBackdrop" onclick="onProfileBackdropClick(event)">
+  <div class="key-confirm-box profile-box">
+    <div class="profile-head">
+      <div class="profile-avatar">
+        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="8" r="4"/>
+          <path d="M4 20c0-4 3.6-6 8-6s8 2 8 6"/>
+        </svg>
+      </div>
+      <div class="profile-username" id="profileUsernameDisplay"></div>
     </div>
+
+    <div class="profile-rows">
+      <div class="profile-row">
+        <div class="profile-row-main">
+          <span class="profile-row-label">Username</span>
+          <span class="profile-row-value" id="profileUsernameValue"></span>
+        </div>
+        <button class="profile-row-action" id="profileUsernameEditBtn" onclick="startUsernameEdit()">Edit</button>
+      </div>
+      <div class="profile-edit hidden" id="profileUsernameEdit">
+        <input type="text" id="profileUsernameInput" class="profile-input" maxlength="32" placeholder="New username" autocomplete="off" oninput="validateUsernameEdit()">
+        <div class="profile-edit-actions">
+          <button class="key-confirm-cancel" onclick="cancelUsernameEdit()">Cancel</button>
+          <button class="key-confirm-delete profile-save" id="profileUsernameSave" onclick="saveUsername()" disabled>Save</button>
+        </div>
+      </div>
+
+      <div class="profile-row">
+        <div class="profile-row-main">
+          <span class="profile-row-label">Password</span>
+        </div>
+        <button class="profile-row-action" id="profilePasswordBtn" onclick="startPasswordEdit()">Change</button>
+      </div>
+      <div class="profile-edit hidden" id="profilePasswordEdit">
+        <input type="password" id="profilePwCurrent" class="profile-input" maxlength="32" placeholder="Current password" autocomplete="current-password" oninput="validatePasswordEdit()">
+        <input type="password" id="profilePwNew" class="profile-input" maxlength="32" placeholder="New password" autocomplete="new-password" oninput="validatePasswordEdit()">
+        <input type="password" id="profilePwConfirm" class="profile-input" maxlength="32" placeholder="Confirm new password" autocomplete="new-password" oninput="validatePasswordEdit()">
+        <div class="profile-edit-actions">
+          <button class="key-confirm-cancel" onclick="cancelPasswordEdit()">Cancel</button>
+          <button class="key-confirm-delete profile-save" id="profilePasswordSave" onclick="savePassword()" disabled>Save</button>
+        </div>
+      </div>
+
+      <div class="profile-row">
+        <div class="profile-row-main">
+          <span class="profile-row-label">API keys</span>
+          <span class="profile-row-value" id="profileKeysStatus">—</span>
+        </div>
+        <button class="profile-row-action" onclick="manageKeysFromProfile()">Manage</button>
+      </div>
+    </div>
+
+    <div class="profile-actions">
+      <button class="profile-logout-btn" onclick="doLogout()">Log out</button>
+    </div>
+
     <div class="logout-delete-footer">
-      <button class="logout-delete-link" id="logoutDeleteAccountLink" onclick="showLogoutDeleteSection()">Delete account</button>
+      <button class="logout-delete-link" id="profileDeleteLink" onclick="showProfileDeleteSection()">Delete account</button>
     </div>
-    <div class="logout-delete-section hidden" id="logoutDeleteSection">
-      <div class="logout-delete-label">Type username [<span style="color:var(--text)" id="logoutDeleteUsernameHint"></span>] to confirm deletion.</div>
+    <div class="logout-delete-section hidden" id="profileDeleteSection">
+      <div class="logout-delete-label">Type username [<span style="color:var(--text)" id="profileDeleteUsernameHint"></span>] to confirm deletion.</div>
       <div class="logout-delete-row">
-        <input type="text" id="logoutDeleteUsernameInput" class="logout-delete-input" placeholder="Username" autocomplete="off" oninput="validateLogoutDelete()">
-        <button class="key-confirm-delete" id="logoutDeleteConfirmBtn" onclick="doDeleteAccount()" disabled>Delete Permanently</button>
+        <input type="text" id="profileDeleteUsernameInput" class="logout-delete-input" placeholder="Username" autocomplete="off" oninput="validateProfileDelete()">
+        <button class="key-confirm-delete" id="profileDeleteConfirmBtn" onclick="doDeleteAccount()" disabled>Delete Permanently</button>
       </div>
     </div>
   </div>
