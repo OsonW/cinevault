@@ -612,19 +612,28 @@ input[type="range"]::-webkit-slider-thumb {
 .ratings-refresh.spinning svg { animation:ratings-spin 0.8s linear infinite; }
 @keyframes ratings-spin { to { transform:rotate(360deg); } }
 .ratings-updated { font-size:0.95rem; color:var(--muted); }
-.desc-toggle-btn {
-  display: inline-flex; align-items: center; gap: 0.375rem;
-  padding: 0.375rem 0.9375rem; border-radius: var(--radius);
-  border: 1px solid var(--border); background: none;
-  color: var(--muted); font-size: 1.03125rem; font-family: 'DM Sans', sans-serif;
-  cursor: pointer; transition: all 0.15s;
-}
-.desc-toggle-btn:hover { color: var(--text); border-color: var(--border-md); background: var(--card); }
-.desc-toggle-btn:disabled { opacity: 0.5; cursor: default; pointer-events: none; }
+.desc-block { margin-top: 0.5rem; margin-bottom: 0.875rem; }
 .detail-overview {
   font-size: 1.125rem; color: var(--muted); line-height: 1.6;
-  margin-top: 0.75rem; margin-bottom: 0.375rem;
+  white-space: pre-line;
 }
+/* Collapsed: clamp to a few lines and let the text gently fade out at the bottom. */
+.detail-overview.is-collapsed {
+  max-height: 4.8em;          /* ~3 lines at line-height 1.6 */
+  overflow: hidden;
+}
+.detail-overview.is-collapsed.has-more {
+  -webkit-mask-image: linear-gradient(to bottom, #000 45%, transparent 100%);
+          mask-image: linear-gradient(to bottom, #000 45%, transparent 100%);
+}
+/* Plain-text toggle — brightens to white on hover, like the modal X buttons. */
+.desc-expand-link {
+  display: inline-block; margin-top: 0.25rem; padding: 0;
+  background: none; border: none;
+  color: var(--muted); font-size: 1.03125rem; font-family: 'DM Sans', sans-serif;
+  cursor: pointer; transition: color 0.15s;
+}
+.desc-expand-link:hover { color: var(--text); }
 
 .delete-btn {
   width: 100%; padding: 0.75rem; border-radius: var(--radius);
@@ -1054,6 +1063,15 @@ body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); 
 .entry-cancel-account:hover { color: var(--red); }
 body.entry-active .entry-greeting,
 body.entry-active .entry-cancel-account { display: block; }
+/* Reassurance shown only during first-time account creation — MDBList isn't mandatory. */
+.key-entry-note {
+  display: none;
+  margin-top: 0.4375rem;
+  font-size: 0.8125rem;
+  color: var(--muted);
+  font-family: 'DM Sans', sans-serif;
+}
+body.entry-active .key-entry-note { display: block; }
 .key-modal-box {
   background: var(--card);
   border: 1px solid var(--border-md);
@@ -1498,6 +1516,7 @@ body.entry-active .entry-cancel-account { display: block; }
           <span class="key-current-hint" id="keyCurrentMdblist"></span>
           <button type="button" class="key-help-link" onclick="showKeyHelp('MdblistInfo')">More info</button>
         </div>
+        <div class="key-entry-note">MDBList Key can be added later in settings.</div>
       </div>
       <div class="key-modal-actions">
         <button class="key-confirm-cancel" id="keyModalCancel" onclick="closeKeyModal()" style="display:none">Cancel</button>
@@ -2867,42 +2886,55 @@ function _gridCardsHtml(items, size, cols) {
   }).join('');
 }
 
-async function toggleDescription(itemId) {
-  const btn = document.getElementById('descToggleBtn');
+// Auto-load and show the description as a short, fading preview above the ratings.
+// Uses the cached overview when present, otherwise fetches it lazily. The block
+// hides itself entirely when there's no description to show.
+async function loadDescriptionPreview(item) {
+  const block   = document.getElementById('descBlock');
   const content = document.getElementById('descContent');
-  if (!btn || !content) return;
+  if (!block || !content) return;
 
-  if (content.style.display !== 'none') {
-    content.style.display = 'none';
-    btn.textContent = 'Load description';
-    return;
+  let ov = item.overview;
+  if (!ov) {
+    try {
+      const data = await fetch(`/api/item/${item.id}/overview`).then(r => r.json());
+      ov = data.overview || '';
+      item.overview = ov;
+    } catch { ov = ''; }
   }
+  // Bail if the user navigated away while the fetch was in flight.
+  if (selectedId !== item.id) return;
+  if (!ov) { block.style.display = 'none'; return; }
 
-  const item = allItems.find(i => i.id === itemId);
-  if (item && item.overview) {
-    content.textContent = item.overview;
-    content.style.display = 'block';
-    btn.textContent = 'Close description';
-    return;
-  }
+  content.textContent = ov;
+  content.classList.add('is-collapsed');
+  content.classList.remove('has-more');
+  block.style.display = '';
 
-  btn.textContent = 'Loading…';
-  btn.disabled = true;
-  try {
-    const data = await fetch(`/api/item/${itemId}/overview`).then(r => r.json());
-    const ov = data.overview || '';
-    if (item) item.overview = ov;
-    if (ov) {
-      content.textContent = ov;
-      content.style.display = 'block';
-      btn.textContent = 'Close description';
-    } else {
-      btn.textContent = 'No description available';
-    }
-  } catch {
-    btn.textContent = 'Load description';
+  const btn = document.getElementById('descToggleBtn');
+  if (!btn) return;
+  btn.textContent = 'Expand description';
+  // Only offer "Expand" + the fade when the text actually overflows the clamp.
+  if (content.scrollHeight > content.clientHeight + 1) {
+    content.classList.add('has-more');
+    btn.style.display = '';
+  } else {
+    btn.style.display = 'none';
   }
-  btn.disabled = false;
+}
+
+function toggleDescription(itemId) {
+  const content = document.getElementById('descContent');
+  const btn     = document.getElementById('descToggleBtn');
+  if (!content || !btn) return;
+
+  if (content.classList.contains('is-collapsed')) {
+    content.classList.remove('is-collapsed', 'has-more');
+    btn.textContent = 'Collapse description';
+  } else {
+    content.classList.add('is-collapsed', 'has-more');
+    btn.textContent = 'Expand description';
+  }
 }
 
 // Keep the consolidated grid Filter dropdown open across the renderGrid() rebuild.
@@ -3261,12 +3293,12 @@ function renderDetail(item) {
       <h2 class="detail-title">${esc(item.title)}</h2>
       <p class="detail-meta">${TYPE_SVG[item.media_type]} ${TYPE_LABEL[item.media_type]}</p>
       ${authorHtml}
+      <div class="desc-block" id="descBlock" style="display:none">
+        <div id="descContent" class="detail-overview is-collapsed"></div>
+        <button id="descToggleBtn" class="desc-expand-link" style="display:none" onclick="toggleDescription(${item.id})">Expand description</button>
+      </div>
       <div class="detail-scores" id="detailScores">${renderPills(item, _seedRatings(item), DETAIL_SCORES)}</div>
       ${_ratingsMetaHtml(item)}
-      <div style="margin-bottom:0.875rem">
-        <button id="descToggleBtn" class="desc-toggle-btn" onclick="toggleDescription(${item.id})">Load description</button>
-        <div id="descContent" class="detail-overview" style="display:none"></div>
-      </div>
       <div class="status-row">
         <button class="status-pill ${item.status==='watchlist'?'active-wl':''}" onclick="changeStatus(${item.id},'watchlist')">Watchlist</button>
         <button class="status-pill ${item.status==='watching'?'active-wa':''}"  onclick="changeStatus(${item.id},'watching')">Watching</button>
@@ -3286,6 +3318,8 @@ function renderDetail(item) {
   if (_ss) _paintStars(_ss, item.rating || 0);
 
   hydratePills('detailScores', item, DETAIL_SCORES);
+
+  loadDescriptionPreview(item);
 
   if (!item.author && (item.media_type === 'movie' || item.media_type === 'tv')) {
     fetch(`/api/item/${item.id}/fetch_director`)
@@ -3729,6 +3763,13 @@ function selectLibraryItem(id) {
   } else {
     selectItem(id);
   }
+
+  // Pan to the freshly-selected card, mirroring the random-pick scroll. rAF lets the
+  // grid finish laying out (it may have just been re-rendered) before we scroll.
+  requestAnimationFrame(() => {
+    const card = document.getElementById('pc-' + id);
+    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
 }
 
 function toggleModalType(type) {
