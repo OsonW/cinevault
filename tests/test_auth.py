@@ -205,3 +205,50 @@ def test_change_username_unauthenticated_redirects(client):
     resp = client.post("/auth/username", json={"username": "alice2"})
     assert resp.status_code == 302
     assert "/login" in resp.headers["Location"]
+
+
+# ── Change password ───────────────────────────────────────────────────────────
+
+def test_change_password_success(client):
+    _register(client, username="alice", password="oldpass1")
+    resp = client.post(
+        "/auth/password",
+        json={"current_password": "oldpass1", "new_password": "newpass2"},
+    )
+    assert resp.status_code == 200
+    assert resp.get_json()["status"] == "ok"
+    # Old password rejected, new password accepted.
+    client.get("/auth/logout")
+    assert client.post(
+        "/auth/login", json={"username": "alice", "password": "oldpass1"}
+    ).status_code == 401
+    assert client.post(
+        "/auth/login", json={"username": "alice", "password": "newpass2"}
+    ).status_code == 200
+
+
+def test_change_password_wrong_current(client):
+    _register(client, username="alice", password="oldpass1")
+    resp = client.post(
+        "/auth/password",
+        json={"current_password": "WRONG", "new_password": "newpass2"},
+    )
+    assert resp.status_code == 401
+
+
+def test_change_password_invalid_new(client):
+    _register(client, username="alice", password="oldpass1")
+    resp = client.post(
+        "/auth/password",
+        json={"current_password": "oldpass1", "new_password": "ab"},
+    )
+    assert resp.status_code == 400
+
+
+def test_change_password_unauthenticated_redirects(client):
+    resp = client.post(
+        "/auth/password",
+        json={"current_password": "x", "new_password": "yyyy"},
+    )
+    assert resp.status_code == 302
+    assert "/login" in resp.headers["Location"]

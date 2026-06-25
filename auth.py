@@ -8,7 +8,7 @@ from flask import Blueprint, request, jsonify, redirect, url_for, render_templat
 from flask_login import LoginManager, UserMixin, login_user, logout_user, current_user, login_required
 from users_db import (
     get_user_by_id, create_user, verify_password,
-    get_user_keys, set_user_keys, update_username,
+    get_user_keys, set_user_keys, update_username, update_password,
 )
 
 auth_bp = Blueprint("auth", __name__)
@@ -198,6 +198,22 @@ def change_username():
     if not update_username(int(current_user.id), new_username):
         return jsonify({"error": "Username already taken"}), 409
     return jsonify({"status": "ok", "username": new_username})
+
+
+@auth_bp.route("/auth/password", methods=["POST"])
+@login_required
+@rate_limit(max_requests=10, window_seconds=3600)   # 10/hour per IP
+def change_password():
+    data       = request.get_json(silent=True) or {}
+    current_pw = _as_str(data.get("current_password"))
+    new_pw     = _as_str(data.get("new_password"))
+    if not verify_password(current_user.username, current_pw):
+        return jsonify({"error": "Current password is incorrect"}), 401
+    err = _validate_password(new_pw)
+    if err:
+        return jsonify({"error": err}), 400
+    update_password(int(current_user.id), new_pw)
+    return jsonify({"status": "ok"})
 
 
 def _validate_tmdb_key(key: str) -> tuple[bool, str]:
