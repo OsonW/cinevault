@@ -168,22 +168,37 @@ def _fetch_mdblist_ratings(media_type: str, tmdb_id, key: str):
     except Exception:
         return None
     out = {}
+    urls = {}
     for r in ratings:
         if not isinstance(r, dict):
             continue
         canon = _MDBLIST_SOURCE_ALIASES.get(str(r.get("source", "")).lower())
+        if not canon:
+            continue
         val = r.get("value")
-        if canon and val is not None and canon not in out:
+        if val is not None and canon not in out:
             out[canon] = val
-    # Attach the IMDb tconst so the IMDb pill can deep-link to the exact title page.
-    # Only when we actually have scores: keeping `imdb_id` out of an otherwise-empty
-    # result preserves the invariant "non-empty dict == has ratings" that the caching
-    # and don't-overwrite-good-ratings guards rely on. It's ignored by pill rendering
+        # MDBList hands back the source's own page URL per rating — that's what lets a
+        # pill open the exact title page (not a search) on every site, including the
+        # ones we can't build a link for ourselves (Rotten Tomatoes, Metacritic).
+        u = r.get("url")
+        if isinstance(u, str) and u.startswith("http") and canon not in urls:
+            urls[canon] = u
+    # Attach link metadata so pills can deep-link. Only when we actually have scores:
+    # keeping these reserved keys out of an otherwise-empty result preserves the
+    # invariant "non-empty dict == has ratings" that the caching and
+    # don't-overwrite-good-ratings guards rely on. They're ignored by pill rendering
     # (which only iterates known score sources).
     if out:
+        ids = payload.get("ids") if isinstance(payload.get("ids"), dict) else {}
         imdb_id = _extract_imdb_id(payload)
         if imdb_id:
             out["imdb_id"] = imdb_id
+        mal_id = ids.get("mal") or payload.get("malid")
+        if mal_id:
+            out["mal_id"] = str(mal_id)
+        if urls:
+            out["src_urls"] = urls
     return out
 
 

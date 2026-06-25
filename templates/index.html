@@ -4331,34 +4331,50 @@ function _pillValue(src, ratings) {
 }
 function _mcBand(v) { return v >= 61 ? 'good' : v >= 40 ? 'mixed' : 'bad'; }
 
+// True for a real, navigable http(s) URL. Guards against using a non-string or a
+// non-http scheme (e.g. javascript:) from the upstream-provided link in an href.
+function _httpUrl(u) { return typeof u === 'string' && /^https?:\/\//i.test(u); }
+
 // The "official site" URL a score pill links to, opened in a new tab on click.
-// Deep-links where we have a stable id — TMDB and Letterboxd from the tmdb_id we
-// already store, IMDb from the tconst MDBList hands back in `ratings.imdb_id`.
-// The sites that don't expose a stable id we can fetch (Rotten Tomatoes,
-// Metacritic, MyAnimeList) fall back to that site's search for the title.
-// Returns null when no sensible link can be built — the pill stays a plain span.
+// Order of preference, so each pill lands on the EXACT title page rather than a
+// search whenever the data allows:
+//   1. A deep link we can build ourselves from a trusted id — TMDB and Letterboxd
+//      from our tmdb_id, IMDb from the tconst, MAL from the MAL id.
+//   2. The source's own page URL that MDBList returns per rating (`src_urls`) —
+//      this is how Rotten Tomatoes / Metacritic get a direct link at all.
+//   3. The site's search for the title (last resort, when we have neither).
+// Returns null when even a search can't be built — the pill stays a plain span.
 function pillUrl(src, item, ratings) {
-  const tid   = item.tmdb_id || item.external_id;
-  const title = item.title || '';
-  const q     = encodeURIComponent(title);
-  const mt    = item.media_type === 'tv' ? 'tv' : 'movie';
+  const tid    = item.tmdb_id || item.external_id;
+  const title  = item.title || '';
+  const q      = encodeURIComponent(title);
+  const mt     = item.media_type === 'tv' ? 'tv' : 'movie';
+  const urls   = (ratings && ratings.src_urls) || {};
+  const direct = _httpUrl(urls[src]) ? urls[src] : null;
   switch (src) {
     case 'tmdb':
       return tid ? `https://www.themoviedb.org/${mt}/${encodeURIComponent(tid)}` : null;
     case 'letterboxd':   // /tmdb/<id> redirects to the film's Letterboxd page
-      return tid ? `https://letterboxd.com/tmdb/${encodeURIComponent(tid)}/` : null;
+      if (tid) return `https://letterboxd.com/tmdb/${encodeURIComponent(tid)}/`;
+      return direct || null;
     case 'imdb': {
       const tt = ratings && ratings.imdb_id;
       if (tt) return `https://www.imdb.com/title/${encodeURIComponent(tt)}/`;
-      return title ? `https://www.imdb.com/find/?q=${q}&s=tt` : null;
+      return direct || (title ? `https://www.imdb.com/find/?q=${q}&s=tt` : null);
+    }
+    case 'mal': {
+      const mid = ratings && ratings.mal_id;   // movie/tv MDBList MAL entries are anime
+      if (mid) return `https://myanimelist.net/anime/${encodeURIComponent(mid)}`;
+      return direct || (title ? `https://myanimelist.net/search/all?q=${q}` : null);
     }
     case 'tomatoes':
-    case 'audience':     // both come from the same Rotten Tomatoes title page
-      return title ? `https://www.rottentomatoes.com/search?search=${q}` : null;
+    case 'audience': {   // both live on the same Rotten Tomatoes title page
+      const rt = direct || (_httpUrl(urls.tomatoes) ? urls.tomatoes
+                            : (_httpUrl(urls.audience) ? urls.audience : null));
+      return rt || (title ? `https://www.rottentomatoes.com/search?search=${q}` : null);
+    }
     case 'metacritic':
-      return title ? `https://www.metacritic.com/search/${q}/` : null;
-    case 'mal':
-      return title ? `https://myanimelist.net/search/all?q=${q}` : null;
+      return direct || (title ? `https://www.metacritic.com/search/${q}/` : null);
     default:
       return null;
   }
@@ -4372,7 +4388,7 @@ function renderPills(item, ratings, selected) {
   const spill = (cls, inner, src) => {
     const url = pillUrl(src, item, ratings);
     return url
-      ? `<a class="${cls}" href="${url}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">${inner}</a>`
+      ? `<a class="${cls}" href="${esc(url)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">${inner}</a>`
       : `<span class="${cls}">${inner}</span>`;
   };
   for (const src of PILL_ORDER) {

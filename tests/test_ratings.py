@@ -141,6 +141,38 @@ def test_fetch_mdblist_ratings_attaches_imdb_id(monkeypatch):
     assert a._fetch_mdblist_ratings("movie", 278, "k") == {"imdb": 9.3, "imdb_id": "tt0111161"}
 
 
+def test_fetch_mdblist_ratings_captures_urls_and_mal(monkeypatch):
+    """Per-rating `url` (the source's own page) and the MAL id ride along under
+    reserved keys so pills can open the exact title page instead of a search."""
+    import app as a
+
+    class FakeResp:
+        status_code = 200
+        def json(self):
+            return {
+                "ids": {"imdb": "tt1375666", "mal": 12345},
+                "ratings": [
+                    {"source": "imdb", "value": 8.8, "url": "https://www.imdb.com/title/tt1375666/"},
+                    {"source": "tomatoes", "value": 87, "url": "https://www.rottentomatoes.com/m/inception"},
+                    {"source": "metacritic", "value": 74, "url": "https://www.metacritic.com/movie/inception/"},
+                    {"source": "trakt", "value": 90, "url": "https://trakt.tv/x"},  # not surfaced
+                    {"source": "letterboxd", "value": 4.2, "url": "ftp://bad"},     # non-http dropped
+                ],
+            }
+
+    monkeypatch.setattr(a.requests, "get", lambda *args, **kw: FakeResp())
+    out = a._fetch_mdblist_ratings("movie", 27205, "k")
+    assert out["imdb_id"] == "tt1375666"
+    assert out["mal_id"] == "12345"
+    assert out["src_urls"] == {
+        "imdb": "https://www.imdb.com/title/tt1375666/",
+        "tomatoes": "https://www.rottentomatoes.com/m/inception",
+        "metacritic": "https://www.metacritic.com/movie/inception/",
+    }
+    assert "letterboxd" not in out["src_urls"]   # ftp:// rejected
+    assert "trakt" not in out and "trakt" not in out["src_urls"]
+
+
 def test_fetch_mdblist_ratings_no_imdb_id_when_no_scores(monkeypatch):
     """An imdb id without any scores must NOT make the result non-empty — downstream
     caching/overwrite guards treat a non-empty dict as 'has ratings'."""
