@@ -1510,12 +1510,13 @@ body.entry-active .entry-cancel-account { display: block; }
           <div class="key-help-step"><div class="key-help-num">2</div><div class="key-help-text">Go to <a href="https://www.themoviedb.org/settings/api" target="_blank">Settings → API</a></div></div>
           <div class="key-help-step"><div class="key-help-num">3</div><div class="key-help-text">Click under <strong>Request an API Key</strong> and choose <em>Yes, This is for my own personal use only</em></div></div>
           <div class="key-help-step"><div class="key-help-num">4</div><div class="key-help-text">Name the application <em>CineVault</em> and use <em>https://localhost</em> for <strong>Application URL</strong>. Put in your contact info and <Strong>Subscribe</Strong></div></div>
-          <div class="key-help-step"><div class="key-help-num">5</div><div class="key-help-text">Copy the <strong>API Key</strong> and paste it here — it's a 32-character hex string</div></div>
+          <div class="key-help-step"><div class="key-help-num">5</div><div class="key-help-text">Copy the <strong>API Key</strong> and paste it here. It's the shorter, 32-character hex string</div></div>
         </div>
       </div>
       <div class="key-help-panel" id="keyHelpTmdbInfo">
         <div class="key-help-header">Why TMDB is required</div>
         <div class="key-help-text">TMDB is a database for movies and TV shows that is required to access, look up, and view media information. As this project is not funded, we do not offer TMDB APIs, and you are required to use your own key.</div>
+        <div class="key-help-text">TMDB offers their own database for TMDB ratings.</div>
       </div>
       <div class="key-help-panel" id="keyHelpMdblist">
         <div class="key-help-header">Getting an MDBList API Key</div>
@@ -1529,7 +1530,8 @@ body.entry-active .entry-cancel-account { display: block; }
       <div class="key-help-panel" id="keyHelpMdblistInfo">
         <div class="key-help-header">Why MDBList is optional</div>
         <div class="key-help-text">MDBList is an aggregator that records IMDb, Letterboxd, Tomatometer, Popcornmeter, Metacritic, and MyAnimeList scores for applicable movies and TV shows.</div>
-        <div class="key-help-text">Note that MDBList calls are <strong>Per Title Only</strong> meaning that each call retrieves information for a single movie or TV show, regardless of how many pills you choose. You are limited to 1,000 requests per day with the free tier.</div>
+        <div class="key-help-text">Note that MDBList calls are <strong>Per Title Only</strong> meaning that each call retrieves information for a single movie or TV show, regardless of how many pills you choose. You are limited to 1,000 requests per day with the free tier. You can view your usage under filter settings for search or library.</div>
+        <div class="key-help-text">If you do not provide an MDBList key, CineVault will still work, but you will not see scores for movies and TV shows.</div>
       </div>
     </div>
   </div>
