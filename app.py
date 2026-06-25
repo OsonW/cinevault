@@ -23,7 +23,9 @@ from auth import (
     auth_bp, login_manager, rate_limit, _as_str,
     _client_ip, check_rate_limit, _too_many_requests,
 )
-from users_db import init_users_db, get_user_keys, delete_user
+from users_db import (
+    init_users_db, get_user_keys, delete_user, delete_stale_keyless_users,
+)
 
 
 class _BoundedCache(OrderedDict):
@@ -217,6 +219,49 @@ _app_initialized    = False
 _initialized_users: set[int] = set()
 _init_lock = threading.Lock()
 
+# Reap abandoned keyless registrations. An account that never provides a TMDB key
+# is deleted after KEYLESS_MAX_AGE so empty rows don't accumulate. The sweep is
+# throttled to at most once per KEYLESS_SWEEP_INTERVAL (piggy-backed on incoming
+# requests — no background thread, which suits single-/few-worker deployments).
+KEYLESS_MAX_AGE        = 3600    # 1 hour lifespan for keyless accounts
+KEYLESS_SWEEP_INTERVAL = 600     # run the sweep at most every 10 minutes
+_last_keyless_sweep    = 0.0
+_sweep_lock = threading.Lock()
+
+
+def _purge_user_storage(uid: int) -> None:
+    """Remove a user's per-user media DB (and its SQLite sidecars) plus any
+    in-memory caches/flags. Keyless accounts have no DB file, so this is usually a
+    no-op on the filesystem — but it stays correct for legacy/abandoned accounts."""
+    _user_media_cache.pop(uid, None)
+    with _init_lock:
+        _initialized_users.discard(uid)
+    db_path = get_user_db_path(uid)
+    for path in (db_path, db_path + "-journal", db_path + "-wal", db_path + "-shm"):
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+        except OSError as e:
+            print(f"purge: failed to remove {path}: {e}")
+
+
+def _maybe_sweep_keyless_users() -> None:
+    """Throttled reaper for abandoned keyless accounts. Cheap on the common path
+    (just a timestamp compare); runs the actual DELETE at most once per interval."""
+    global _last_keyless_sweep
+    now = time.time()
+    if now - _last_keyless_sweep < KEYLESS_SWEEP_INTERVAL:
+        return
+    with _sweep_lock:
+        if now - _last_keyless_sweep < KEYLESS_SWEEP_INTERVAL:
+            return          # another request won the race
+        _last_keyless_sweep = now
+    try:
+        for uid in delete_stale_keyless_users(KEYLESS_MAX_AGE):
+            _purge_user_storage(uid)
+    except Exception as e:
+        print(f"keyless sweep failed: {e}")
+
 MANGADEX_HEADERS = {"User-Agent": "CineVault/1.0"}
 
 # Global default rate limit applied to EVERY endpoint (per client IP + endpoint
@@ -279,6 +324,9 @@ def setup_request():
         init_users_db()
         _app_initialized = True
 
+    # Reap abandoned keyless accounts (throttled internally). Cheap on most requests.
+    _maybe_sweep_keyless_users()
+
     # Global rate limit on every endpoint (per client IP + endpoint). Endpoints
     # with their own stricter @rate_limit still enforce that tighter cap too.
     endpoint    = request.endpoint or request.path
@@ -294,15 +342,29 @@ def setup_request():
     if current_user.is_authenticated:
         uid = current_user.id
         g.user_db_path = get_user_db_path(uid)
-        with _init_lock:
-            already_init = uid in _initialized_users
+        # Provision the per-user media DB ONLY for accounts that have a TMDB key (or
+        # whose DB file already exists). Keyless/abandoned accounts therefore never
+        # spawn a DB file on disk — only their single users.db row — which defuses
+        # empty-account storage-spam attacks.
+        g.user_db_ready = current_user.has_tmdb_key or os.path.exists(g.user_db_path)
+        if g.user_db_ready:
+            with _init_lock:
+                already_init = uid in _initialized_users
+                if not already_init:
+                    _initialized_users.add(uid)
             if not already_init:
-                _initialized_users.add(uid)
-        if not already_init:
-            init_user_db(uid)
+                init_user_db(uid)
 
     if request.path.startswith("/api/") and not current_user.is_authenticated:
         return jsonify({"error": "Unauthorized"}), 401
+
+    # Block any storage-writing API call from a keyless account so a direct POST/DELETE
+    # can't create a DB file either. Reads stay allowed (they return empty without
+    # touching disk). Keys are saved via /auth/keys, which is not under /api/.
+    if (request.path.startswith("/api/")
+            and request.method not in ("GET", "HEAD", "OPTIONS")
+            and not getattr(g, "user_db_ready", False)):
+        return jsonify({"error": "Add your API keys before saving to your library."}), 403
 
 
 def _cache_search(key: str, items: list) -> None:
@@ -358,18 +420,7 @@ def cancel_registration():
     if username_input and username_input.lower() != current_user.username.lower():
         return jsonify({"error": "Username does not match"}), 400
     uid = int(current_user.id)
-    _user_media_cache.pop(uid, None)
-    with _init_lock:
-        _initialized_users.discard(uid)
-    db_path = get_user_db_path(uid)
-    # Remove the main DB file plus any SQLite sidecars (-journal/-wal/-shm)
-    # that may exist if a connection was open.
-    for path in (db_path, db_path + "-journal", db_path + "-wal", db_path + "-shm"):
-        try:
-            if os.path.exists(path):
-                os.remove(path)
-        except OSError as e:
-            print(f"cancel-registration: failed to remove {path}: {e}")
+    _purge_user_storage(uid)
     logout_user()
     delete_user(uid)
     return jsonify({"status": "ok"})

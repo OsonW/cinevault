@@ -26,6 +26,30 @@ def _register(client, username="alice", password="secret123"):
     )
 
 
+def _ensure_tmdb_key(username="alice"):
+    """Provision a TMDB key so storage-writing endpoints are unlocked. Keyless
+    accounts are blocked from writing (no DB file is created), by design."""
+    from users_db import get_user_by_username, get_user_keys, set_user_keys
+    uid = get_user_by_username(username)["id"]
+    keys = get_user_keys(uid)
+    if not keys["tmdb_key"]:
+        set_user_keys(uid, "tmdbkey", keys["mdblist_key"])
+
+
+def test_keyless_account_cannot_write(client):
+    """A freshly-registered account with no API keys is blocked (403) from any
+    storage-writing API call, so empty accounts never create a DB file on disk."""
+    _register(client)
+    resp = client.post(
+        "/api/add",
+        json={"title": "X", "media_type": "movie", "external_id": "1",
+              "status": "watchlist"},
+    )
+    assert resp.status_code == 403
+    # A read stays allowed and returns empty without provisioning storage.
+    assert client.get("/api/list").get_json() == []
+
+
 # ── Global rate limiting (applies to every endpoint) ───────────────────────────
 
 def test_global_rate_limit_returns_429(client, monkeypatch):
@@ -53,6 +77,7 @@ def test_global_rate_limit_is_per_endpoint(client, monkeypatch):
 
 def test_add_rejects_invalid_media_type(client):
     _register(client)
+    _ensure_tmdb_key()
     resp = client.post(
         "/api/add",
         json={"title": "X", "media_type": "exe", "status": "watchlist"},
@@ -62,6 +87,7 @@ def test_add_rejects_invalid_media_type(client):
 
 def test_add_rejects_invalid_status(client):
     _register(client)
+    _ensure_tmdb_key()
     resp = client.post(
         "/api/add",
         json={"title": "X", "media_type": "movie", "status": "pwned"},
@@ -71,12 +97,14 @@ def test_add_rejects_invalid_status(client):
 
 def test_add_rejects_missing_title(client):
     _register(client)
+    _ensure_tmdb_key()
     resp = client.post("/api/add", json={"media_type": "movie"})
     assert resp.status_code == 400
 
 
 def test_add_rejects_out_of_range_rating(client):
     _register(client)
+    _ensure_tmdb_key()
     client.post(
         "/api/add",
         json={"title": "X", "media_type": "movie", "external_id": "1",
@@ -89,6 +117,7 @@ def test_add_rejects_out_of_range_rating(client):
 
 def test_add_valid_payload_still_works(client):
     _register(client)
+    _ensure_tmdb_key()
     resp = client.post(
         "/api/add",
         json={"title": "Inception", "media_type": "movie",
@@ -102,6 +131,7 @@ def test_add_valid_payload_still_works(client):
 
 def test_oversized_body_rejected(client):
     _register(client)
+    _ensure_tmdb_key()
     big = b'{"x":"' + b"a" * (300 * 1024) + b'"}'
     resp = client.post("/api/add", data=big, content_type="application/json")
     assert resp.status_code == 413
@@ -109,6 +139,7 @@ def test_oversized_body_rejected(client):
 
 def test_malformed_json_does_not_500(client):
     _register(client)
+    _ensure_tmdb_key()
     resp = client.post(
         "/api/add", data="{not valid json", content_type="application/json"
     )

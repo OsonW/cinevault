@@ -37,3 +37,32 @@ def test_update_password_changes_hash(db):
     db.update_password(uid, "newpass2")
     assert db.verify_password("alice", "oldpass1") is None
     assert db.verify_password("alice", "newpass2") is not None
+
+
+# ── Keyless-account reaper ───────────────────────────────────────────────────
+
+def _backdate(db, uid, expr="datetime('now', '-2 hours')"):
+    """Rewrite a user's created_at to simulate an older registration."""
+    with db._get_users_conn() as conn:
+        conn.execute(f"UPDATE users SET created_at = {expr} WHERE id = ?", (uid,))
+
+
+def test_stale_keyless_user_is_deleted(db):
+    uid = db.create_user("ghost", "secret123")     # never set a TMDB key
+    _backdate(db, uid)                             # registered 2h ago
+    assert db.delete_stale_keyless_users(3600) == [uid]
+    assert db.get_user_by_id(uid) is None
+
+
+def test_recent_keyless_user_is_kept(db):
+    uid = db.create_user("fresh", "secret123")     # within the 1h lifespan
+    assert db.delete_stale_keyless_users(3600) == []
+    assert db.get_user_by_id(uid) is not None
+
+
+def test_keyed_user_never_reaped(db):
+    uid = db.create_user("active", "secret123")
+    db.set_user_keys(uid, "tmdbkey", "")           # has a TMDB key
+    _backdate(db, uid, "datetime('now', '-10 days')")
+    assert db.delete_stale_keyless_users(3600) == []
+    assert db.get_user_by_id(uid) is not None

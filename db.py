@@ -95,13 +95,26 @@ def row_to_dict(row):
     return dict(row) if row is not None else None
 
 
+def _user_db_missing() -> bool:
+    """True when the current user's media DB file doesn't exist yet (keyless/abandoned
+    account). Read helpers check this so a SELECT never makes sqlite3.connect() create
+    the file on disk — storage is only allocated once a key is provided."""
+    from flask import g
+    db_path = getattr(g, "user_db_path", None)
+    return not db_path or not os.path.exists(db_path)
+
+
 def get_all_media():
+    if _user_db_missing():
+        return []
     with get_conn() as conn:
         rows = conn.execute("SELECT * FROM media ORDER BY title").fetchall()
     return [row_to_dict(r) for r in rows]
 
 
 def get_media_by_external_id(external_id: str, media_type: str):
+    if _user_db_missing():
+        return None
     with get_conn() as conn:
         row = conn.execute(
             "SELECT * FROM media WHERE external_id = ? AND media_type = ?",
@@ -111,6 +124,8 @@ def get_media_by_external_id(external_id: str, media_type: str):
 
 
 def get_media_by_id(media_id: int):
+    if _user_db_missing():
+        return None
     with get_conn() as conn:
         row = conn.execute(
             "SELECT * FROM media WHERE id = ?", (media_id,)

@@ -32,6 +32,16 @@ def _register(client, username="alice", password="secret123"):
     )
 
 
+def _ensure_tmdb_key(username):
+    """Provision a TMDB key so storage-writing endpoints are unlocked. Keyless
+    accounts are blocked from writing (no DB file is created), by design."""
+    from users_db import get_user_by_username, get_user_keys, set_user_keys
+    uid = get_user_by_username(username)["id"]
+    keys = get_user_keys(uid)
+    if not keys["tmdb_key"]:
+        set_user_keys(uid, "tmdbkey", keys["mdblist_key"])
+
+
 # ── Registration ─────────────────────────────────────────────────────────────
 
 def test_register_creates_user(client):
@@ -124,6 +134,7 @@ def test_api_list_authenticated_returns_200(client):
 
 def test_api_add_authenticated(client):
     _register(client, username="frank", password="pass123!")
+    _ensure_tmdb_key("frank")
     resp = client.post(
         "/api/add",
         json={
@@ -140,6 +151,7 @@ def test_api_add_authenticated(client):
 def test_users_have_isolated_libraries(client):
     """Media added by user1 must not appear in user2's library."""
     _register(client, username="user1", password="pass123!")
+    _ensure_tmdb_key("user1")
     client.post(
         "/api/add",
         json={
@@ -152,6 +164,7 @@ def test_users_have_isolated_libraries(client):
     client.get("/auth/logout")
 
     _register(client, username="user2", password="pass123!")
+    _ensure_tmdb_key("user2")
     titles = [m["title"] for m in client.get("/api/list").get_json()]
     assert "User1 Only Movie" not in titles
 

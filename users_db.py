@@ -63,6 +63,28 @@ def delete_user(user_id: int) -> None:
         conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
 
 
+def delete_stale_keyless_users(max_age_seconds: int = 3600) -> list[int]:
+    """Delete accounts that never provided a TMDB key and were created more than
+    `max_age_seconds` ago. Returns the deleted user ids so the caller can clean up
+    any per-user media DB files/caches. Accounts WITH a TMDB key are never touched,
+    regardless of age — this only reaps abandoned/empty registrations so they don't
+    accumulate forever. created_at is stored in UTC (see init_users_db)."""
+    cutoff = f"datetime('now', '-{int(max_age_seconds)} seconds')"
+    with _get_users_conn() as conn:
+        rows = conn.execute(
+            f"""SELECT id FROM users
+                 WHERE (tmdb_key IS NULL OR tmdb_key = '')
+                   AND created_at IS NOT NULL
+                   AND created_at < {cutoff}"""
+        ).fetchall()
+        ids = [r["id"] for r in rows]
+        if ids:
+            conn.executemany(
+                "DELETE FROM users WHERE id = ?", [(i,) for i in ids]
+            )
+    return ids
+
+
 def update_username(user_id: int, new_username: str) -> bool:
     """Rename a user. Returns True on success, False if the username is already
     taken. Uniqueness is case-insensitive (the column is UNIQUE COLLATE NOCASE),

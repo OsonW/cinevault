@@ -28,7 +28,19 @@ def _register(client, username="alice", password="secret123"):
     return client.post("/auth/register", json={"username": username, "password": password})
 
 
+def _ensure_tmdb_key(username="alice"):
+    """Give an account a TMDB key so storage-writing endpoints are unlocked.
+    Keyless accounts are blocked from writing (no DB file is created), by design,
+    so any test that adds media must provision a key first."""
+    from users_db import get_user_by_username, get_user_keys, set_user_keys
+    uid = get_user_by_username(username)["id"]
+    keys = get_user_keys(uid)
+    if not keys["tmdb_key"]:
+        set_user_keys(uid, "tmdbkey", keys["mdblist_key"])
+
+
 def _add_movie(client, title="Inception", external_id="27205"):
+    _ensure_tmdb_key()
     return client.post("/api/add", json={
         "title": title, "media_type": "movie",
         "external_id": external_id, "tmdb_id": int(external_id), "status": "watchlist",
@@ -216,6 +228,7 @@ def test_media_row_has_tmdb_rating_column(client):
 
 def test_add_movie_persists_tmdb_rating(client):
     _register(client)
+    _ensure_tmdb_key()
     client.post("/api/add", json={
         "title": "Inception", "media_type": "movie",
         "external_id": "27205", "tmdb_id": 27205, "status": "watchlist",
@@ -588,6 +601,7 @@ def test_tmdb_director_no_tmdb_key(client):
 
 def test_add_create_returns_id_and_date(client):
     _register(client)
+    _ensure_tmdb_key()
     resp = client.post("/api/add", json={
         "title": "Inception", "media_type": "movie",
         "external_id": "27205", "tmdb_id": 27205, "status": "watchlist",

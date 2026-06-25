@@ -10,6 +10,7 @@ from users_db import (
     get_user_by_id, create_user, verify_password,
     get_user_keys, set_user_keys, update_username, update_password,
 )
+from db import init_user_db
 
 auth_bp = Blueprint("auth", __name__)
 login_manager = LoginManager()
@@ -107,13 +108,20 @@ def rate_limit(max_requests: int, window_seconds: int):
 
 
 class User(UserMixin):
-    def __init__(self, user_id: int, username: str):
+    def __init__(self, user_id: int, username: str, has_tmdb_key: bool = False):
         self.id = user_id
         self.username = username
+        # Whether the account has a TMDB key. Drives lazy provisioning of the
+        # per-user media DB: keyless accounts never get a DB file created on disk.
+        self.has_tmdb_key = has_tmdb_key
 
     @staticmethod
     def from_db(row: dict) -> "User":
-        return User(user_id=row["id"], username=row["username"])
+        return User(
+            user_id=row["id"],
+            username=row["username"],
+            has_tmdb_key=bool(row.get("tmdb_key")),
+        )
 
 
 @login_manager.user_loader
@@ -308,4 +316,8 @@ def save_keys():
         mdblist_final = existing["mdblist_key"]
 
     set_user_keys(int(current_user.id), tmdb_final, mdblist_final)
+    # Now that a valid TMDB key exists, provision the per-user media DB. This is the
+    # ONLY place (besides an already-existing file) that creates it, so accounts that
+    # never supply a key leave nothing on disk but their users.db row.
+    init_user_db(int(current_user.id))
     return jsonify({"status": "ok"})
