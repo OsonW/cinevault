@@ -154,3 +154,54 @@ def test_users_have_isolated_libraries(client):
     _register(client, username="user2", password="pass123!")
     titles = [m["title"] for m in client.get("/api/list").get_json()]
     assert "User1 Only Movie" not in titles
+
+
+# ── Change username ───────────────────────────────────────────────────────────
+
+def test_change_username_success(client):
+    _register(client, username="alice", password="secret123")
+    resp = client.post("/auth/username", json={"username": "alice2"})
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["status"] == "ok"
+    assert body["username"] == "alice2"
+    # New name works for login afterward.
+    client.get("/auth/logout")
+    assert client.post(
+        "/auth/login", json={"username": "alice2", "password": "secret123"}
+    ).status_code == 200
+
+
+def test_change_username_duplicate_case_insensitive(client):
+    _register(client, username="alice", password="secret123")
+    client.get("/auth/logout")
+    _register(client, username="bobby", password="secret123")
+    resp = client.post("/auth/username", json={"username": "ALICE"})
+    assert resp.status_code == 409
+    assert "taken" in resp.get_json()["error"]
+
+
+def test_change_username_own_case_change(client):
+    _register(client, username="Bobby", password="secret123")
+    resp = client.post("/auth/username", json={"username": "bobby"})
+    assert resp.status_code == 200
+    assert resp.get_json()["username"] == "bobby"
+
+
+def test_change_username_same_name_is_noop(client):
+    _register(client, username="alice", password="secret123")
+    resp = client.post("/auth/username", json={"username": "alice"})
+    assert resp.status_code == 200
+    assert resp.get_json()["status"] == "unchanged"
+
+
+def test_change_username_invalid(client):
+    _register(client, username="alice", password="secret123")
+    resp = client.post("/auth/username", json={"username": "ab"})
+    assert resp.status_code == 400
+
+
+def test_change_username_unauthenticated_redirects(client):
+    resp = client.post("/auth/username", json={"username": "alice2"})
+    assert resp.status_code == 302
+    assert "/login" in resp.headers["Location"]

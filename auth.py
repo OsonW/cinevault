@@ -8,7 +8,7 @@ from flask import Blueprint, request, jsonify, redirect, url_for, render_templat
 from flask_login import LoginManager, UserMixin, login_user, logout_user, current_user, login_required
 from users_db import (
     get_user_by_id, create_user, verify_password,
-    get_user_keys, set_user_keys,
+    get_user_keys, set_user_keys, update_username,
 )
 
 auth_bp = Blueprint("auth", __name__)
@@ -180,6 +180,24 @@ def logout():
     if request.method == "GET":
         return redirect(url_for("auth.login_page"))
     return jsonify({"status": "ok"})
+
+
+@auth_bp.route("/auth/username", methods=["POST"])
+@login_required
+@rate_limit(max_requests=10, window_seconds=3600)   # 10/hour per IP
+def change_username():
+    data         = request.get_json(silent=True) or {}
+    new_username = _as_str(data.get("username"))
+    err = _validate_username(new_username)
+    if err:
+        return jsonify({"error": err}), 400
+    # Exact same name is a friendly no-op. (A case-only change, e.g. Bob->bob,
+    # is NOT exact-equal, so it falls through and is applied below.)
+    if new_username == current_user.username:
+        return jsonify({"status": "unchanged", "username": new_username})
+    if not update_username(int(current_user.id), new_username):
+        return jsonify({"error": "Username already taken"}), 409
+    return jsonify({"status": "ok", "username": new_username})
 
 
 def _validate_tmdb_key(key: str) -> tuple[bool, str]:
