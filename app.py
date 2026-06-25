@@ -146,6 +146,27 @@ def _extract_imdb_id(payload) -> str | None:
     return cand if cand.startswith("tt") else None
 
 
+def _resolve_rating_url(canon: str, raw, media_type: str) -> str | None:
+    """Turn MDBList's per-rating `url` into an absolute https link to that source's
+    title page. MDBList returns these as RELATIVE paths (e.g. Rotten Tomatoes
+    "/m/inception", Metacritic "/inception", Letterboxd "/film/inception/"), so each
+    needs its own domain — and Metacritic's path omits the {movie|tv} segment, which
+    we re-insert. Non-path values (e.g. imdb's url is a number) yield None."""
+    if not isinstance(raw, str):
+        return None
+    path = raw.strip()
+    if not path.startswith("/"):
+        return None
+    if canon in ("tomatoes", "audience"):       # path already carries /m or /tv
+        return "https://www.rottentomatoes.com" + path
+    if canon == "letterboxd":
+        return "https://letterboxd.com" + path
+    if canon == "metacritic":                   # path is just /<slug> — add the type
+        seg = "tv" if media_type == "tv" else "movie"
+        return f"https://www.metacritic.com/{seg}{path}"
+    return None
+
+
 def _fetch_mdblist_ratings(media_type: str, tmdb_id, key: str):
     """Return {source: value} for the sources we display. Returns None on a real
     FAILURE (non-200 / timeout / exception) so callers can tell "the call failed" from
@@ -178,12 +199,13 @@ def _fetch_mdblist_ratings(media_type: str, tmdb_id, key: str):
         val = r.get("value")
         if val is not None and canon not in out:
             out[canon] = val
-        # MDBList hands back the source's own page URL per rating — that's what lets a
+        # MDBList hands back the source's own page path per rating — that's what lets a
         # pill open the exact title page (not a search) on every site, including the
         # ones we can't build a link for ourselves (Rotten Tomatoes, Metacritic).
-        u = r.get("url")
-        if isinstance(u, str) and u.startswith("http") and canon not in urls:
-            urls[canon] = u
+        if canon not in urls:
+            resolved = _resolve_rating_url(canon, r.get("url"), media_type)
+            if resolved:
+                urls[canon] = resolved
     # Attach link metadata so pills can deep-link. Only when we actually have scores:
     # keeping these reserved keys out of an otherwise-empty result preserves the
     # invariant "non-empty dict == has ratings" that the caching and

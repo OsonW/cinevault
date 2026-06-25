@@ -141,36 +141,57 @@ def test_fetch_mdblist_ratings_attaches_imdb_id(monkeypatch):
     assert a._fetch_mdblist_ratings("movie", 278, "k") == {"imdb": 9.3, "imdb_id": "tt0111161"}
 
 
-def test_fetch_mdblist_ratings_captures_urls_and_mal(monkeypatch):
-    """Per-rating `url` (the source's own page) and the MAL id ride along under
-    reserved keys so pills can open the exact title page instead of a search."""
+def test_fetch_mdblist_ratings_resolves_urls_and_mal(monkeypatch):
+    """MDBList returns per-rating `url` as RELATIVE paths; they get resolved to
+    absolute links (with the right domain, and the {movie|tv} segment re-inserted for
+    Metacritic) so pills open the exact title page instead of a search. The MAL id
+    rides along too. Mirrors a real /tmdb/movie response."""
     import app as a
 
-    class FakeResp:
-        status_code = 200
-        def json(self):
-            return {
-                "ids": {"imdb": "tt1375666", "mal": 12345},
-                "ratings": [
-                    {"source": "imdb", "value": 8.8, "url": "https://www.imdb.com/title/tt1375666/"},
-                    {"source": "tomatoes", "value": 87, "url": "https://www.rottentomatoes.com/m/inception"},
-                    {"source": "metacritic", "value": 74, "url": "https://www.metacritic.com/movie/inception/"},
-                    {"source": "trakt", "value": 90, "url": "https://trakt.tv/x"},  # not surfaced
-                    {"source": "letterboxd", "value": 4.2, "url": "ftp://bad"},     # non-http dropped
-                ],
-            }
+    def resp(payload):
+        class R:
+            status_code = 200
+            def json(self_):
+                return payload
+        return lambda *args, **kw: R()
 
-    monkeypatch.setattr(a.requests, "get", lambda *args, **kw: FakeResp())
+    movie = {
+        "ids": {"imdb": "tt1375666", "mal": 12345},
+        "ratings": [
+            {"source": "imdb", "value": 8.8, "url": 93},                 # number -> ignored
+            {"source": "tomatoes", "value": 87, "url": "/m/inception"},
+            {"source": "popcorn", "value": 91, "url": "/m/inception"},   # alias -> audience
+            {"source": "metacritic", "value": 74, "url": "/inception"},  # no type segment
+            {"source": "letterboxd", "value": 4.2, "url": "/film/inception/"},
+            {"source": "rogerebert", "value": 4.0, "url": "inception-2010"},  # no leading slash
+            {"source": "trakt", "value": 86, "url": None},               # not surfaced
+        ],
+    }
+    monkeypatch.setattr(a.requests, "get", resp(movie))
     out = a._fetch_mdblist_ratings("movie", 27205, "k")
     assert out["imdb_id"] == "tt1375666"
     assert out["mal_id"] == "12345"
     assert out["src_urls"] == {
-        "imdb": "https://www.imdb.com/title/tt1375666/",
-        "tomatoes": "https://www.rottentomatoes.com/m/inception",
-        "metacritic": "https://www.metacritic.com/movie/inception/",
+        "tomatoes":   "https://www.rottentomatoes.com/m/inception",
+        "audience":   "https://www.rottentomatoes.com/m/inception",
+        "metacritic": "https://www.metacritic.com/movie/inception",
+        "letterboxd": "https://letterboxd.com/film/inception/",
     }
-    assert "letterboxd" not in out["src_urls"]   # ftp:// rejected
-    assert "trakt" not in out and "trakt" not in out["src_urls"]
+    assert "imdb" not in out["src_urls"]    # numeric url ignored (we use the tconst)
+    assert "trakt" not in out["src_urls"]
+
+    # Shows: RT path already carries /tv; Metacritic's does not, so /tv is inserted.
+    show = {
+        "ids": {},
+        "ratings": [
+            {"source": "metacritic", "value": 96, "url": "/breaking-bad"},
+            {"source": "tomatoes", "value": 96, "url": "/tv/breaking_bad"},
+        ],
+    }
+    monkeypatch.setattr(a.requests, "get", resp(show))
+    out = a._fetch_mdblist_ratings("tv", 1396, "k")
+    assert out["src_urls"]["metacritic"] == "https://www.metacritic.com/tv/breaking-bad"
+    assert out["src_urls"]["tomatoes"]   == "https://www.rottentomatoes.com/tv/breaking_bad"
 
 
 def test_fetch_mdblist_ratings_no_imdb_id_when_no_scores(monkeypatch):
