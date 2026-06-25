@@ -628,8 +628,8 @@ input[type="range"]::-webkit-slider-thumb {
 }
 /* Plain-text toggle — brightens to white on hover, like the modal X buttons. */
 .desc-expand-link {
-  display: inline-block; margin-top: 0.25rem; padding: 0;
-  background: none; border: none;
+  display: block; width: 100%; margin-top: 0.25rem; padding: 0;
+  background: none; border: none; text-align: center;
   color: var(--muted); font-size: 1.03125rem; font-family: 'DM Sans', sans-serif;
   cursor: pointer; transition: color 0.15s;
 }
@@ -1063,15 +1063,10 @@ body[data-tab="finished"]  .poster-card.selected { border-color: var(--purple); 
 .entry-cancel-account:hover { color: var(--red); }
 body.entry-active .entry-greeting,
 body.entry-active .entry-cancel-account { display: block; }
-/* Reassurance shown only during first-time account creation — MDBList isn't mandatory. */
-.key-entry-note {
-  display: none;
-  margin-top: 0.4375rem;
-  font-size: 0.8125rem;
-  color: var(--muted);
-  font-family: 'DM Sans', sans-serif;
-}
-body.entry-active .key-entry-note { display: block; }
+/* Reassurance shown only during first-time account creation — MDBList isn't mandatory.
+   Mirrors the "Current: …" hint that occupies this slot in the update-key modal. */
+.key-entry-note { display: none; font-size: 0.6875rem; color: var(--muted); }
+body.entry-active .key-entry-note { display: inline; }
 .key-modal-box {
   background: var(--card);
   border: 1px solid var(--border-md);
@@ -1513,10 +1508,12 @@ body.entry-active .key-entry-note { display: block; }
           </button>
         </div>
         <div class="key-subrow">
-          <span class="key-current-hint" id="keyCurrentMdblist"></span>
+          <span>
+            <span class="key-current-hint" id="keyCurrentMdblist"></span>
+            <span class="key-entry-note">MDBList Key can be added later in settings.</span>
+          </span>
           <button type="button" class="key-help-link" onclick="showKeyHelp('MdblistInfo')">More info</button>
         </div>
-        <div class="key-entry-note">MDBList Key can be added later in settings.</div>
       </div>
       <div class="key-modal-actions">
         <button class="key-confirm-cancel" id="keyModalCancel" onclick="closeKeyModal()" style="display:none">Cancel</button>
