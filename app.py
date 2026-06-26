@@ -8,7 +8,7 @@ import requests
 from datetime import datetime, timezone
 from collections import OrderedDict
 from urllib.parse import urlparse
-from flask import Flask, jsonify, Response, request, render_template, g, redirect, url_for, make_response
+from flask import Flask, jsonify, Response, request, render_template, g, redirect, url_for
 from flask_login import login_required, current_user, logout_user
 
 from db import (
@@ -376,6 +376,18 @@ def set_security_headers(response):
         "connect-src 'self'; "
         "frame-ancestors 'none';"
     )
+
+    # Caching policy — single source of truth. Dynamic responses (the HTML app
+    # shell, the login page, and every /api/* JSON payload) must NEVER be reused
+    # from cache: a stale copy keeps the browser running old inline JS and showing
+    # old data (this is what caused "the refresh button doesn't update the grid"
+    # on a machine holding an old page). Endpoints that serve genuinely immutable
+    # bytes (posters) set their own long-lived Cache-Control above and are left
+    # untouched, as is Flask's static handler, which attaches its own validators
+    # for cheap conditional revalidation.
+    if request.endpoint != "static" and "Cache-Control" not in response.headers:
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"]        = "no-cache"
     return response
 
 
@@ -491,12 +503,10 @@ def cancel_registration():
 @app.route("/")
 @login_required
 def index():
-    resp = make_response(render_template("index.html", username=current_user.username))
-    # Prevent the browser from restoring the authenticated page from cache
-    # after the user logs out (back-button hardening).
-    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-    resp.headers["Pragma"]        = "no-cache"
-    return resp
+    # Cache-Control (no-store) is applied centrally in set_security_headers, which
+    # also keeps the authenticated page out of cache after logout (back-button
+    # hardening) — so we just render and return here.
+    return render_template("index.html", username=current_user.username)
 
 
 # ═══════════════════════════════════════════════════
