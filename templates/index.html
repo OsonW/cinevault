@@ -4318,7 +4318,7 @@ const SCORE_SOURCES = ['imdb','tomatoes','audience','metacritic','letterboxd','m
 const DETAIL_SCORES = ['tmdb'].concat(SCORE_SOURCES);
 const PILL_LABELS = { year:'Year', type:'Media type', tmdb:'TMDB', imdb:'IMDb', tomatoes:'Tomatometer',
   audience:'Popcornmeter', metacritic:'Metacritic', letterboxd:'Letterboxd', mal:'MyAnimeList' };
-const DEFAULT_PILLS = ['year','type','tmdb','imdb','metacritic','tomatoes'];
+const DEFAULT_PILLS = ['year','type','tmdb','imdb','tomatoes','audience','metacritic','letterboxd','mal'];
 
 const SCORE_SVG = {
   tomatoes:  '<svg class="spill-ic" viewBox="0 0 24 24" fill="#fa320a"><path d="M12 4c1-2 4-2 5-1-1 1-2 1-3 2 3 0 6 2 6 6 0 5-4 9-8 9s-8-4-8-9c0-4 3-6 6-6-1-1-2-1-3-2 1-1 4-1 5 1z"/></svg>',
@@ -4631,6 +4631,28 @@ let searchPills = _loadPills('searchPills');
   }
   if (!searchPills.includes('tmdb')) { searchPills.push('tmdb'); localStorage.setItem('searchPills', JSON.stringify(searchPills)); }
   localStorage.setItem('pills_tmdb_default_v1', '1');
+})();
+// One-time: turn ALL MDBList score pills on by default (grid tabs + search) for
+// users who saved pill prefs before this became the default. Flagged so it runs
+// once — anyone can still toggle individual pills back off afterward without them
+// being re-added on the next load. No extra MDBList quota: one ratings fetch per
+// title already returns every source, so this only displays more of what we have.
+// (Display order always follows PILL_ORDER, so the push order here doesn't matter.)
+(function ensureMdblistPillsDefault() {
+  if (localStorage.getItem('pills_mdblist_default_v1')) return;
+  for (const tab of ['watchlist', 'watching', 'finished']) {
+    let changed = false;
+    for (const src of SCORE_SOURCES) {
+      if (!tabGridPills[tab].includes(src)) { tabGridPills[tab].push(src); changed = true; }
+    }
+    if (changed) localStorage.setItem('gridPills_' + tab, JSON.stringify(tabGridPills[tab]));
+  }
+  let searchChanged = false;
+  for (const src of SCORE_SOURCES) {
+    if (!searchPills.includes(src)) { searchPills.push(src); searchChanged = true; }
+  }
+  if (searchChanged) localStorage.setItem('searchPills', JSON.stringify(searchPills));
+  localStorage.setItem('pills_mdblist_default_v1', '1');
 })();
 let _lastModalArgs = null;
 
