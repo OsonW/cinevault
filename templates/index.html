@@ -4632,28 +4632,6 @@ let searchPills = _loadPills('searchPills');
   if (!searchPills.includes('tmdb')) { searchPills.push('tmdb'); localStorage.setItem('searchPills', JSON.stringify(searchPills)); }
   localStorage.setItem('pills_tmdb_default_v1', '1');
 })();
-// One-time: turn ALL MDBList score pills on by default (grid tabs + search) for
-// users who saved pill prefs before this became the default. Flagged so it runs
-// once — anyone can still toggle individual pills back off afterward without them
-// being re-added on the next load. No extra MDBList quota: one ratings fetch per
-// title already returns every source, so this only displays more of what we have.
-// (Display order always follows PILL_ORDER, so the push order here doesn't matter.)
-(function ensureMdblistPillsDefault() {
-  if (localStorage.getItem('pills_mdblist_default_v1')) return;
-  for (const tab of ['watchlist', 'watching', 'finished']) {
-    let changed = false;
-    for (const src of SCORE_SOURCES) {
-      if (!tabGridPills[tab].includes(src)) { tabGridPills[tab].push(src); changed = true; }
-    }
-    if (changed) localStorage.setItem('gridPills_' + tab, JSON.stringify(tabGridPills[tab]));
-  }
-  let searchChanged = false;
-  for (const src of SCORE_SOURCES) {
-    if (!searchPills.includes(src)) { searchPills.push(src); searchChanged = true; }
-  }
-  if (searchChanged) localStorage.setItem('searchPills', JSON.stringify(searchPills));
-  localStorage.setItem('pills_mdblist_default_v1', '1');
-})();
 let _lastModalArgs = null;
 
 // Two labelled sections. The MDBList section is quota-limited.
