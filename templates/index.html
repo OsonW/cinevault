@@ -735,6 +735,16 @@ input[type="range"]::-webkit-slider-thumb {
 .search-filter-menu .sfm-col > .pill-dd-head:first-child { border-top: none; margin-top: 0; }
 
 /* ── Consolidated grid Filter dropdown (media type · order · pills · grid type) ── */
+/* Wrap holds the (conditional) external "Clear filters" button next to the funnel
+   button; the menu still anchors to the wrap's right edge via right:0. */
+.grid-controls-wrap { display: inline-flex; align-items: center; gap: 0.375rem; }
+.grid-clear-btn {
+  padding: 0.5625rem 0.875rem; border-radius: var(--radius);
+  border: 1px solid var(--border-md); background: none; color: var(--muted);
+  font-family: 'DM Sans', sans-serif; font-size: 1rem; cursor: pointer;
+  transition: all 0.15s; white-space: nowrap;
+}
+.grid-clear-btn:hover { color: var(--text); border-color: var(--accent); background: rgba(255,255,255,0.04); }
 .grid-controls-wrap .grid-controls-menu {
   min-width: 26rem; max-height: 75vh; overflow-y: auto; flex-direction: column;
 }
@@ -882,6 +892,11 @@ a.spill:hover { filter:brightness(1.18); box-shadow:0 0 0 1px currentColor inset
 .fin-avg { font-size: 1.4rem; font-weight: 500; color: var(--accent); line-height: 1.05; }
 .fin-tens { font-size: 0.85rem; color: var(--muted); }
 .fin-right { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.35rem; }
+/* Replaces the whole bar graph (bars + slider + labels) when there's nothing to chart.
+   min-height keeps the stats panel the same height as a populated bar graph. */
+.fh-empty { flex: 1; display: flex; align-items: center; justify-content: center;
+  text-align: center; min-height: 8.5rem; padding: 0.5rem 1rem; color: var(--muted);
+  font-size: 0.9375rem; }
 .fh-bars { display: flex; align-items: flex-end; gap: 0.4rem; height: 6.5rem; }
 .fh-bar-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; cursor: default; }
 /* --fill is set per bar to a progressive grey/purple gradient (the selected rating
@@ -1527,7 +1542,7 @@ body.entry-active .key-entry-note { display: inline; }
       </div>
     </div>
     <div class="key-modal-right">
-      <div class="key-help-empty" id="keyHelpEmpty">Click "How do I get this?" next to the key field.</div>
+      <div class="key-help-empty" id="keyHelpEmpty">Click "How do I get this?" or "More info" next to the key field.</div>
       <div class="key-help-panel" id="keyHelpTmdb">
         <div class="key-help-header">Getting a TMDB API Key</div>
         <div class="key-help-steps">
@@ -2098,6 +2113,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 let allItems     = [];
 let currentTab   = 'watchlist';
 let selectedId   = null;
+// Which item the detail panel is currently showing. Lets renderGrid tell apart "the
+// selected card is back on screen but the panel was blanked (filtered → empty → refilled)"
+// from "panel already shows it" so it can re-render the detail only when out of sync.
+let _detailShownId = null;
 let currentSort  = 'name';
 
 const _ALL_TYPES = ['movie','tv','book','manga'];
@@ -2548,8 +2567,11 @@ function sortedItems() {
 function autoSelectFirst() {
   const items = sortedItems();
   if (items.length) selectItem(items[0].id);
-  else document.getElementById('detailPanel').innerHTML =
-    '<div class="detail-empty"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" style="opacity:0.18"><rect x="2" y="3" width="20" height="18" rx="2"/><path d="M7 3v18M17 3v18M2 12h20"/></svg><p style="font-size:0.8125rem">Nothing here — add something!</p></div>';
+  else {
+    _detailShownId = null;
+    document.getElementById('detailPanel').innerHTML =
+      '<div class="detail-empty"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" style="opacity:0.18"><rect x="2" y="3" width="20" height="18" rx="2"/><path d="M7 3v18M17 3v18M2 12h20"/></svg><p style="font-size:0.8125rem">Nothing here — add something!</p></div>';
+  }
 }
 
 // ─────────────────────────────────────────────
@@ -2733,17 +2755,30 @@ function renderGrid() {
   if (currentTab === 'finished') {
     const finished = allItems.filter(i => i.status === 'finished');
     const rated    = finished.filter(i => i.rating > 0);
+    // Average / most-rated / masterpieces summarise the WHOLE finished tab and stay put
+    // regardless of the active filters.
     const avg      = rated.length
       ? (rated.reduce((s, i) => s + i.rating, 0) / rated.length).toFixed(1) : '—';
-    _finRated = rated.map(i => i.rating);   // for the histogram tooltip's live counts
-    const buckets  = Array(10).fill(0);
-    rated.forEach(i => { const k = Math.min(10, Math.max(1, Math.ceil(i.rating))); buckets[k - 1]++; });
-    const maxB = Math.max(1, ...buckets);
-    // Most-rated bucket (the tallest bar) and count of 10/10 "masterpieces".
+    // Most-rated bucket (the tallest bar) and count of 10/10 "masterpieces" — over the
+    // whole tab, so they're computed from the unfiltered rated set.
+    const allBuckets = Array(10).fill(0);
+    rated.forEach(i => { const k = Math.min(10, Math.max(1, Math.ceil(i.rating))); allBuckets[k - 1]++; });
     let modeK = 0, modeC = -1;
-    buckets.forEach((c, idx) => { if (c > modeC) { modeC = c; modeK = idx + 1; } });
+    allBuckets.forEach((c, idx) => { if (c > modeC) { modeC = c; modeK = idx + 1; } });
     const mostRated    = rated.length ? String(modeK) : '—';
     const masterpieces = rated.filter(i => i.rating >= 10).length;
+
+    // The bar graph itself reflects the ACTIVE filters (media type + title search) but
+    // NOT the rating-range slider — the slider lives on top of the bars and selects a
+    // sub-range, so the bars must keep showing the full distribution it slides over.
+    const ff = tabFilter['finished'];
+    let histRated = rated;
+    if (ff.query) { const q = ff.query.toLowerCase(); histRated = histRated.filter(i => i.title.toLowerCase().includes(q)); }
+    if (ff.types.size < _ALL_TYPES.length) histRated = histRated.filter(i => ff.types.has(i.media_type));
+    _finRated = histRated.map(i => i.rating);   // for the histogram tooltip's live counts
+    const buckets  = Array(10).fill(0);
+    histRated.forEach(i => { const k = Math.min(10, Math.max(1, Math.ceil(i.rating))); buckets[k - 1]++; });
+    const maxB = Math.max(1, ...buckets);
     const [lo, hi] = finishedRange;
     const bars = buckets.map((c, idx) => {
       const k = idx + 1;
@@ -2754,6 +2789,22 @@ function renderGrid() {
                 <div class="fh-lbl">${k}★<span class="fh-lbl-fill">${k}★</span></div>
               </div>`;
     }).join('');
+    // No rated titles to chart (filters hid them all, or the tab has none yet): drop the
+    // whole bar graph — bars, slider, labels — for a single centred message. If rated
+    // titles exist somewhere in the tab, resetting filters would bring them back; if none
+    // exist at all, only adding (rated) titles will.
+    const finRightHtml = histRated.length
+      ? `<div class="fh-tip" id="histTip"></div>
+        <div class="fh-bars">${bars}</div>
+        <div class="fh-slider">
+          <div class="fh-slider-fill" id="finFill"></div>
+          <input type="range" class="fh-range" id="finLo" min="0" max="10" step="0.1" value="${lo}" oninput="onFinRange('lo', this.value)" onchange="onFinRangeCommit()">
+          <input type="range" class="fh-range" id="finHi" min="0" max="10" step="0.1" value="${hi}" oninput="onFinRange('hi', this.value)" onchange="onFinRangeCommit()">
+        </div>
+        <div class="fh-range-lbls"><span id="finLoLbl">${_starLbl(lo)}</span><span id="finHiLbl">${_starLbl(hi)}</span></div>`
+      : `<div class="fh-empty">${rated.length
+          ? 'Library is empty. Try resetting filters.'
+          : 'Library is empty. Add titles to use bar graph.'}</div>`;
     statsHtml = `<div class="fin-stats">
       <div class="fin-left">
         <div class="fin-stat">
@@ -2769,16 +2820,7 @@ function renderGrid() {
           <div class="fin-tens">masterpiece${masterpieces !== 1 ? 's' : ''}</div>
         </div>
       </div>
-      <div class="fin-right">
-        <div class="fh-tip" id="histTip"></div>
-        <div class="fh-bars">${bars}</div>
-        <div class="fh-slider">
-          <div class="fh-slider-fill" id="finFill"></div>
-          <input type="range" class="fh-range" id="finLo" min="0" max="10" step="0.1" value="${lo}" oninput="onFinRange('lo', this.value)" onchange="onFinRangeCommit()">
-          <input type="range" class="fh-range" id="finHi" min="0" max="10" step="0.1" value="${hi}" oninput="onFinRange('hi', this.value)" onchange="onFinRangeCommit()">
-        </div>
-        <div class="fh-range-lbls"><span id="finLoLbl">${_starLbl(lo)}</span><span id="finHiLbl">${_starLbl(hi)}</span></div>
-      </div>
+      <div class="fin-right">${finRightHtml}</div>
     </div>`;
   }
 
@@ -2826,6 +2868,10 @@ function renderGrid() {
   if (!items.length) {
     panel.innerHTML = statsHtml + topBar +
       `<div class="poster-grid" style="${gridStyle}"><div class="grid-empty"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" style="opacity:0.2"><rect x="2" y="2" width="20" height="20" rx="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg>Nothing here yet — add something!</div></div>`;
+    // The grid can be empty while the bar graph is still present (e.g. the rating slider
+    // excludes every title): position the purple fill / label clips so the rail between
+    // the thumbs doesn't vanish. No-ops safely when the bar graph was replaced by a label.
+    if (currentTab === 'finished') _updateFinRangeUI();
     pendingSelectId = null;
     autoSelectFirst();
     return;
@@ -2849,6 +2895,12 @@ function renderGrid() {
     else autoSelectFirst();
   } else if (selectedId !== null && items.some(i => i.id === selectedId)) {
     highlightCard(selectedId);
+    // The card is back on screen but the detail panel may have been blanked while it
+    // was filtered out — restore it only when the panel isn't already showing this item.
+    if (_detailShownId !== selectedId) {
+      const it = allItems.find(i => i.id === selectedId);
+      if (it) renderDetail(it);
+    }
   } else {
     autoSelectFirst();
   }
@@ -3034,7 +3086,7 @@ function clearGridFilter(ev) {
   if (ev) ev.stopPropagation();
   tabFilter[currentTab] = { query: '', types: new Set(_ALL_TYPES) };
   renderGrid();
-  if (ev) _reopenGridCtl();
+  // This button lives outside the dropdown now, so don't reopen the menu — just clear.
 }
 
 function setTabSize(size, ev) {
@@ -3065,7 +3117,6 @@ function _pillSectionsHtml(selArr, which) {
 
 function renderGridControls() {
   const f = tabFilter[currentTab];
-  const hasFilter = !!(f.query || f.types.size < _ALL_TYPES.length);
   // Label the filter button with the current tab so it's clear filters are per-tab.
   const tabLabel = { watchlist: 'Watchlist', watching: 'Watching', finished: 'Finished' }[currentTab] || 'Library';
 
@@ -3091,10 +3142,15 @@ function renderGridControls() {
     `<div class="size-dd-item${curSize===o.k?' active':''}" onclick="setTabSize('${o.k}',event)">
        <span>${o.l}</span></div>`).join('');
 
-  const clearRow = hasFilter
-    ? `<button class="gcm-clear" onclick="clearGridFilter(event)">Clear filters</button>` : '';
+  // "Clear filters" now lives OUTSIDE the dropdown menu (left of the funnel button) so an
+  // active media-type filter is obvious at a glance. Shown only while media types are
+  // actually narrowed — the title search has its own clear (✕) inline in the input.
+  const typesFiltered = f.types.size < _ALL_TYPES.length;
+  const clearBtn = typesFiltered
+    ? `<button class="grid-clear-btn" onclick="clearGridFilter(event)">Clear filters</button>` : '';
 
   return `<div class="size-dd-wrap pill-dd-wrap grid-controls-wrap">
+    ${clearBtn}
     <button class="size-dd-btn" onclick="toggleGridControls(event)">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
       ${tabLabel} <span class="dd-caret">▾</span>
@@ -3108,7 +3164,6 @@ function renderGridControls() {
         </div>
         <div class="sfm-col sfm-col-pills">${_pillSectionsHtml(tabGridPills[currentTab], 'grid')}</div>
       </div>
-      ${clearRow}
     </div>
   </div>`;
 }
@@ -3243,6 +3298,7 @@ function starKey(e, id) {
 function renderDetail(item) {
   const panel = document.getElementById('detailPanel');
   panel.scrollTop = 0;
+  _detailShownId = item.id;
 
   const ratingHtml = item.status === 'finished' ? `
     <div class="rating-wrap">
