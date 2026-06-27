@@ -787,18 +787,21 @@ input[type="range"]::-webkit-slider-thumb {
 }
 .grid-random-btn:hover { color: var(--accent); border-color: var(--accent); background: var(--subtle); }
 .grid-random-btn:active { transform: scale(0.94); }
-/* "Show unrated" toggle — finished tab only, beside the search field. Custom box so
-   it matches the app's dark/accent styling instead of the native checkbox. */
+/* "Show unrated" toggle — finished tab only, beside the search field. Boxed as a pill
+   control so it matches the Random button / grid controls it sits next to instead of
+   floating as a bare checkbox + label. */
 .show-unrated-toggle {
   flex-shrink: 0; display: inline-flex; align-items: center; gap: 0.45rem;
-  cursor: pointer; font-size: 0.9375rem; color: var(--muted); user-select: none; white-space: nowrap;
-  transition: color 0.15s;
+  padding: 0.5625rem 0.875rem; border-radius: var(--radius);
+  border: 1px solid var(--border-md); background: var(--card);
+  cursor: pointer; font-size: 1rem; color: var(--muted); user-select: none; white-space: nowrap;
+  transition: all 0.15s;
 }
-.show-unrated-toggle:hover { color: var(--text); }
+.show-unrated-toggle:hover { color: var(--accent); border-color: var(--accent); background: var(--subtle); }
 .show-unrated-toggle input {
   appearance: none; -webkit-appearance: none; position: relative; flex-shrink: 0;
   width: 1.1rem; height: 1.1rem; margin: 0; cursor: pointer;
-  border: 1px solid var(--border-md); border-radius: 5px; background: var(--card);
+  border: 1px solid var(--border-md); border-radius: 5px; background: var(--bg);
   transition: background 0.15s, border-color 0.15s;
 }
 .show-unrated-toggle:hover input { border-color: var(--accent); }
@@ -2119,6 +2122,12 @@ let selectedId   = null;
 let _detailShownId = null;
 let currentSort  = 'name';
 
+// Per-tab grid scroll offset, persisted so a page reload — or an in-place re-render
+// (e.g. the periodic ratings refresh) — lands you back where you were instead of
+// snapping to the top. Mirrors how the highlighted item survives a reload.
+let _gridScroll = (() => { try { return JSON.parse(localStorage.getItem('gridScroll')) || {}; } catch { return {}; } })();
+let _gridScrollRAF = 0;
+
 const _ALL_TYPES = ['movie','tv','book','manga'];
 const tabFilter = {
   watchlist: { query: '', types: new Set(_ALL_TYPES) },
@@ -2221,6 +2230,10 @@ document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.da
 // until the user switches tabs.
 currentSort = tabSort[currentTab] || 'name';
 if (currentSort === 'rating' && currentTab !== 'finished') currentSort = 'name';
+// Persist the grid scroll offset as the user scrolls so it survives reloads/refreshes.
+// The panel element is static across re-renders (only its innerHTML changes), so a
+// single listener attached here covers every grid.
+document.getElementById('gridPanel').addEventListener('scroll', _saveGridScroll, { passive: true });
 loadList();
 
 document.addEventListener('keydown', e => {
@@ -2747,6 +2760,26 @@ function hideHistTip() {
   if (tip) tip.classList.remove('show');
 }
 
+// Save the grid's scroll position for the current tab (throttled to one write per
+// frame). The manual controls — search, sort, size, filters — all live at the top of
+// the scroll panel, so the saved offset is ~0 whenever the user drives a re-render and
+// non-zero only when they've scrolled into the list, which is exactly what we want to
+// keep across reloads and background refreshes.
+function _saveGridScroll() {
+  if (_gridScrollRAF) return;
+  _gridScrollRAF = requestAnimationFrame(() => {
+    _gridScrollRAF = 0;
+    const p = document.getElementById('gridPanel');
+    if (!p) return;
+    _gridScroll[currentTab] = p.scrollTop;
+    try { localStorage.setItem('gridScroll', JSON.stringify(_gridScroll)); } catch {}
+  });
+}
+function _restoreGridScroll() {
+  const p = document.getElementById('gridPanel');
+  if (p) p.scrollTop = _gridScroll[currentTab] || 0;
+}
+
 function renderGrid() {
   const panel = document.getElementById('gridPanel');
   const items = sortedItems();
@@ -2904,6 +2937,12 @@ function renderGrid() {
   } else {
     autoSelectFirst();
   }
+
+  // Re-rendering replaces the panel's innerHTML, which resets its scroll to the top.
+  // Put the user back where they were (persisted per tab) so reloads and background
+  // refreshes don't yank them up. Posters reserve their height via aspect-ratio, so
+  // the offset is valid before images finish loading.
+  _restoreGridScroll();
 }
 
 // Build just the poster-grid cards. Extracted so the finished-tab rating slider can
@@ -4433,9 +4472,13 @@ function pillUrl(src, item, ratings) {
   switch (src) {
     case 'tmdb':
       return tid ? `https://www.themoviedb.org/${mt}/${encodeURIComponent(tid)}` : null;
-    case 'letterboxd':   // /tmdb/<id> redirects to the film's Letterboxd page
-      if (tid) return `https://letterboxd.com/tmdb/${encodeURIComponent(tid)}/`;
-      return direct || null;
+    case 'letterboxd':
+      // Letterboxd's /tmdb/<id>/ redirect only resolves MOVIE ids — a TV show's TMDB
+      // id collides with an unrelated film there, so it lands on the wrong page. Use
+      // the id redirect for movies only; for TV fall back to the exact Letterboxd URL
+      // MDBList gave us, then a title search.
+      if (mt === 'movie' && tid) return `https://letterboxd.com/tmdb/${encodeURIComponent(tid)}/`;
+      return direct || (title ? `https://letterboxd.com/search/films/${q}/` : null);
     case 'imdb': {
       const tt = ratings && ratings.imdb_id;
       if (tt) return `https://www.imdb.com/title/${encodeURIComponent(tt)}/`;
