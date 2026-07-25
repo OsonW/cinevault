@@ -968,3 +968,64 @@ def test_manga_search_nan_last_chapter_is_valid_json(client, monkeypatch):
     assert b"NaN" not in resp.data
     data = resp.get_json()
     assert data[0]["total_chapters"] is None
+
+
+# ── /api/manga-info ────────────────────────────────────────────────
+# manga_info_cache is module-level and is NOT reset by the client fixture, so
+# every test below clears it and uses a distinct manga id.
+
+def _manga_info_payload(attrs):
+    return {"data": {"id": "x", "attributes": attrs}}
+
+
+def test_manga_info_non_numeric_last_chapter_is_200(client, monkeypatch):
+    """"Oneshot" is truthy, so a bare float() raised and the handler returned 500 —
+    an error log plus a fresh upstream request every time the title was opened."""
+    _register(client)
+    monkeypatch.setattr(
+        app_module.requests, "get",
+        lambda *a, **k: _FakeTMDBResp(_manga_info_payload({"lastChapter": "Oneshot"})),
+    )
+    app_module.manga_info_cache.clear()
+    resp = client.get("/api/manga-info/oneshot-id")
+    assert resp.status_code == 200
+    assert resp.get_json() == {"last_chapter": None}
+
+
+def test_manga_info_decimal_last_chapter(client, monkeypatch):
+    _register(client)
+    monkeypatch.setattr(
+        app_module.requests, "get",
+        lambda *a, **k: _FakeTMDBResp(_manga_info_payload({"lastChapter": "91.5"})),
+    )
+    app_module.manga_info_cache.clear()
+    assert client.get("/api/manga-info/decimal-id").get_json()["last_chapter"] == 91.5
+
+
+def test_manga_info_missing_last_chapter(client, monkeypatch):
+    _register(client)
+    monkeypatch.setattr(
+        app_module.requests, "get",
+        lambda *a, **k: _FakeTMDBResp(_manga_info_payload({})),
+    )
+    app_module.manga_info_cache.clear()
+    assert client.get("/api/manga-info/missing-id").get_json()["last_chapter"] is None
+
+
+def test_manga_info_non_numeric_result_is_cached(client, monkeypatch):
+    """The regression that matters: the old code threw before reaching the cache
+    write, so every open of a "Oneshot" title re-hit MangaDex."""
+    _register(client)
+    calls = {"n": 0}
+
+    def fake_get(*a, **k):
+        calls["n"] += 1
+        return _FakeTMDBResp(_manga_info_payload({"lastChapter": "Oneshot"}))
+
+    monkeypatch.setattr(app_module.requests, "get", fake_get)
+    app_module.manga_info_cache.clear()
+    first = client.get("/api/manga-info/cached-oneshot-id")
+    second = client.get("/api/manga-info/cached-oneshot-id")
+    assert first.status_code == second.status_code == 200
+    assert first.get_json() == second.get_json() == {"last_chapter": None}
+    assert calls["n"] == 1                        # second served from cache

@@ -1116,7 +1116,7 @@ def manga_info(manga_id):
         attrs = resp.json().get("data", {}).get("attributes", {})
         last_chapter = attrs.get("lastChapter")
         info = {
-            "last_chapter": float(last_chapter) if last_chapter else None,
+            "last_chapter": _safe_float(last_chapter),
         }
         manga_info_cache[manga_id] = info
         return jsonify(info)
