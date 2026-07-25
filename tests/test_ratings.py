@@ -740,6 +740,40 @@ def test_fetch_tmdb_meta_movie_one_call(monkeypatch):
     assert calls[0][1].get("append_to_response") == "credits"
 
 
+def test_fetch_tmdb_meta_movie_caps_at_three_directors(monkeypatch):
+    """names[:3] cap and ", ".join together: 4 directors in, first 3 joined out."""
+    monkeypatch.setattr(
+        app_module.requests, "get",
+        lambda *a, **k: _FakeTMDBResp({
+            "runtime": 90,
+            "credits": {"crew": [
+                {"name": "Director One", "job": "Director"},
+                {"name": "Director Two", "job": "Director"},
+                {"name": "Director Three", "job": "Director"},
+                {"name": "Director Four", "job": "Director"},
+            ]},
+        }),
+    )
+    meta = app_module._fetch_tmdb_meta("movie", 603, "k")
+    assert meta["author"] == "Director One, Director Two, Director Three"
+
+
+def test_fetch_tmdb_meta_movie_no_director_in_crew(monkeypatch):
+    """Crew present but nobody has job == 'Director': author empty, length independent."""
+    monkeypatch.setattr(
+        app_module.requests, "get",
+        lambda *a, **k: _FakeTMDBResp({
+            "runtime": 95,
+            "credits": {"crew": [
+                {"name": "Someone", "job": "Editor"},
+                {"name": "Someone Else", "job": "Producer"},
+            ]},
+        }),
+    )
+    meta = app_module._fetch_tmdb_meta("movie", 603, "k")
+    assert meta == {"author": "", "length": "1h 35m"}
+
+
 def test_fetch_tmdb_meta_tv_seasons(monkeypatch):
     monkeypatch.setattr(
         app_module.requests, "get",
@@ -757,7 +791,9 @@ def test_fetch_tmdb_meta_tv_single_season_singular(monkeypatch):
         app_module.requests, "get",
         lambda *a, **k: _FakeTMDBResp({"number_of_seasons": 1, "created_by": []}),
     )
-    assert app_module._fetch_tmdb_meta("tv", 1, "k")["length"] == "1 Season"
+    meta = app_module._fetch_tmdb_meta("tv", 1, "k")
+    assert meta["length"] == "1 Season"
+    assert meta["author"] == ""  # no created_by entries
 
 
 def test_fetch_tmdb_meta_request_failure(monkeypatch):
@@ -766,6 +802,23 @@ def test_fetch_tmdb_meta_request_failure(monkeypatch):
 
     monkeypatch.setattr(app_module.requests, "get", boom)
     assert app_module._fetch_tmdb_meta("movie", 603, "k") == {"author": "", "length": ""}
+
+
+def test_fetch_tmdb_meta_unsupported_media_type_no_request(monkeypatch):
+    """Anything other than movie/tv must short-circuit with no HTTP call.
+
+    Guards against a future caller forgetting the movie/tv guard and having a
+    book/manga id silently hit /tv/{id}, producing plausible-looking garbage.
+    """
+    calls = []
+
+    def fake_get(url, **kwargs):
+        calls.append((url, kwargs.get("params", {})))
+        return _FakeTMDBResp({})
+
+    monkeypatch.setattr(app_module.requests, "get", fake_get)
+    assert app_module._fetch_tmdb_meta("book", 1, "k") == {"author": "", "length": ""}
+    assert len(calls) == 0
 
 
 @pytest.mark.parametrize("minutes,expected", [

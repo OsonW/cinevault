@@ -546,12 +546,14 @@ def _fetch_tmdb_meta(media_type: str, tmdb_id: int, api_key: str) -> dict:
             crew = data.get("credits", {}).get("crew", [])
             names = [c["name"] for c in crew if c.get("job") == "Director"]
             length = _fmt_runtime(data.get("runtime"))
-        else:
+        elif media_type == "tv":
             url = f"https://api.themoviedb.org/3/tv/{tmdb_id}"
             data = requests.get(url, params=params, timeout=3).json()
             names = [c["name"] for c in data.get("created_by", [])]
             seasons = data.get("number_of_seasons") or 0
             length = f"{seasons} Season{'' if seasons == 1 else 's'}" if seasons else ""
+        else:
+            return {"author": "", "length": ""}
         return {"author": ", ".join(names[:3]), "length": length}
     except Exception:
         return {"author": "", "length": ""}
