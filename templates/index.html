@@ -2211,6 +2211,18 @@ const BROKEN_POSTER_BLANK = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
 
 const TYPE_LABEL = { movie:'Movie', tv:'TV Show', book:'Book', manga:'Manga' };
 
+// Length shown beside the media type: runtime (movie), season count (tv), chapter
+// count (manga), page count (book). Movie/TV strings are formatted server-side by
+// /api/tmdb-meta; this handles the two types whose raw counts are already local.
+function _fmtCount(n, noun) {
+  const v = Number(n);
+  if (!v || v <= 0) return '';
+  return `${v} ${noun}${v === 1 ? '' : 's'}`;
+}
+
+// "<media_type>:<id>" -> length string ('' means "looked up, nothing available").
+const _lengthCache = {};
+
 const TYPE_SVG = {
   movie: `<svg class="icon-svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/></svg>`,
   tv:    `<svg class="icon-svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="15" rx="2"/><polyline points="17 2 12 7 7 2"/></svg>`,
@@ -3351,6 +3363,52 @@ function starKey(e, id) {
   _starApply(slider, id, R, true);
 }
 
+// Length we can show without any network call: book page counts live on the row, and
+// anything already resolved this session is in _lengthCache. Returns the ", 512 Pages"
+// suffix (comma included) or '' so the type line reads plainly when nothing is known.
+function _detailLengthSeed(item) {
+  const id = item.tmdb_id || item.external_id;
+  const cached = _lengthCache[`${item.media_type}:${id}`];
+  if (cached) return `, ${cached}`;
+  if (item.media_type === 'book') {
+    const s = _fmtCount(item.total_pages, 'Page');
+    return s ? `, ${s}` : '';
+  }
+  return '';
+}
+
+// Fill the detail-panel length for types that need a lookup. Movie/TV share the
+// /api/tmdb-meta response with the director fetch (server-cached 24h); manga reuses
+// the existing /api/manga-info endpoint and its client-side cache. Books never get
+// here — their page count is already on the row.
+function hydrateDetailLength(item) {
+  const id = item.tmdb_id || item.external_id;
+  if (!id) return;
+  const ck = `${item.media_type}:${id}`;
+  const paint = (len) => {
+    _lengthCache[ck] = len || '';
+    if (!len || selectedId !== item.id) return;
+    const el = document.getElementById('detailLength');
+    if (el) el.textContent = `, ${len}`;
+  };
+  if (ck in _lengthCache) { paint(_lengthCache[ck]); return; }
+
+  if (item.media_type === 'movie' || item.media_type === 'tv') {
+    fetch(`/api/tmdb-meta/${item.media_type}/${encodeURIComponent(id)}`)
+      .then(r => r.json()).then(d => paint(d.length)).catch(() => {});
+  } else if (item.media_type === 'manga') {
+    const cachedInfo = mangaInfoCache[id];
+    if (cachedInfo) { paint(_fmtCount(cachedInfo.last_chapter, 'Chapter')); return; }
+    fetch(`/api/manga-info/${encodeURIComponent(id)}`)
+      .then(r => r.json())
+      .then(d => {
+        if (d && !d.error) mangaInfoCache[id] = d;
+        paint(_fmtCount(d && d.last_chapter, 'Chapter'));
+      })
+      .catch(() => {});
+  }
+}
+
 function renderDetail(item) {
   const panel = document.getElementById('detailPanel');
   panel.scrollTop = 0;
@@ -3428,7 +3486,7 @@ function renderDetail(item) {
     </div>
     <div class="detail-body">
       <h2 class="detail-title">${esc(item.title)}</h2>
-      <p class="detail-meta">${TYPE_SVG[item.media_type]} ${TYPE_LABEL[item.media_type]}</p>
+      <p class="detail-meta">${TYPE_SVG[item.media_type]} ${TYPE_LABEL[item.media_type]}<span id="detailLength">${_detailLengthSeed(item)}</span></p>
       ${authorHtml}
       <div class="desc-block" id="descBlock" style="display:none">
         <div id="descContent" class="detail-overview is-collapsed"></div>
@@ -3457,6 +3515,7 @@ function renderDetail(item) {
   hydratePills('detailScores', item, DETAIL_SCORES);
 
   loadDescriptionPreview(item);
+  hydrateDetailLength(item);
 
   if (!item.author && (item.media_type === 'movie' || item.media_type === 'tv')) {
     fetch(`/api/item/${item.id}/fetch_director`)
