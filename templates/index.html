@@ -423,6 +423,11 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   overflow: hidden;
 }
 .sm-card-author { font-size: 0.6875rem; color: var(--muted); }
+.sm-card-length { font-size: 0.6875rem; color: var(--muted); }
+/* The div is always emitted (hydration needs a target) but is empty until a length is
+   known — and .sm-card-body is a flex column with a gap, so an empty flex item still
+   costs a full 0.3125rem row gap. Hide it until it has text. */
+.sm-card-length:empty { display: none; }
 .sm-card-author.sm-author-loading { display: inline-flex; align-items: center; height: 1.2em; }
 .author-dots { display: inline-flex; gap: 0.22em; }
 .author-dots span {
@@ -2241,7 +2246,21 @@ function _fmtCount(n, noun) {
 
 // "<media_type>:<id>" -> length string ('' means "looked up, nothing available").
 const _lengthCache = {};
-const _lengthPending = new Set();   // in-flight /api/tmdb-meta lookups, keyed the same way
+const _tmdbMetaPending = {};   // "<type>:<id>" -> in-flight promise
+
+// Single-flight /api/tmdb-meta. Both the author and the length want the same
+// response on the same paint — a search card asks for both at once — so share one
+// request rather than firing two per card. Resolves to null on any failure.
+function fetchTmdbMeta(mediaType, id) {
+  const ck = `${mediaType}:${id}`;
+  if (_tmdbMetaPending[ck]) return _tmdbMetaPending[ck];
+  const p = fetch(`/api/tmdb-meta/${mediaType}/${encodeURIComponent(id)}`)
+    .then(r => r.json())
+    .catch(() => null)
+    .finally(() => { delete _tmdbMetaPending[ck]; });
+  _tmdbMetaPending[ck] = p;
+  return p;
+}
 
 const TYPE_SVG = {
   movie: `<svg class="icon-svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/></svg>`,
@@ -3414,11 +3433,7 @@ function hydrateDetailLength(item) {
   if (ck in _lengthCache) { paint(_lengthCache[ck]); return; }
 
   if (item.media_type === 'movie' || item.media_type === 'tv') {
-    if (_lengthPending.has(ck)) return;
-    _lengthPending.add(ck);
-    fetch(`/api/tmdb-meta/${item.media_type}/${encodeURIComponent(id)}`)
-      .then(r => r.json()).then(d => paint(d.length)).catch(() => {})
-      .finally(() => _lengthPending.delete(ck));
+    fetchTmdbMeta(item.media_type, id).then(d => paint(d && d.length));
   } else if (item.media_type === 'manga') {
     // fetchMangaInfo is single-flight and cache-aware, so the constraint loader's
     // setTimeout on this same paint shares this request instead of duplicating it.
@@ -4189,7 +4204,7 @@ function renderModalResults(libMatches, tmdbResults, q, loading) {
         hydratePills(pillsId, item, searchPills);
       });
     }
-    shownResults.forEach(r => hydrateSmAuthor(r));
+    shownResults.forEach(r => { hydrateSmAuthor(r); hydrateSmLength(r); });
   }
 }
 
@@ -4207,8 +4222,37 @@ function _progressLabel(item) {
   return '';
 }
 
+// Length already available without a request: manga chapter counts and book page
+// counts both ride along in the search payload. Movie/TV return '' and backfill.
+function _smLengthSeed(r) {
+  const cached = _lengthCache[`${r.media_type}:${r.tmdb_id || r.external_id}`];
+  if (cached) return cached;
+  if (r.media_type === 'manga') return _fmtCount(r.total_chapters, 'Chapter');
+  if (r.media_type === 'book')  return _fmtCount(r.total_pages, 'Page');
+  return '';
+}
+
+// Movie/TV search cards backfill their length from /api/tmdb-meta — the same
+// single-flight request hydrateSmAuthor uses, so the pair costs one round trip.
+function hydrateSmLength(r) {
+  if (r.media_type !== 'movie' && r.media_type !== 'tv') return;   // book/manga seeded
+  const tid = r.tmdb_id || r.external_id;
+  if (!tid) return;
+  const ck = `${r.media_type}:${tid}`;
+  const fill = (len) => {
+    if (!len) return;
+    const id = `smlen-${r.media_type}-${(r.external_id || r.tmdb_id || '').toString().replace(/[^a-z0-9]/gi,'_')}`;
+    const el = document.getElementById(id);
+    if (el) el.textContent = len;
+  };
+  if (ck in _lengthCache) { fill(_lengthCache[ck]); return; }
+  fetchTmdbMeta(r.media_type, tid).then(d => {
+    _lengthCache[ck] = (d && d.length) || '';
+    fill(d && d.length);
+  });
+}
+
 const _smAuthorCache = {};   // "media_type:tmdb_id" -> author string
-const _smAuthorPending = new Set();  // in-flight director fetches (streaming re-renders call this repeatedly)
 
 // Movie/TV search cards arrive without a director (search is now fast); fetch it
 // lazily and fill the card when it lands. Deduped per session.
@@ -4242,12 +4286,10 @@ function hydrateSmAuthor(r) {
     }
   };
   if (ck in _smAuthorCache) { fill(_smAuthorCache[ck]); return; }
-  if (_smAuthorPending.has(ck)) return;
-  _smAuthorPending.add(ck);
-  fetch(`/api/tmdb-director/${r.media_type}/${encodeURIComponent(tid)}`)
-    .then(res => res.json()).then(d => { _smAuthorCache[ck] = d.author || ''; fill(d.author); })
-    .catch(() => {})
-    .finally(() => _smAuthorPending.delete(ck));
+  fetchTmdbMeta(r.media_type, tid).then(d => {
+    _smAuthorCache[ck] = (d && d.author) || '';
+    fill(d && d.author);
+  });
 }
 
 // Whether this card still has MDBList score pills loading, so we can show a single
@@ -4298,12 +4340,18 @@ function renderSmCard(r) {
   const authorHtml = r.author
     ? `<div class="sm-card-author">${esc(r.author)}</div>`
     : (authorLoading ? `<div class="sm-card-author sm-author-loading"><span class="author-dots"><span></span><span></span><span></span></span></div>` : '');
+  // Length sits under the author. Book/manga counts ride along in the search payload
+  // so they paint immediately; movie/TV backfill via hydrateSmLength. Deliberately no
+  // "…" placeholder — a second row of dots on every card is noise.
+  const lengthId = `smlen-${r.media_type}-${(r.external_id || r.tmdb_id || '').toString().replace(/[^a-z0-9]/gi,'_')}`;
+  const lengthHtml = `<div class="sm-card-length" id="${lengthId}">${esc(_smLengthSeed(r))}</div>`;
   const safeKey    = key.replace(/'/g, "\\'");
   return `<div class="sm-card ${already?'in-library':''}" data-media-type="${r.media_type}">
     <img class="sm-poster" src="${posterSrc}" referrerpolicy="no-referrer" onerror="this.src='${BROKEN_POSTER_FULL}'" loading="lazy">
     <div class="sm-card-body">
       <div class="sm-card-title">${esc(r.title)}</div>
       ${authorHtml}
+      ${lengthHtml}
       ${chipsHtml}
       ${r.overview ? `<div class="sm-overview">${esc(r.overview)}</div>` : ''}
       <button class="sm-add-btn${already?' remove':''}" id="smbtn-${r.media_type}-${(r.external_id||r.tmdb_id||'').toString().replace(/[^a-z0-9]/gi,'_')}"
