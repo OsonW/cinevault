@@ -682,6 +682,29 @@ def test_tmdb_meta_endpoint(client, monkeypatch):
     assert calls["n"] == 1                        # second served from cache
 
 
+def test_tmdb_meta_and_fetch_director_share_one_upstream_call(client, monkeypatch):
+    """Opening a detail panel fires both routes for the same title — the lazy length
+    and the stored-author backfill. They must resolve to the same cache key so TMDB
+    is hit once, not twice."""
+    _register(client)
+    _add_movie(client, title="The Matrix", external_id="603")
+    item_id = client.get("/api/list").get_json()[0]["id"]
+    calls = {"n": 0}
+
+    def spy(media_type, tmdb_id, key):
+        calls["n"] += 1
+        return {"author": "Lana Wachowski", "length": "2h 16m"}
+
+    monkeypatch.setattr(app_module, "_fetch_tmdb_meta", spy)
+    meta = client.get("/api/tmdb-meta/movie/603").get_json()
+    director = client.get(f"/api/item/{item_id}/fetch_director").get_json()
+    assert meta["length"] == "2h 16m"
+    assert director["author"] == "Lana Wachowski"
+    assert calls["n"] == 1
+    # Same key from both callers — the parsed int, never the raw path string.
+    assert list(app_module._tmdb_meta_cache) == ["movie:603"]
+
+
 def test_tmdb_meta_no_tmdb_key(client):
     _register(client)
     resp = client.get("/api/tmdb-meta/movie/603")

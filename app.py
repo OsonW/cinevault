@@ -572,6 +572,21 @@ def _fetch_tmdb_meta(media_type: str, tmdb_id: int, api_key: str) -> dict:
         return {"author": "", "length": ""}
 
 
+def _cached_tmdb_meta(media_type: str, tmdb_id: int, api_key: str) -> dict:
+    """_fetch_tmdb_meta behind the 24h TTL cache. Two routes want the same record
+    when a detail panel opens — the lazy length and the stored-author backfill —
+    so both go through here rather than hitting TMDB twice."""
+    ck = f"{media_type}:{tmdb_id}"
+    hit = _tmdb_meta_cache.get(ck)
+    if hit and (time.time() - hit[0]) < _TMDB_META_TTL:
+        return hit[1]
+    meta = _fetch_tmdb_meta(media_type, tmdb_id, api_key)
+    if len(_tmdb_meta_cache) > 2000:
+        _tmdb_meta_cache.pop(next(iter(_tmdb_meta_cache)))
+    _tmdb_meta_cache[ck] = (time.time(), meta)
+    return meta
+
+
 @app.route("/api/item/<int:item_id>/fetch_director")
 @login_required
 def fetch_item_director(item_id):
@@ -588,7 +603,7 @@ def fetch_item_director(item_id):
     tmdb_key = _get_tmdb_key()
     if not tmdb_key:
         return jsonify({"error": "TMDB API key required"}), 401
-    author = _fetch_tmdb_meta(item["media_type"], int(tmdb_id), tmdb_key)["author"]
+    author = _cached_tmdb_meta(item["media_type"], int(tmdb_id), tmdb_key)["author"]
     if author:
         update_media_entry(item_id, author=author)
         _invalidate_media_cache(item_id)
@@ -1050,15 +1065,7 @@ def api_tmdb_meta(media_type, tmdb_id):
         tid = int(tmdb_id)
     except (TypeError, ValueError):
         return jsonify(empty)
-    ck = f"{media_type}:{tmdb_id}"
-    hit = _tmdb_meta_cache.get(ck)
-    if hit and (time.time() - hit[0]) < _TMDB_META_TTL:
-        return jsonify(hit[1])
-    meta = _fetch_tmdb_meta(media_type, tid, key)
-    if len(_tmdb_meta_cache) > 2000:
-        _tmdb_meta_cache.pop(next(iter(_tmdb_meta_cache)))
-    _tmdb_meta_cache[ck] = (time.time(), meta)
-    return jsonify(meta)
+    return jsonify(_cached_tmdb_meta(media_type, tid, key))
 
 
 # ═══════════════════════════════════════════════════
