@@ -3433,7 +3433,10 @@ function hydrateDetailLength(item) {
   if (ck in _lengthCache) { paint(_lengthCache[ck]); return; }
 
   if (item.media_type === 'movie' || item.media_type === 'tv') {
-    fetchTmdbMeta(item.media_type, id).then(d => paint(d && d.length));
+    // Skip paint entirely on a null (transient failure): paint's first act is an
+    // unconditional cache write, so painting a falsy value would settle the key as
+    // "nothing available" for the session. A resolved {length: ""} still caches.
+    fetchTmdbMeta(item.media_type, id).then(d => { if (d) paint(d.length); });
   } else if (item.media_type === 'manga') {
     // fetchMangaInfo is single-flight and cache-aware, so the constraint loader's
     // setTimeout on this same paint shares this request instead of duplicating it.
@@ -4247,8 +4250,9 @@ function hydrateSmLength(r) {
   };
   if (ck in _lengthCache) { fill(_lengthCache[ck]); return; }
   fetchTmdbMeta(r.media_type, tid).then(d => {
-    _lengthCache[ck] = (d && d.length) || '';
-    fill(d && d.length);
+    if (!d) return;                 // transient failure — leave it uncached so a re-render retries
+    _lengthCache[ck] = d.length || '';
+    fill(d.length);
   });
 }
 
@@ -4287,8 +4291,9 @@ function hydrateSmAuthor(r) {
   };
   if (ck in _smAuthorCache) { fill(_smAuthorCache[ck]); return; }
   fetchTmdbMeta(r.media_type, tid).then(d => {
-    _smAuthorCache[ck] = (d && d.author) || '';
-    fill(d && d.author);
+    if (!d) return;                 // transient failure — leave it uncached so a re-render retries
+    _smAuthorCache[ck] = d.author || '';
+    fill(d.author);
   });
 }
 
