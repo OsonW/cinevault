@@ -2202,6 +2202,25 @@ const tabLastSelected = { watchlist: null, watching: null, finished: null };
 // TV/Manga constraint cache
 const tvInfoCache    = {};
 const mangaInfoCache = {};
+const _mangaInfoPending = {};   // id -> in-flight promise (detail length + chapter constraints both want this)
+
+// Single-flight /api/manga-info. Two callers want this on the same paint —
+// hydrateDetailLength and loadMangaConstraints — so share one request rather
+// than firing it twice on every cold open.
+function fetchMangaInfo(mangaId) {
+  if (mangaInfoCache[mangaId]) return Promise.resolve(mangaInfoCache[mangaId]);
+  if (_mangaInfoPending[mangaId]) return _mangaInfoPending[mangaId];
+  const p = fetch(`/api/manga-info/${encodeURIComponent(mangaId)}`)
+    .then(r => r.json())
+    .then(d => {
+      if (d && !d.error) mangaInfoCache[mangaId] = d;
+      return d;
+    })
+    .catch(() => null)
+    .finally(() => { delete _mangaInfoPending[mangaId]; });
+  _mangaInfoPending[mangaId] = p;
+  return p;
+}
 
 const inLibrary    = new Set();
 const tmdbResultMap = {};
@@ -2222,6 +2241,7 @@ function _fmtCount(n, noun) {
 
 // "<media_type>:<id>" -> length string ('' means "looked up, nothing available").
 const _lengthCache = {};
+const _lengthPending = new Set();   // in-flight /api/tmdb-meta lookups, keyed the same way
 
 const TYPE_SVG = {
   movie: `<svg class="icon-svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/></svg>`,
@@ -3394,18 +3414,19 @@ function hydrateDetailLength(item) {
   if (ck in _lengthCache) { paint(_lengthCache[ck]); return; }
 
   if (item.media_type === 'movie' || item.media_type === 'tv') {
+    if (_lengthPending.has(ck)) return;
+    _lengthPending.add(ck);
     fetch(`/api/tmdb-meta/${item.media_type}/${encodeURIComponent(id)}`)
-      .then(r => r.json()).then(d => paint(d.length)).catch(() => {});
+      .then(r => r.json()).then(d => paint(d.length)).catch(() => {})
+      .finally(() => _lengthPending.delete(ck));
   } else if (item.media_type === 'manga') {
-    const cachedInfo = mangaInfoCache[id];
-    if (cachedInfo) { paint(_fmtCount(cachedInfo.last_chapter, 'Chapter')); return; }
-    fetch(`/api/manga-info/${encodeURIComponent(id)}`)
-      .then(r => r.json())
-      .then(d => {
-        if (d && !d.error) mangaInfoCache[id] = d;
-        paint(_fmtCount(d && d.last_chapter, 'Chapter'));
-      })
-      .catch(() => {});
+    // fetchMangaInfo is single-flight and cache-aware, so the constraint loader's
+    // setTimeout on this same paint shares this request instead of duplicating it.
+    // Tradeoff: if the info comes back {last_chapter: null} (common — MangaDex leaves
+    // lastChapter empty for many ongoing series) the length caches as '' for the rest
+    // of the session and won't appear even if the data later fills in. Self-heals on
+    // reload; not worth TTL invalidation.
+    fetchMangaInfo(id).then(d => paint(_fmtCount(d && d.last_chapter, 'Chapter')));
   }
 }
 
@@ -3595,12 +3616,7 @@ async function loadTVConstraints(mediaId, tmdbId) {
 
 async function loadMangaConstraints(mediaId, mangaId) {
   if (!mangaId) return;
-  if (!mangaInfoCache[mangaId]) {
-    try {
-      const data = await fetch(`/api/manga-info/${encodeURIComponent(mangaId)}`).then(r => r.json());
-      if (data && !data.error) mangaInfoCache[mangaId] = data;
-    } catch { return; }
-  }
+  await fetchMangaInfo(mangaId);
   const info = mangaInfoCache[mangaId];
   if (!info || !info.last_chapter) return;
   const input = document.getElementById(`mangaChapInput_${mediaId}`);
