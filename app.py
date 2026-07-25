@@ -527,6 +527,16 @@ def _fmt_runtime(minutes) -> str:
     return f"{hours}h {rem}m" if rem else f"{hours}h"
 
 
+def _safe_float(value):
+    """MangaDex chapter numbers are free text ("91", "91.5", "", "Oneshot").
+    Coerce to float, or None when it isn't a number — one bad value must not
+    take down the whole search response."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _fetch_tmdb_meta(media_type: str, tmdb_id: int, api_key: str) -> dict:
     """Director/creator + length for a TMDB title, from a SINGLE request.
 
@@ -806,7 +816,7 @@ def search_manga():
                 "status": attrs.get("status"),
                 # Already in the search response — lets search cards show the chapter
                 # count with no extra request.
-                "total_chapters": attrs.get("lastChapter"),
+                "total_chapters": _safe_float(attrs.get("lastChapter")),
                 "popularity": 0,
             })
 

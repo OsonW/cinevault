@@ -843,6 +843,18 @@ def _manga_search_payload(attributes):
     }]}
 
 
+def _manga_search_payload_multi(attributes_list):
+    """Several MangaDex search hits, one per attributes block, distinct ids."""
+    return {"data": [
+        {
+            "id": f"manga-{i}",
+            "attributes": {"title": {"en": f"Title {i}"}, **attrs},
+            "relationships": [],
+        }
+        for i, attrs in enumerate(attributes_list)
+    ]}
+
+
 def test_manga_search_maps_last_chapter(client, monkeypatch):
     """Manga has its own route (/api/search/manga) — it does NOT go through
     /api/search, which is TMDB-only and key-gated."""
@@ -853,7 +865,7 @@ def test_manga_search_maps_last_chapter(client, monkeypatch):
     )
     app_module.search_cache.clear()
     data = client.get("/api/search/manga?q=berserk").get_json()
-    assert data[0]["total_chapters"] == "91"
+    assert data[0]["total_chapters"] == 91.0
 
 
 def test_manga_search_missing_last_chapter(client, monkeypatch):
@@ -865,3 +877,69 @@ def test_manga_search_missing_last_chapter(client, monkeypatch):
     app_module.search_cache.clear()
     data = client.get("/api/search/manga?q=berserk").get_json()
     assert data[0]["total_chapters"] is None
+
+
+def test_manga_search_decimal_last_chapter(client, monkeypatch):
+    """Decimal chapters are real MangaDex data (e.g. filler/side chapters)."""
+    _register(client)
+    monkeypatch.setattr(
+        app_module.requests, "get",
+        lambda *a, **k: _FakeTMDBResp(_manga_search_payload({"lastChapter": "91.5"})),
+    )
+    app_module.search_cache.clear()
+    data = client.get("/api/search/manga?q=one-piece").get_json()
+    assert data[0]["total_chapters"] == 91.5
+
+
+def test_manga_search_empty_last_chapter(client, monkeypatch):
+    _register(client)
+    monkeypatch.setattr(
+        app_module.requests, "get",
+        lambda *a, **k: _FakeTMDBResp(_manga_search_payload({"lastChapter": ""})),
+    )
+    app_module.search_cache.clear()
+    data = client.get("/api/search/manga?q=chainsaw-man").get_json()
+    assert data[0]["total_chapters"] is None
+
+
+def test_manga_search_non_numeric_last_chapter(client, monkeypatch):
+    """The non-numeric case that motivated normalization: free-text values like
+    "Oneshot" must not survive as a truthy string the frontend would render."""
+    _register(client)
+    monkeypatch.setattr(
+        app_module.requests, "get",
+        lambda *a, **k: _FakeTMDBResp(_manga_search_payload({"lastChapter": "Oneshot"})),
+    )
+    app_module.search_cache.clear()
+    data = client.get("/api/search/manga?q=some-oneshot").get_json()
+    assert data[0]["total_chapters"] is None
+
+
+def test_manga_search_one_bad_value_does_not_wipe_batch(client, monkeypatch):
+    """A single garbage lastChapter must not take down the whole search response —
+    the coercion is per-item, guarded, and must not blow up the outer try/except."""
+    _register(client)
+    payload = _manga_search_payload_multi([
+        {"lastChapter": "Oneshot"},
+        {"lastChapter": "91"},
+    ])
+    monkeypatch.setattr(
+        app_module.requests, "get",
+        lambda *a, **k: _FakeTMDBResp(payload),
+    )
+    app_module.search_cache.clear()
+    data = client.get("/api/search/manga?q=batch-safety").get_json()
+    assert len(data) == 2
+    assert data[0]["total_chapters"] is None
+    assert data[1]["total_chapters"] == 91.0
+
+
+@pytest.mark.parametrize("value,expected", [
+    ("91", 91.0),
+    ("91.5", 91.5),
+    ("", None),
+    (None, None),
+    ("Oneshot", None),
+])
+def test_safe_float(value, expected):
+    assert app_module._safe_float(value) == expected
