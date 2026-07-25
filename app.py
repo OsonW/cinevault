@@ -513,20 +513,48 @@ def index():
 # Search (TMDB, Books, Manga)
 # ═══════════════════════════════════════════════════
 
-def _fetch_tmdb_director(media_type: str, tmdb_id: int, api_key: str) -> str:
+def _fmt_runtime(minutes) -> str:
+    """'1h 43m' / '44m' / '2h'. Empty string for missing or non-positive values."""
+    try:
+        mins = int(minutes)
+    except (TypeError, ValueError):
+        return ""
+    if mins <= 0:
+        return ""
+    hours, rem = divmod(mins, 60)
+    if not hours:
+        return f"{rem}m"
+    return f"{hours}h {rem}m" if rem else f"{hours}h"
+
+
+def _fetch_tmdb_meta(media_type: str, tmdb_id: int, api_key: str) -> dict:
+    """Director/creator + length for a TMDB title, from a SINGLE request.
+
+    Movies use append_to_response so credits and runtime arrive together — keeping
+    search hydration at one call per card, exactly as it was when this only fetched
+    the director. /tv/{id} already carries both created_by and number_of_seasons.
+
+    Returns {"author": str, "length": str}; either may be "" when unavailable.
+    """
     params = _tmdb_params(api_key)
     try:
         if media_type == "movie":
-            url = f"https://api.themoviedb.org/3/movie/{tmdb_id}/credits"
-            data = requests.get(url, params=params, timeout=3).json()
-            names = [c["name"] for c in data.get("crew", []) if c.get("job") == "Director"]
+            url = f"https://api.themoviedb.org/3/movie/{tmdb_id}"
+            data = requests.get(
+                url, params={**params, "append_to_response": "credits"}, timeout=3
+            ).json()
+            crew = data.get("credits", {}).get("crew", [])
+            names = [c["name"] for c in crew if c.get("job") == "Director"]
+            length = _fmt_runtime(data.get("runtime"))
         else:
             url = f"https://api.themoviedb.org/3/tv/{tmdb_id}"
             data = requests.get(url, params=params, timeout=3).json()
             names = [c["name"] for c in data.get("created_by", [])]
-        return ", ".join(names[:3])
+            seasons = data.get("number_of_seasons") or 0
+            length = f"{seasons} Season{'' if seasons == 1 else 's'}" if seasons else ""
+        return {"author": ", ".join(names[:3]), "length": length}
     except Exception:
-        return ""
+        return {"author": "", "length": ""}
 
 
 @app.route("/api/item/<int:item_id>/fetch_director")

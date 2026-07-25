@@ -699,3 +699,82 @@ def test_add_create_returns_id_and_date(client):
     assert resp.get("date_added")
     item = client.get("/api/list").get_json()[0]
     assert item["id"] == resp["id"]
+
+
+class _FakeTMDBResp:
+    """Minimal stand-in for requests.Response with a canned JSON body."""
+    status_code = 200
+
+    def __init__(self, payload):
+        self._payload = payload
+
+    def raise_for_status(self):
+        pass
+
+    def json(self):
+        return self._payload
+
+
+def test_fetch_tmdb_meta_movie_one_call(monkeypatch):
+    """Movie director + runtime must arrive from a SINGLE request.
+
+    Guards the append_to_response consolidation: if this ever splits back into
+    /movie/{id} + /movie/{id}/credits, search doubles its TMDB calls per card.
+    """
+    calls = []
+
+    def fake_get(url, **kwargs):
+        calls.append((url, kwargs.get("params", {})))
+        return _FakeTMDBResp({
+            "runtime": 103,
+            "credits": {"crew": [
+                {"name": "Lana Wachowski", "job": "Director"},
+                {"name": "Someone Else", "job": "Editor"},
+            ]},
+        })
+
+    monkeypatch.setattr(app_module.requests, "get", fake_get)
+    meta = app_module._fetch_tmdb_meta("movie", 603, "k")
+    assert meta == {"author": "Lana Wachowski", "length": "1h 43m"}
+    assert len(calls) == 1
+    assert calls[0][1].get("append_to_response") == "credits"
+
+
+def test_fetch_tmdb_meta_tv_seasons(monkeypatch):
+    monkeypatch.setattr(
+        app_module.requests, "get",
+        lambda *a, **k: _FakeTMDBResp({
+            "number_of_seasons": 4,
+            "created_by": [{"name": "Vince Gilligan"}],
+        }),
+    )
+    meta = app_module._fetch_tmdb_meta("tv", 1396, "k")
+    assert meta == {"author": "Vince Gilligan", "length": "4 Seasons"}
+
+
+def test_fetch_tmdb_meta_tv_single_season_singular(monkeypatch):
+    monkeypatch.setattr(
+        app_module.requests, "get",
+        lambda *a, **k: _FakeTMDBResp({"number_of_seasons": 1, "created_by": []}),
+    )
+    assert app_module._fetch_tmdb_meta("tv", 1, "k")["length"] == "1 Season"
+
+
+def test_fetch_tmdb_meta_request_failure(monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("network down")
+
+    monkeypatch.setattr(app_module.requests, "get", boom)
+    assert app_module._fetch_tmdb_meta("movie", 603, "k") == {"author": "", "length": ""}
+
+
+@pytest.mark.parametrize("minutes,expected", [
+    (103, "1h 43m"),
+    (44, "44m"),
+    (120, "2h"),
+    (0, ""),
+    (None, ""),
+    (-5, ""),
+])
+def test_fmt_runtime(minutes, expected):
+    assert app_module._fmt_runtime(minutes) == expected
