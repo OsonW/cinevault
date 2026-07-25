@@ -3530,7 +3530,7 @@ function renderDetail(item) {
     </div>
     <div class="detail-body">
       <h2 class="detail-title">${esc(item.title)}</h2>
-      <p class="detail-meta">${TYPE_SVG[item.media_type]} ${TYPE_LABEL[item.media_type]}<span id="detailLength">${_detailLengthSeed(item)}</span></p>
+      <p class="detail-meta">${TYPE_SVG[item.media_type]} ${TYPE_LABEL[item.media_type]}<span id="detailLength">${esc(_detailLengthSeed(item))}</span></p>
       ${authorHtml}
       <div class="desc-block" id="descBlock" style="display:none">
         <div id="descContent" class="detail-overview is-collapsed"></div>
