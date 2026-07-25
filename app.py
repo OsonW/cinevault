@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import math
 import time
 import secrets
 import threading
@@ -529,12 +530,14 @@ def _fmt_runtime(minutes) -> str:
 
 def _safe_float(value):
     """MangaDex chapter numbers are free text ("91", "91.5", "", "Oneshot").
-    Coerce to float, or None when it isn't a number — one bad value must not
-    take down the whole search response."""
+    Coerce to float, or None when it isn't a finite number — one bad value must
+    not take down the whole search response. float() accepts "nan"/"inf", which
+    would serialize as a bare NaN token that browsers refuse to JSON.parse."""
     try:
-        return float(value)
+        result = float(value)
     except (TypeError, ValueError):
         return None
+    return result if math.isfinite(result) else None
 
 
 def _fetch_tmdb_meta(media_type: str, tmdb_id: int, api_key: str) -> dict:

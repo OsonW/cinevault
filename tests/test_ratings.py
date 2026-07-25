@@ -940,6 +940,31 @@ def test_manga_search_one_bad_value_does_not_wipe_batch(client, monkeypatch):
     ("", None),
     (None, None),
     ("Oneshot", None),
+    ("nan", None),
+    ("inf", None),
+    ("-inf", None),
+    ("Infinity", None),
+    ("NaN", None),
 ])
 def test_safe_float(value, expected):
     assert app_module._safe_float(value) == expected
+
+
+def test_manga_search_nan_last_chapter_is_valid_json(client, monkeypatch):
+    """float("nan") parses without raising, so a naive _safe_float would let a
+    bare NaN token into the JSON body — invalid per RFC 8259 and rejected by a
+    browser's JSON.parse, breaking the whole response for one bad manga.
+
+    resp.get_json() uses Python's tolerant parser and would pass even with the
+    bug present, so this asserts on the raw bytes instead.
+    """
+    _register(client)
+    monkeypatch.setattr(
+        app_module.requests, "get",
+        lambda *a, **k: _FakeTMDBResp(_manga_search_payload({"lastChapter": "nan"})),
+    )
+    app_module.search_cache.clear()
+    resp = client.get("/api/search/manga?q=nan-chapter")
+    assert b"NaN" not in resp.data
+    data = resp.get_json()
+    assert data[0]["total_chapters"] is None
