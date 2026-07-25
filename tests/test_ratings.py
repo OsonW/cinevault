@@ -832,3 +832,36 @@ def test_fetch_tmdb_meta_unsupported_media_type_no_request(monkeypatch):
 ])
 def test_fmt_runtime(minutes, expected):
     assert app_module._fmt_runtime(minutes) == expected
+
+
+def _manga_search_payload(attributes):
+    """One MangaDex search hit with the given attributes block."""
+    return {"data": [{
+        "id": "abc-123",
+        "attributes": {"title": {"en": "Berserk"}, **attributes},
+        "relationships": [],
+    }]}
+
+
+def test_manga_search_maps_last_chapter(client, monkeypatch):
+    """Manga has its own route (/api/search/manga) — it does NOT go through
+    /api/search, which is TMDB-only and key-gated."""
+    _register(client)
+    monkeypatch.setattr(
+        app_module.requests, "get",
+        lambda *a, **k: _FakeTMDBResp(_manga_search_payload({"lastChapter": "91"})),
+    )
+    app_module.search_cache.clear()
+    data = client.get("/api/search/manga?q=berserk").get_json()
+    assert data[0]["total_chapters"] == "91"
+
+
+def test_manga_search_missing_last_chapter(client, monkeypatch):
+    _register(client)
+    monkeypatch.setattr(
+        app_module.requests, "get",
+        lambda *a, **k: _FakeTMDBResp(_manga_search_payload({})),
+    )
+    app_module.search_cache.clear()
+    data = client.get("/api/search/manga?q=berserk").get_json()
+    assert data[0]["total_chapters"] is None

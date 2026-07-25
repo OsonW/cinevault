@@ -804,6 +804,9 @@ def search_manga():
                 "cover_url": cover_url,
                 "overview": overview[:300] if overview else "",
                 "status": attrs.get("status"),
+                # Already in the search response — lets search cards show the chapter
+                # count with no extra request.
+                "total_chapters": attrs.get("lastChapter"),
                 "popularity": 0,
             })
 
