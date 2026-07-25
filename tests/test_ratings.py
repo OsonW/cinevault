@@ -18,6 +18,7 @@ def client(tmp_path, monkeypatch):
     app_module._user_media_cache.clear()
     app_module._mdblist_status_cache.clear()
     app_module._ratings_cache.clear()
+    app_module._tmdb_meta_cache.clear()
     from auth import _RATE_BUCKETS
     _RATE_BUCKETS.clear()
     with flask_app.test_client() as c:
@@ -405,7 +406,7 @@ def test_search_includes_tmdb_rating(client, monkeypatch):
             ]}
 
     monkeypatch.setattr(app_module.requests, "get", lambda *a, **k: FakeResp())
-    monkeypatch.setattr(app_module, "_fetch_tmdb_director", lambda *a, **k: "")
+    monkeypatch.setattr(app_module, "_fetch_tmdb_meta", lambda *a, **k: {"author": "", "length": ""})
     data = client.get("/api/search?q=matrix&type=movie").get_json()
     assert data[0]["tmdb_rating"] == 8.2
 
@@ -658,8 +659,8 @@ def test_search_does_not_block_on_directors(client, monkeypatch):
     called = {"n": 0}
     def spy(*a, **k):
         called["n"] += 1
-        return "Some Director"
-    monkeypatch.setattr(app_module, "_fetch_tmdb_director", spy)
+        return {"author": "Some Director", "length": "2h 16m"}
+    monkeypatch.setattr(app_module, "_fetch_tmdb_meta", spy)
 
     data = client.get("/api/search?q=matrix&type=movie").get_json()
     assert data[0]["title"] == "The Matrix"
@@ -667,25 +668,25 @@ def test_search_does_not_block_on_directors(client, monkeypatch):
     assert not data[0].get("author")             # author absent/empty on search
 
 
-def test_tmdb_director_endpoint(client, monkeypatch):
+def test_tmdb_meta_endpoint(client, monkeypatch):
     _register(client)
     _set_mdblist_key()
     calls = {"n": 0}
     def spy(media_type, tmdb_id, key):
         calls["n"] += 1
-        return "Lana Wachowski"
-    monkeypatch.setattr(app_module, "_fetch_tmdb_director", spy)
-    first  = client.get("/api/tmdb-director/movie/603").get_json()
-    second = client.get("/api/tmdb-director/movie/603").get_json()
-    assert first == second == {"author": "Lana Wachowski"}
+        return {"author": "Lana Wachowski", "length": "2h 16m"}
+    monkeypatch.setattr(app_module, "_fetch_tmdb_meta", spy)
+    first  = client.get("/api/tmdb-meta/movie/603").get_json()
+    second = client.get("/api/tmdb-meta/movie/603").get_json()
+    assert first == second == {"author": "Lana Wachowski", "length": "2h 16m"}
     assert calls["n"] == 1                        # second served from cache
 
 
-def test_tmdb_director_no_tmdb_key(client):
+def test_tmdb_meta_no_tmdb_key(client):
     _register(client)
-    resp = client.get("/api/tmdb-director/movie/603")
+    resp = client.get("/api/tmdb-meta/movie/603")
     assert resp.status_code == 200
-    assert resp.get_json() == {"author": ""}
+    assert resp.get_json() == {"author": "", "length": ""}
 
 
 def test_add_create_returns_id_and_date(client):

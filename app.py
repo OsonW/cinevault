@@ -228,9 +228,9 @@ def _fetch_mdblist_ratings(media_type: str, tmdb_id, key: str):
 _tmdb_rating_cache: dict[str, tuple[float, object]] = {}
 _TMDB_RATING_TTL = 24 * 3600  # seconds
 
-# TMDB director/creator for search results. Keyed "media_type:tmdb_id".
-_tmdb_director_cache: dict[str, tuple[float, str]] = {}
-_TMDB_DIRECTOR_TTL = 24 * 3600  # seconds
+# TMDB director/creator + length for search results. Keyed "media_type:tmdb_id".
+_tmdb_meta_cache: dict[str, tuple[float, dict]] = {}
+_TMDB_META_TTL = 24 * 3600  # seconds
 
 
 def _fetch_tmdb_rating(media_type: str, tmdb_id, api_key: str):
@@ -575,7 +575,7 @@ def fetch_item_director(item_id):
     tmdb_key = _get_tmdb_key()
     if not tmdb_key:
         return jsonify({"error": "TMDB API key required"}), 401
-    author = _fetch_tmdb_director(item["media_type"], int(tmdb_id), tmdb_key)
+    author = _fetch_tmdb_meta(item["media_type"], int(tmdb_id), tmdb_key)["author"]
     if author:
         update_media_entry(item_id, author=author)
         _invalidate_media_cache(item_id)
@@ -1020,28 +1020,29 @@ def api_tmdb_rating(media_type, tmdb_id):
     return jsonify({"tmdb": val})
 
 
-@app.route("/api/tmdb-director/<media_type>/<tmdb_id>")
+@app.route("/api/tmdb-meta/<media_type>/<tmdb_id>")
 @login_required
-def api_tmdb_director(media_type, tmdb_id):
-    """Free TMDB director/creator name, fetched lazily so search stays fast."""
+def api_tmdb_meta(media_type, tmdb_id):
+    """Free TMDB director/creator + length, fetched lazily so search stays fast."""
+    empty = {"author": "", "length": ""}
     if media_type not in ("movie", "tv"):
-        return jsonify({"author": ""})
+        return jsonify(empty)
     key = _get_tmdb_key()
     if not key:
-        return jsonify({"author": ""})
+        return jsonify(empty)
     try:
         tid = int(tmdb_id)
     except (TypeError, ValueError):
-        return jsonify({"author": ""})
+        return jsonify(empty)
     ck = f"{media_type}:{tmdb_id}"
-    hit = _tmdb_director_cache.get(ck)
-    if hit and (time.time() - hit[0]) < _TMDB_DIRECTOR_TTL:
-        return jsonify({"author": hit[1]})
-    author = _fetch_tmdb_director(media_type, tid, key) or ""
-    if len(_tmdb_director_cache) > 2000:
-        _tmdb_director_cache.pop(next(iter(_tmdb_director_cache)))
-    _tmdb_director_cache[ck] = (time.time(), author)
-    return jsonify({"author": author})
+    hit = _tmdb_meta_cache.get(ck)
+    if hit and (time.time() - hit[0]) < _TMDB_META_TTL:
+        return jsonify(hit[1])
+    meta = _fetch_tmdb_meta(media_type, tid, key)
+    if len(_tmdb_meta_cache) > 2000:
+        _tmdb_meta_cache.pop(next(iter(_tmdb_meta_cache)))
+    _tmdb_meta_cache[ck] = (time.time(), meta)
+    return jsonify(meta)
 
 
 # ═══════════════════════════════════════════════════
