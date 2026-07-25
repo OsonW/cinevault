@@ -3440,11 +3440,12 @@ function hydrateDetailLength(item) {
   } else if (item.media_type === 'manga') {
     // fetchMangaInfo is single-flight and cache-aware, so the constraint loader's
     // setTimeout on this same paint shares this request instead of duplicating it.
-    // Tradeoff: if the info comes back {last_chapter: null} (common — MangaDex leaves
-    // lastChapter empty for many ongoing series) the length caches as '' for the rest
-    // of the session and won't appear even if the data later fills in. Self-heals on
-    // reload; not worth TTL invalidation.
-    fetchMangaInfo(id).then(d => paint(_fmtCount(d && d.last_chapter, 'Chapter')));
+    // Skip paint on a failure (null = network error, {error} = HTTP 500) for the same
+    // reason as the TMDB branch: paint's unconditional cache write would settle the key.
+    // A genuine "no chapter count" reply ({last_chapter: null} — common, MangaDex leaves
+    // lastChapter empty for many ongoing series) does still cache as '' for the session,
+    // deliberately; it self-heals on reload and isn't worth TTL invalidation.
+    fetchMangaInfo(id).then(d => { if (d && !d.error) paint(_fmtCount(d.last_chapter, 'Chapter')); });
   }
 }
 
