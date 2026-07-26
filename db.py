@@ -44,6 +44,7 @@ def _create_tables(db_path: str) -> None:
                 last_chapter    REAL,
                 current_page    INTEGER,
                 total_pages     INTEGER,
+                length          TEXT,
                 notes           TEXT,
                 cover_url       TEXT,
                 author          TEXT,
@@ -85,6 +86,11 @@ def _migrate_media_dates(conn) -> None:
             conn.execute(f"ALTER TABLE media ADD COLUMN {col} TEXT")
     if "tmdb_rating" not in cols:
         conn.execute("ALTER TABLE media ADD COLUMN tmdb_rating REAL")
+    # Display-ready length ("1h 43m" / "4 Seasons" / "91 Chapters" / "512 Pages").
+    # Persisted rather than fetched per detail-panel open so it ships with /api/list
+    # and paints with the rest of the row instead of popping in a beat later.
+    if "length" not in cols:
+        conn.execute("ALTER TABLE media ADD COLUMN length TEXT")
     if dates_added and "date_added" in cols:
         conn.execute("UPDATE media SET date_watchlist = date_added WHERE status='watchlist' AND date_watchlist IS NULL")
         conn.execute("UPDATE media SET date_watching  = date_added WHERE status='watching'  AND date_watching  IS NULL")
@@ -138,7 +144,7 @@ def add_media_entry(
     tmdb_id=None, external_id=None,
     cover_url=None, author=None,
     total_pages=None, overview=None, year=None,
-    tmdb_rating=None,
+    tmdb_rating=None, length=None,
 ):
     ext = external_id or (str(tmdb_id) if tmdb_id else None)
     date_col = {
@@ -150,10 +156,11 @@ def add_media_entry(
         conn.execute(f"""
             INSERT OR IGNORE INTO media
                 (tmdb_id, external_id, title, media_type, status,
-                 cover_url, author, total_pages, overview, year, tmdb_rating, {date_col})
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, date('now'))
+                 cover_url, author, total_pages, overview, year, tmdb_rating,
+                 length, {date_col})
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, date('now'))
         """, (tmdb_id, ext, title, media_type, status,
-              cover_url, author, total_pages, overview, year, tmdb_rating))
+              cover_url, author, total_pages, overview, year, tmdb_rating, length))
         row = conn.execute(
             "SELECT id FROM media WHERE external_id = ? AND media_type = ?",
             (ext, media_type),
@@ -165,7 +172,7 @@ _UPDATABLE = frozenset({
     "status", "rating", "last_timestamp",
     "last_season", "last_episode", "last_chapter",
     "current_page", "total_pages",
-    "notes", "cover_url", "author", "overview",
+    "notes", "cover_url", "author", "overview", "length",
 })
 
 # Changing any of these while an item is in "watching" counts as progress.
@@ -229,6 +236,31 @@ def update_media_entry(media_id: int, **fields):
             f"UPDATE media SET {', '.join(set_parts)} WHERE id = ?",
             params + [media_id],
         )
+
+
+def set_media_lengths(updates) -> None:
+    """Bulk-write backfilled lengths (and, for books, the page count they came from).
+
+    Deliberately not routed through update_media_entry: this is a derived-metadata
+    write, not a user edit, so it must never touch the per-status date columns —
+    a backfill sweep would otherwise look like activity on every row it touched.
+    `updates` is an iterable of (media_id, length, total_pages); total_pages may be
+    None for non-books, leaving that column alone.
+    """
+    rows = list(updates)
+    if not rows:
+        return
+    with get_conn() as conn:
+        for media_id, length, total_pages in rows:
+            if total_pages is None:
+                conn.execute(
+                    "UPDATE media SET length = ? WHERE id = ?", (length, media_id)
+                )
+            else:
+                conn.execute(
+                    "UPDATE media SET length = ?, total_pages = ? WHERE id = ?",
+                    (length, total_pages, media_id),
+                )
 
 
 _DATE_COLS = frozenset({"date_added", "date_watchlist", "date_watching", "date_finished"})

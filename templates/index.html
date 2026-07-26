@@ -422,12 +422,10 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+/* "Director • Length" under the title. .sm-card-body is a flex column with a gap, so
+   an empty div would still cost a full row gap — hide it until it has text. */
 .sm-card-author { font-size: 0.6875rem; color: var(--muted); }
-.sm-card-length { font-size: 0.6875rem; color: var(--muted); }
-/* The div is always emitted (hydration needs a target) but is empty until a length is
-   known — and .sm-card-body is a flex column with a gap, so an empty flex item still
-   costs a full 0.3125rem row gap. Hide it until it has text. */
-.sm-card-length:empty { display: none; }
+.sm-card-author:empty { display: none; }
 .sm-card-author.sm-author-loading { display: inline-flex; align-items: center; height: 1.2em; }
 .author-dots { display: inline-flex; gap: 0.22em; }
 .author-dots span {
@@ -2245,6 +2243,25 @@ function _fmtCount(n, noun) {
   return `${v} ${noun}${v === 1 ? '' : 's'}`;
 }
 
+// Join a meta line's parts with " • ", dropping blanks so a missing director or an
+// unknown year never leaves a dangling separator.
+function _metaJoin(parts) {
+  return parts.filter(p => p !== null && p !== undefined && p !== '').join(' • ');
+}
+
+// A LIBRARY row's length. Persisted on the row (see /api/backfill-lengths), so this
+// is a plain field read — no request, and it paints in the same frame as the title,
+// year and author rather than arriving a beat later. The total_pages fallback covers
+// books stored before `length` existed; the session cache covers a row the search
+// modal resolved but that hasn't been re-fetched from /api/list yet.
+function _lengthOf(item) {
+  if (item.length) return item.length;
+  const cached = _lengthCache[`${item.media_type}:${item.tmdb_id || item.external_id}`];
+  if (cached) return cached;
+  if (item.media_type === 'book') return _fmtCount(item.total_pages, 'Page');
+  return '';
+}
+
 // "<media_type>:<id>" -> length string ('' means "looked up, nothing available").
 const _lengthCache = {};
 const _tmdbMetaPending = {};   // "<type>:<id>" -> in-flight promise
@@ -2358,6 +2375,43 @@ async function loadList() {
   rebuildLibrarySet();
   renderGrid();
   startProactiveSweeps();   // idempotent; only the first call arms the hourly timer
+  backfillLengths();        // idempotent; runs at most once per page load
+}
+
+let _lengthSweepStarted = false;
+
+// One-time sweep that fills in `length` for rows predating the column, so the detail
+// panel and grid can read it straight off the row instead of firing their own request
+// after paint. Every row it settles is settled for good — this is the migration, not a
+// per-open cost. Runs after the grid is already on screen, in server-side batches, and
+// repaints only the cards it actually changed.
+async function backfillLengths() {
+  if (_lengthSweepStarted) return;
+  // `null` means "never looked up"; `''` means "looked up, nothing published".
+  if (!allItems.some(i => i.length == null)) return;
+  _lengthSweepStarted = true;
+
+  for (let guard = 0; guard < 40; guard++) {
+    let data;
+    try {
+      data = await (await fetch('/api/backfill-lengths', { method: 'POST' })).json();
+    } catch { return; }                       // offline//500 — next page load retries
+    const lengths = (data && data.lengths) || {};
+    for (const [id, len] of Object.entries(lengths)) {
+      const item = allItems.find(i => String(i.id) === id);
+      if (!item) continue;
+      item.length = len;
+      _repaintGridSubLine(item);
+      if (selectedId === item.id) {
+        const el = document.getElementById('detailMeta');
+        if (el) el.textContent = _detailMetaText(item);
+      }
+    }
+    // Stop on no forward progress, not just on remaining === 0: rows whose upstream
+    // is unreachable stay NULL by design, and without this the loop would re-request
+    // the same stuck batch until the guard fires.
+    if (!data.remaining || !data.settled) return;
+  }
 }
 
 let _sweepStarted    = false;  // scheduler started once per page load
@@ -3025,6 +3079,22 @@ function renderGrid() {
   _restoreGridScroll();
 }
 
+// The grid card's sub-line: "Director • Length". Shared with the late-arriving
+// director backfill so both paths format it identically.
+function _gridSubLine(item) {
+  return _metaJoin([item.author, _lengthOf(item)]);
+}
+
+// Repaint one card's sub-line in place — used when a director or a swept-in length
+// lands after the grid has already painted. No-ops when the card isn't on screen.
+function _repaintGridSubLine(item) {
+  const el = document.getElementById(`pa-${item.id}`);
+  if (!el) return;
+  const line = _gridSubLine(item);
+  el.textContent = line;
+  el.style.display = line ? '' : 'none';
+}
+
 // Build just the poster-grid cards. Extracted so the finished-tab rating slider can
 // re-filter the grid live (drag) without rebuilding the slider DOM around it.
 function _gridCardsHtml(items, size, cols) {
@@ -3034,7 +3104,11 @@ function _gridCardsHtml(items, size, cols) {
     const ratingTxt = rRaw > 0 ? fmtRating(rRaw) + STAR_SVG : 'Unrated';
     const stars = currentTab === 'finished'
       ? `<div class="poster-rating">${ratingTxt}</div>` : '';
-    const author = `<div class="poster-author" id="pa-${item.id}"${item.author ? '' : ' style="display:none"'}>${esc(item.author||'')}</div>`;
+    // "Denis Villeneuve • 2h 44m" — one sub-line under the title. Either half may be
+    // missing (no director on file, no published length), and _metaJoin drops the
+    // separator with it; the row hides entirely when both are absent.
+    const subLine = _gridSubLine(item);
+    const author = `<div class="poster-author" id="pa-${item.id}"${subLine ? '' : ' style="display:none"'}>${esc(subLine)}</div>`;
     const dateStr = fmtDate(item.date_added);
     const dateVerb = { watchlist: 'Added', watching: 'Updated', finished: 'Finished' }[currentTab] || 'Added';
     const dateHtml = dateStr ? `<div class="poster-date">${dateVerb} ${dateStr}</div>` : '';
@@ -3414,33 +3488,33 @@ function starKey(e, id) {
   _starApply(slider, id, R, true);
 }
 
-// Length we can show without any network call: book page counts live on the row, and
-// anything already resolved this session is in _lengthCache. Returns the ", 512 Pages"
-// suffix (comma included) or '' so the type line reads plainly when nothing is known.
-function _detailLengthSeed(item) {
-  const id = item.tmdb_id || item.external_id;
-  const cached = _lengthCache[`${item.media_type}:${id}`];
-  if (cached) return `, ${cached}`;
-  if (item.media_type === 'book') {
-    const s = _fmtCount(item.total_pages, 'Page');
-    return s ? `, ${s}` : '';
-  }
-  return '';
+// The detail panel's type line: "Movie • 2016 • 1h 43m". Blank parts drop out, so a
+// title with no year or no known length still reads cleanly. Every part comes off the
+// row itself, which is why the whole line paints in one frame.
+function _detailMetaText(item) {
+  return _metaJoin([TYPE_LABEL[item.media_type], item.year, _lengthOf(item)]);
 }
 
-// Fill the detail-panel length for types that need a lookup. Movie/TV share the
-// /api/tmdb-meta response with the director fetch (server-cached 24h); manga reuses
-// the existing /api/manga-info endpoint and its client-side cache. Books never get
-// here — their page count is already on the row.
+// Fallback for the handful of rows the backfill sweep hasn't settled yet — a title
+// added moments ago, or one the sweep is still working towards on a big library.
+// Movie/TV share the /api/tmdb-meta response with the director fetch (server-cached
+// 24h); manga reuses /api/manga-info and its client-side cache. Books have no client
+// -side lookup — the sweep resolves those server-side against OpenLibrary.
 function hydrateDetailLength(item) {
+  // `length` is NULL only when nothing has looked this row up yet. A stored "" means
+  // "asked, nothing published" and must not trigger another round trip.
+  if (item.length != null) return;
   const id = item.tmdb_id || item.external_id;
   if (!id) return;
   const ck = `${item.media_type}:${id}`;
   const paint = (len) => {
     _lengthCache[ck] = len || '';
-    if (!len || selectedId !== item.id) return;
-    const el = document.getElementById('detailLength');
-    if (el) el.textContent = `, ${len}`;
+    if (!len) return;
+    item.length = len;               // so re-selecting this item paints instantly
+    _repaintGridSubLine(item);       // the card behind the panel shows it too
+    if (selectedId !== item.id) return;
+    const el = document.getElementById('detailMeta');
+    if (el) el.textContent = _detailMetaText(item);
   };
   if (ck in _lengthCache) { paint(_lengthCache[ck]); return; }
 
@@ -3538,7 +3612,7 @@ function renderDetail(item) {
     </div>
     <div class="detail-body">
       <h2 class="detail-title">${esc(item.title)}</h2>
-      <p class="detail-meta">${TYPE_SVG[item.media_type]} ${TYPE_LABEL[item.media_type]}<span id="detailLength">${esc(_detailLengthSeed(item))}</span></p>
+      <p class="detail-meta">${TYPE_SVG[item.media_type]} <span id="detailMeta">${esc(_detailMetaText(item))}</span></p>
       ${authorHtml}
       <div class="desc-block" id="descBlock" style="display:none">
         <div id="descContent" class="detail-overview is-collapsed"></div>
@@ -3579,8 +3653,9 @@ function renderDetail(item) {
           const detailEl = document.getElementById('detailAuthor');
           if (detailEl) { detailEl.textContent = `by ${data.author}`; detailEl.style.display = ''; }
         }
-        const gridEl = document.getElementById(`pa-${item.id}`);
-        if (gridEl) { gridEl.textContent = data.author; gridEl.style.display = ''; }
+        // Re-derive the whole "Director • Length" line rather than writing the name
+        // alone, which would drop a length the row already had.
+        _repaintGridSubLine(item);
       })
       .catch(() => {});
   }
@@ -4220,7 +4295,7 @@ function renderModalResults(libMatches, tmdbResults, q, loading) {
         hydratePills(pillsId, item, searchPills);
       });
     }
-    shownResults.forEach(r => { hydrateSmAuthor(r); hydrateSmLength(r); });
+    shownResults.forEach(r => hydrateSmMeta(r));
   }
 }
 
@@ -4238,8 +4313,15 @@ function _progressLabel(item) {
   return '';
 }
 
-// Length already available without a request: manga chapter counts and book page
-// counts both ride along in the search payload. Movie/TV return '' and backfill.
+const _smAuthorCache = {};   // "media_type:tmdb_id" -> author string
+
+function _smMetaId(r) {
+  return `smmeta-${r.media_type}-${(r.external_id || r.tmdb_id || '').toString().replace(/[^a-z0-9]/gi,'_')}`;
+}
+
+// A search card's "Director • Length" line, from whatever's known without a request.
+// Manga chapter counts and book page counts both ride along in the search payload, so
+// those cards are complete on first paint; movie/TV start empty and hydrate.
 function _smLengthSeed(r) {
   const cached = _lengthCache[`${r.media_type}:${r.tmdb_id || r.external_id}`];
   if (cached) return cached;
@@ -4248,65 +4330,52 @@ function _smLengthSeed(r) {
   return '';
 }
 
-// Movie/TV search cards backfill their length from /api/tmdb-meta — the same
-// single-flight request hydrateSmAuthor uses, so the pair costs one round trip.
-function hydrateSmLength(r) {
+function _smMetaLine(r) {
+  return _metaJoin([r.author, _smLengthSeed(r)]);
+}
+
+// Movie/TV search cards arrive with neither director nor length; one /api/tmdb-meta
+// round trip carries both, so the line fills in a single step rather than twitching
+// twice. Deduped per session via _smAuthorCache / _lengthCache.
+function hydrateSmMeta(r) {
   if (r.media_type !== 'movie' && r.media_type !== 'tv') return;   // book/manga seeded
   const tid = r.tmdb_id || r.external_id;
   if (!tid) return;
   const ck = `${r.media_type}:${tid}`;
-  const fill = (len) => {
-    if (!len) return;
-    const id = `smlen-${r.media_type}-${(r.external_id || r.tmdb_id || '').toString().replace(/[^a-z0-9]/gi,'_')}`;
-    const el = document.getElementById(id);
-    if (el) el.textContent = len;
-  };
-  if (ck in _lengthCache) { fill(_lengthCache[ck]); return; }
-  fetchTmdbMeta(r.media_type, tid).then(d => {
-    if (!d) return;                 // transient failure — leave it uncached so a re-render retries
-    _lengthCache[ck] = d.length || '';
-    fill(d.length);
-  });
-}
-
-const _smAuthorCache = {};   // "media_type:tmdb_id" -> author string
-
-// Movie/TV search cards arrive without a director (search is now fast); fetch it
-// lazily and fill the card when it lands. Deduped per session.
-function hydrateSmAuthor(r) {
-  if (r.author) return;
-  if (r.media_type !== 'movie' && r.media_type !== 'tv') return;
-  const tid = r.tmdb_id || r.external_id;
-  if (!tid) return;
-  const ck = `${r.media_type}:${tid}`;
-  const fill = (a) => {
-    const safeId = (r.external_id || r.tmdb_id || '').toString().replace(/[^a-z0-9]/gi, '_');
-    const card = document.getElementById(`smbtn-${r.media_type}-${safeId}`)?.closest('.sm-card');
+  const fill = () => {
+    const card = document.getElementById(`smbtn-${r.media_type}-${(r.external_id || r.tmdb_id || '').toString().replace(/[^a-z0-9]/gi,'_')}`)?.closest('.sm-card');
     if (!card) return;
+    const line = _smMetaLine(r);
     const existing = card.querySelector('.sm-card-author');
-    if (a) {
-      r.author = a;
-      if (existing) {                       // swap the loading "…" for the real name
+    if (line) {
+      if (existing) {                       // swap the loading "…" for the real line
         existing.classList.remove('sm-author-loading');
-        existing.textContent = a;
+        existing.textContent = line;
       } else {
         const titleEl = card.querySelector('.sm-card-title');
         if (titleEl) {
           const div = document.createElement('div');
           div.className = 'sm-card-author';
-          div.textContent = a;
+          div.id = _smMetaId(r);
+          div.textContent = line;
           titleEl.insertAdjacentElement('afterend', div);
         }
       }
     } else if (existing && existing.classList.contains('sm-author-loading')) {
-      existing.remove();                    // no director found — drop the placeholder
+      existing.remove();                    // nothing to show — drop the placeholder
     }
   };
-  if (ck in _smAuthorCache) { fill(_smAuthorCache[ck]); return; }
+  if (ck in _smAuthorCache && ck in _lengthCache) {
+    if (!r.author) r.author = _smAuthorCache[ck];
+    fill();
+    return;
+  }
   fetchTmdbMeta(r.media_type, tid).then(d => {
     if (!d) return;                 // transient failure — leave it uncached so a re-render retries
     _smAuthorCache[ck] = d.author || '';
-    fill(d.author);
+    _lengthCache[ck]   = d.length || '';
+    if (!r.author) r.author = d.author || '';
+    fill();
   });
 }
 
@@ -4353,23 +4422,20 @@ function renderSmCard(r) {
   const realPills = renderPills(smItem, _ratingsCache[r.media_type+':'+(r.tmdb_id||r.external_id)] || {}, searchPills);
   const skelPills = _scorePillsPending(r) ? '<span class="spill spill-skeleton">&nbsp;</span>' : '';
   const chipsHtml = `<div class="sm-chips" id="${pillsId}">${realPills}${skelPills}</div>`;
-  // Movie/TV cards arrive without a director; show an animated "…" until it lands.
-  const authorLoading = !r.author && (r.media_type === 'movie' || r.media_type === 'tv') && (r.tmdb_id || r.external_id);
-  const authorHtml = r.author
-    ? `<div class="sm-card-author">${esc(r.author)}</div>`
-    : (authorLoading ? `<div class="sm-card-author sm-author-loading"><span class="author-dots"><span></span><span></span><span></span></span></div>` : '');
-  // Length sits under the author. Book/manga counts ride along in the search payload
-  // so they paint immediately; movie/TV backfill via hydrateSmLength. Deliberately no
-  // "…" placeholder — a second row of dots on every card is noise.
-  const lengthId = `smlen-${r.media_type}-${(r.external_id || r.tmdb_id || '').toString().replace(/[^a-z0-9]/gi,'_')}`;
-  const lengthHtml = `<div class="sm-card-length" id="${lengthId}">${esc(_smLengthSeed(r))}</div>`;
+  // "Denis Villeneuve • 2h 44m" on a single line. Book/manga have both halves in the
+  // search payload so they paint immediately; movie/TV arrive with neither and share
+  // one /api/tmdb-meta round trip for the pair, showing an animated "…" until it lands.
+  const metaLoading = !r.author && (r.media_type === 'movie' || r.media_type === 'tv') && (r.tmdb_id || r.external_id);
+  const metaText = _smMetaLine(r);
+  const metaHtml = metaText
+    ? `<div class="sm-card-author" id="${_smMetaId(r)}">${esc(metaText)}</div>`
+    : (metaLoading ? `<div class="sm-card-author sm-author-loading" id="${_smMetaId(r)}"><span class="author-dots"><span></span><span></span><span></span></span></div>` : '');
   const safeKey    = key.replace(/'/g, "\\'");
   return `<div class="sm-card ${already?'in-library':''}" data-media-type="${r.media_type}">
     <img class="sm-poster" src="${posterSrc}" referrerpolicy="no-referrer" onerror="this.src='${BROKEN_POSTER_FULL}'" loading="lazy">
     <div class="sm-card-body">
       <div class="sm-card-title">${esc(r.title)}</div>
-      ${authorHtml}
-      ${lengthHtml}
+      ${metaHtml}
       ${chipsHtml}
       ${r.overview ? `<div class="sm-overview">${esc(r.overview)}</div>` : ''}
       <button class="sm-add-btn${already?' remove':''}" id="smbtn-${r.media_type}-${(r.external_id||r.tmdb_id||'').toString().replace(/[^a-z0-9]/gi,'_')}"
@@ -4469,6 +4535,10 @@ async function _reconcileModal(key, r) {
         overview:    r.overview   || null,
         year:        r.year       || null,
         tmdb_rating: r.tmdb_rating ?? null,
+        // The card has already resolved this, so the row lands complete and the
+        // detail panel never has to chase it. Null when the card was added before
+        // its hydration finished — the backfill sweep picks those up.
+        length:      _smLengthSeed(r) || null,
       });
     } catch {
       // Roll back the optimistic add unless a later click already flipped intent.
@@ -4482,6 +4552,11 @@ async function _reconcileModal(key, r) {
       rating: 0, author: r.author || null, overview: r.overview || null,
       year: r.year || null, cover_url: r.cover_url || null,
       tmdb_rating: r.tmdb_rating ?? null,
+      total_pages: r.total_pages ?? null,
+      // Mirror what the server actually stored (null when it had nothing), so the
+      // grid card and detail panel show the length immediately — and so a null here
+      // correctly marks the row as still needing the backfill sweep.
+      length: (data && data.length) ?? null,
       date_added: data && data.date_added, ratings: null, ratings_updated_at: null,
     };
     if (newItem.id != null && !allItems.some(i => i.id === newItem.id)) allItems.push(newItem);

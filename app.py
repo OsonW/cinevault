@@ -8,6 +8,7 @@ import threading
 import requests
 from datetime import datetime, timezone
 from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
 from flask import Flask, jsonify, Response, request, render_template, g, redirect, url_for
 from flask_login import login_required, current_user, logout_user
@@ -17,7 +18,7 @@ from db import (
     get_all_media, get_media_by_id, get_media_by_external_id,
     add_media_entry, update_media_entry, delete_media_entry, set_media_dates,
     set_media_ratings,
-    set_media_tmdb_rating,
+    set_media_tmdb_rating, set_media_lengths,
     take_lazy_refresh_slot, sync_lazy_cap_to_quota,
 )
 from auth import (
@@ -341,6 +342,7 @@ VALID_MEDIA_TYPES = frozenset({"movie", "tv", "book", "manga"})
 VALID_STATUSES    = frozenset({"watchlist", "watching", "finished"})
 MAX_TITLE_LEN     = 500
 MAX_TEXT_LEN      = 5000    # notes / author / overview
+MAX_LENGTH_LEN    = 40      # "length" is a short display string ("1h 43m", "4 Seasons")
 
 _COVER_URL_ALLOWED_HOSTS = frozenset({
     "covers.openlibrary.org",
@@ -528,6 +530,20 @@ def _fmt_runtime(minutes) -> str:
     return f"{hours}h {rem}m" if rem else f"{hours}h"
 
 
+def _fmt_count(value, noun: str) -> str:
+    """'512 Pages' / '1 Chapter' / ''. Mirrors the client's _fmtCount so a length
+    persisted here and one formatted in the browser read identically. Whole numbers
+    lose the '.0' MangaDex decimals would otherwise leave behind."""
+    try:
+        num = float(value)
+    except (TypeError, ValueError):
+        return ""
+    if not math.isfinite(num) or num <= 0:
+        return ""
+    shown = int(num) if num == int(num) else num
+    return f"{shown} {noun}{'' if num == 1 else 's'}"
+
+
 def _safe_float(value):
     """MangaDex chapter numbers are free text ("91", "91.5", "", "Oneshot").
     Coerce to float, or None when it isn't a finite number — one bad value must
@@ -585,6 +601,116 @@ def _cached_tmdb_meta(media_type: str, tmdb_id: int, api_key: str) -> dict:
         _tmdb_meta_cache.pop(next(iter(_tmdb_meta_cache)))
     _tmdb_meta_cache[ck] = (time.time(), meta)
     return meta
+
+
+def _clean_length(value) -> str | None:
+    """Coerce a client-supplied length to a short string, or None to leave it unset
+    (which keeps the row eligible for the backfill sweep). Clients only ever echo
+    back a string this server produced, so anything else is dropped rather than
+    rejected — a bad value shouldn't fail the whole add."""
+    if not isinstance(value, str):
+        return None
+    trimmed = value.strip()[:MAX_LENGTH_LEN]
+    return trimmed or None
+
+
+def _resolve_length(item: dict, tmdb_key: str | None) -> tuple[str | None, int | None]:
+    """Look up a library row's display length from its upstream source.
+
+    Returns (length, total_pages), where length is:
+      • a string  — the answer, including "" for "asked, nothing published"
+      • None      — couldn't ask (upstream failed, no API key)
+
+    The distinction is what stops the backfill sweep from looping: a "" is stored,
+    settling the row for good, while a None leaves the column NULL so the next
+    session retries it. total_pages is non-None only for books, whose page count is
+    worth keeping in its own column too. Raises nothing.
+    """
+    media_type = item.get("media_type")
+    ext = item.get("tmdb_id") or item.get("external_id")
+    if media_type not in ("movie", "tv", "manga", "book"):
+        return "", None          # nothing to look up, ever — settle it
+    if not ext:
+        return "", None
+
+    if media_type in ("movie", "tv"):
+        if not tmdb_key:
+            return None, None    # key may appear later; stay retryable
+        try:
+            tmdb_id = int(ext)
+        except (TypeError, ValueError):
+            return "", None
+        return _cached_tmdb_meta(media_type, tmdb_id, tmdb_key)["length"], None
+
+    if media_type == "manga":
+        info = _fetch_manga_info(str(item.get("external_id") or ext))
+        if info is None:
+            return None, None
+        return _fmt_count(info.get("last_chapter"), "Chapter"), None
+
+    # book — already have the count (freshly added, post-fields-fix)? Format it and
+    # skip the round trip entirely.
+    pages = item.get("total_pages")
+    if not pages:
+        try:
+            pages = _fetch_book_pages(str(item.get("external_id") or ext))
+        except Exception as e:
+            print(f"Book page-count error for {ext}: {e}")
+            return None, None
+    if not pages:
+        return "", None
+    return _fmt_count(pages, "Page"), int(pages)
+
+
+# Per-request ceiling on the backfill sweep. The client loops until `remaining` hits
+# zero, so a large library still completes — this just keeps any single request short
+# and bounds the fan-out at each upstream.
+_BACKFILL_BATCH = 24
+
+
+@app.route("/api/backfill-lengths", methods=["POST"])
+@login_required
+def backfill_lengths():
+    """Fill in `length` for library rows that predate the column, and persist it.
+
+    Runs once per session from the client after the grid paints. Every row it
+    completes is one that will never need a lookup again — which is the whole point:
+    the detail panel reads `length` straight off /api/list instead of firing its own
+    request after paint.
+    """
+    # NULL means "never looked up"; "" means "looked up, nothing published" and is
+    # deliberately NOT pending — that's what keeps the client's loop terminating.
+    pending = [r for r in get_all_media() if r.get("length") is None]
+    batch = pending[:_BACKFILL_BATCH]
+    if not batch:
+        return jsonify({"lengths": {}, "settled": 0, "remaining": 0})
+
+    # Resolve the whole batch off-thread: these are independent network round trips
+    # and running them serially would make the sweep crawl. flask.g is NOT available
+    # in worker threads, so the API key is read here on the request thread and passed
+    # down, and every DB write happens back here after the pool drains.
+    tmdb_key = _get_tmdb_key()
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        resolved = list(pool.map(lambda it: _resolve_length(it, tmdb_key), batch))
+
+    writes, lengths = [], {}
+    for item, (length, pages) in zip(batch, resolved):
+        if length is None:
+            continue            # couldn't ask — leave NULL so a later session retries
+        writes.append((item["id"], length, pages))
+        if length:
+            lengths[str(item["id"])] = length
+    if writes:
+        set_media_lengths(writes)
+        for item_id, _, _ in writes:
+            _invalidate_media_cache(item_id)
+    # `settled` (not len(lengths)) is the client's progress signal: a batch of rows
+    # that all legitimately have no length still counts as forward progress.
+    return jsonify({
+        "lengths":   lengths,
+        "settled":   len(writes),
+        "remaining": len(pending) - len(batch),
+    })
 
 
 @app.route("/api/item/<int:item_id>/fetch_director")
@@ -708,6 +834,36 @@ def search():
     return jsonify(items)
 
 
+# OpenLibrary's search.json returns a fixed default projection that does NOT include
+# number_of_pages_median — asking for it requires naming every field we consume. Omit
+# this and book page counts come back None for every result, which is exactly how they
+# were silently missing before.
+_OL_SEARCH_FIELDS = ",".join((
+    "key", "title", "author_name", "first_publish_year", "publish_date",
+    "cover_i", "number_of_pages_median", "ratings_average",
+))
+
+
+def _fetch_book_pages(work_id: str):
+    """Page count for a single OpenLibrary work, for backfilling rows added before
+    the fields fix. Editions carry per-edition page counts that are frequently null,
+    so we go back through search — the same median the search path uses, keeping a
+    backfilled book consistent with a freshly added one.
+
+    Deliberately does NOT swallow upstream errors: the caller has to tell "this work
+    has no page count" (settle the row) from "the request failed" (retry next time).
+    """
+    resp = requests.get(
+        "https://openlibrary.org/search.json",
+        params={"q": f"key:/works/{work_id}",
+                "fields": "key,number_of_pages_median", "limit": 1},
+        timeout=8,
+    )
+    resp.raise_for_status()
+    docs = resp.json().get("docs") or []
+    return docs[0].get("number_of_pages_median") if docs else None
+
+
 @app.route("/api/search/books")
 @login_required
 def search_books():
@@ -722,7 +878,7 @@ def search_books():
     try:
         resp = requests.get(
             "https://openlibrary.org/search.json",
-            params={"q": query, "limit": 10},
+            params={"q": query, "limit": 10, "fields": _OL_SEARCH_FIELDS},
             timeout=8,
         )
         resp.raise_for_status()
@@ -1107,11 +1263,12 @@ def tv_info(tmdb_id):
         return jsonify({"error": "An internal error occurred."}), 500
 
 
-@app.route("/api/manga-info/<path:manga_id>")
-@login_required
-def manga_info(manga_id):
+def _fetch_manga_info(manga_id: str) -> dict | None:
+    """{'last_chapter': float|None} for a MangaDex title, behind manga_info_cache.
+    Returns None on any upstream failure so callers can tell "no chapter count
+    published" (a real, cacheable answer) from "the request fell over"."""
     if manga_id in manga_info_cache:
-        return jsonify(manga_info_cache[manga_id])
+        return manga_info_cache[manga_id]
     try:
         resp = requests.get(
             f"https://api.mangadex.org/manga/{manga_id}",
@@ -1121,15 +1278,21 @@ def manga_info(manga_id):
         )
         resp.raise_for_status()
         attrs = resp.json().get("data", {}).get("attributes", {})
-        last_chapter = attrs.get("lastChapter")
-        info = {
-            "last_chapter": _safe_float(last_chapter),
-        }
+        info = {"last_chapter": _safe_float(attrs.get("lastChapter"))}
         manga_info_cache[manga_id] = info
-        return jsonify(info)
+        return info
     except Exception as e:
         print(f"Manga info error for {manga_id}: {e}")
+        return None
+
+
+@app.route("/api/manga-info/<path:manga_id>")
+@login_required
+def manga_info(manga_id):
+    info = _fetch_manga_info(manga_id)
+    if info is None:
         return jsonify({"error": "An internal error occurred."}), 500
+    return jsonify(info)
 
 
 # ═══════════════════════════════════════════════════
@@ -1154,7 +1317,7 @@ def add_media():
             "status", "rating", "last_timestamp",
             "last_season", "last_episode", "last_chapter",
             "current_page", "total_pages",
-            "notes", "cover_url", "author",
+            "notes", "cover_url", "author", "length",
         }
         fields = {k: data[k] for k in allowed if k in data}
         if fields.get("rating") is not None:
@@ -1168,6 +1331,8 @@ def add_media():
             v = fields.get(f)
             if isinstance(v, str) and len(v) > MAX_TEXT_LEN:
                 return jsonify({"error": f"{f} too long"}), 400
+        if "length" in fields:
+            fields["length"] = _clean_length(fields["length"])
         if not _is_safe_cover_url(fields.get("cover_url")):
             fields.pop("cover_url", None)
         update_media_entry(data["id"], **fields)
@@ -1213,12 +1378,18 @@ def add_media():
             overview    = data.get("overview"),
             year        = data.get("year"),
             tmdb_rating = tmdb_rating,
+            # The search card already resolved this, so the row is complete from the
+            # moment it exists and the detail panel never has to chase it. When the
+            # card hadn't resolved yet this stays NULL and the backfill sweep picks
+            # it up.
+            length      = _clean_length(data.get("length")),
         )
         created = get_media_by_id(new_id) if new_id else None
         return jsonify({
             "status": "ok",
             "id": new_id,
             "date_added": created["date_added"] if created else None,
+            "length": (created or {}).get("length"),
         })
 
 
@@ -1272,6 +1443,7 @@ def restore_media():
         cover_url   = restore_cover if _is_safe_cover_url(restore_cover) else None,
         author      = media_data.get("author"),
         total_pages = media_data.get("total_pages"),
+        length      = _clean_length(media_data.get("length")),
     )
     update_fields = {
         k: media_data[k]

@@ -1052,3 +1052,257 @@ def test_manga_info_non_numeric_result_is_cached(client, monkeypatch):
     assert first.status_code == second.status_code == 200
     assert first.get_json() == second.get_json() == {"last_chapter": None}
     assert calls["n"] == 1                        # second served from cache
+
+
+# â”€â”€ Persisted `length` + the backfill sweep â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# The detail panel reads `length` straight off the row so it paints with the rest of
+# the item instead of chasing a request after paint. These cover what keeps that
+# column trustworthy: how it's formatted, how it's filled, and â€” crucially â€” the
+# NULL ("never asked") vs "" ("asked, nothing published") distinction that stops the
+# sweep from re-requesting the same rows forever.
+
+@pytest.mark.parametrize("value,noun,expected", [
+    (512, "Page", "512 Pages"),
+    (1, "Chapter", "1 Chapter"),
+    (91.0, "Chapter", "91 Chapters"),      # MangaDex floats must lose the ".0"
+    (91.5, "Chapter", "91.5 Chapters"),
+    (0, "Page", ""),
+    (None, "Page", ""),
+    (-3, "Page", ""),
+    ("Oneshot", "Chapter", ""),
+    (float("inf"), "Page", ""),
+    (float("nan"), "Page", ""),
+])
+def test_fmt_count(value, noun, expected):
+    assert app_module._fmt_count(value, noun) == expected
+
+
+@pytest.mark.parametrize("value,expected", [
+    ("1h 43m", "1h 43m"),
+    ("  4 Seasons  ", "4 Seasons"),
+    ("", None),
+    ("   ", None),
+    (None, None),
+    (512, None),                             # non-strings are dropped, not rejected
+    ("x" * 100, "x" * 40),                   # capped at MAX_LENGTH_LEN
+])
+def test_clean_length(value, expected):
+    assert app_module._clean_length(value) == expected
+
+
+def test_book_search_requests_the_page_count_field(client, monkeypatch):
+    """OpenLibrary's default projection omits number_of_pages_median, so without an
+    explicit fields= every book's page count came back None â€” which is exactly how
+    book page counts were silently broken."""
+    _register(client)
+    seen = {}
+
+    def fake_get(url, **kwargs):
+        seen.update(kwargs.get("params", {}))
+        return _FakeTMDBResp({"docs": [{
+            "key": "/works/OL1W", "title": "Dune", "author_name": ["Frank Herbert"],
+            "first_publish_year": 1965, "cover_i": 1,
+            "number_of_pages_median": 412,
+        }]})
+
+    monkeypatch.setattr(app_module.requests, "get", fake_get)
+    app_module.search_cache.clear()
+    data = client.get("/api/search/books?q=dune").get_json()
+    assert "number_of_pages_median" in seen.get("fields", "")
+    assert data[0]["total_pages"] == 412
+
+
+def test_resolve_length_movie_uses_the_cached_meta(monkeypatch):
+    monkeypatch.setattr(
+        app_module, "_cached_tmdb_meta",
+        lambda *a: {"author": "Denis Villeneuve", "length": "2h 16m"},
+    )
+    item = {"media_type": "movie", "tmdb_id": 329865}
+    assert app_module._resolve_length(item, "k") == ("2h 16m", None)
+
+
+def test_resolve_length_without_tmdb_key_stays_retryable():
+    """No key is not an answer â€” leave the column NULL so a later session retries."""
+    item = {"media_type": "movie", "tmdb_id": 603}
+    assert app_module._resolve_length(item, None) == (None, None)
+
+
+def test_resolve_length_unsupported_type_settles():
+    assert app_module._resolve_length({"media_type": "podcast", "tmdb_id": 1}, "k") == ("", None)
+
+
+def test_resolve_length_no_external_id_settles():
+    assert app_module._resolve_length({"media_type": "movie"}, "k") == ("", None)
+
+
+def test_resolve_length_manga(monkeypatch):
+    monkeypatch.setattr(app_module, "_fetch_manga_info", lambda mid: {"last_chapter": 91.0})
+    item = {"media_type": "manga", "external_id": "abc-123"}
+    assert app_module._resolve_length(item, "k") == ("91 Chapters", None)
+
+
+def test_resolve_length_manga_failure_stays_retryable(monkeypatch):
+    monkeypatch.setattr(app_module, "_fetch_manga_info", lambda mid: None)
+    item = {"media_type": "manga", "external_id": "abc-123"}
+    assert app_module._resolve_length(item, "k") == (None, None)
+
+
+def test_resolve_length_manga_no_chapter_count_settles(monkeypatch):
+    """MangaDex leaves lastChapter empty for many ongoing series. That is a real
+    answer, so it must be stored as "" â€” otherwise the sweep asks again forever."""
+    monkeypatch.setattr(app_module, "_fetch_manga_info", lambda mid: {"last_chapter": None})
+    item = {"media_type": "manga", "external_id": "abc-123"}
+    assert app_module._resolve_length(item, "k") == ("", None)
+
+
+def test_resolve_length_book_uses_stored_pages_without_fetching(monkeypatch):
+    def boom(*a, **k):
+        raise AssertionError("must not hit OpenLibrary when total_pages is known")
+
+    monkeypatch.setattr(app_module, "_fetch_book_pages", boom)
+    item = {"media_type": "book", "external_id": "OL1W", "total_pages": 412}
+    assert app_module._resolve_length(item, None) == ("412 Pages", 412)
+
+
+def test_resolve_length_book_fetches_a_missing_page_count(monkeypatch):
+    monkeypatch.setattr(app_module, "_fetch_book_pages", lambda wid: 496)
+    item = {"media_type": "book", "external_id": "OL1W", "total_pages": None}
+    assert app_module._resolve_length(item, None) == ("496 Pages", 496)
+
+
+def test_resolve_length_book_fetch_failure_stays_retryable(monkeypatch):
+    def boom(wid):
+        raise RuntimeError("openlibrary down")
+
+    monkeypatch.setattr(app_module, "_fetch_book_pages", boom)
+    item = {"media_type": "book", "external_id": "OL1W"}
+    assert app_module._resolve_length(item, None) == (None, None)
+
+
+def test_add_stores_and_returns_the_length(client):
+    """The search card already resolved this, so the row is complete on creation and
+    the detail panel never has to chase it."""
+    _register(client)
+    _ensure_tmdb_key()
+    resp = client.post("/api/add", json={
+        "title": "Arrival", "media_type": "movie", "external_id": "329865",
+        "tmdb_id": 329865, "status": "watchlist", "length": "1h 56m",
+    })
+    assert resp.get_json()["length"] == "1h 56m"
+    assert client.get("/api/list").get_json()[0]["length"] == "1h 56m"
+
+
+def test_add_without_a_length_leaves_it_null_for_the_sweep(client):
+    _register(client)
+    _add_movie(client)
+    assert client.get("/api/list").get_json()[0]["length"] is None
+
+
+def test_backfill_lengths_persists_and_completes(client, monkeypatch):
+    _register(client)
+    _add_movie(client)
+    monkeypatch.setattr(app_module, "_resolve_length", lambda item, key: ("2h 28m", None))
+    item_id = client.get("/api/list").get_json()[0]["id"]
+
+    first = client.post("/api/backfill-lengths").get_json()
+    assert first["lengths"] == {str(item_id): "2h 28m"}
+    assert first["remaining"] == 0
+    assert client.get("/api/list").get_json()[0]["length"] == "2h 28m"
+    # Nothing left pending -> a second sweep is a no-op.
+    assert client.post("/api/backfill-lengths").get_json() == {
+        "lengths": {}, "settled": 0, "remaining": 0,
+    }
+
+
+def test_backfill_lengths_settles_empty_so_it_stops_asking(client, monkeypatch):
+    """A title with no published length must not stay pending forever â€” the sweep
+    stores "" and never resolves that row again."""
+    _register(client)
+    _add_movie(client)
+    calls = {"n": 0}
+
+    def resolve(item, key):
+        calls["n"] += 1
+        return "", None
+
+    monkeypatch.setattr(app_module, "_resolve_length", resolve)
+    first = client.post("/api/backfill-lengths").get_json()
+    assert first["lengths"] == {}
+    assert first["settled"] == 1          # forward progress, even with nothing to show
+    client.post("/api/backfill-lengths")
+    assert calls["n"] == 1
+
+
+def test_backfill_lengths_leaves_failures_retryable(client, monkeypatch):
+    _register(client)
+    _add_movie(client)
+    monkeypatch.setattr(app_module, "_resolve_length", lambda item, key: (None, None))
+    data = client.post("/api/backfill-lengths").get_json()
+    assert data["settled"] == 0           # no progress -> the client stops looping
+    assert client.get("/api/list").get_json()[0]["length"] is None
+
+
+def test_backfill_lengths_writes_the_book_page_count_too(client, monkeypatch):
+    """Books get their own column filled as well, so a backfilled book matches a
+    freshly added one rather than only having the formatted string."""
+    _register(client)
+    _ensure_tmdb_key()
+    client.post("/api/add", json={
+        "title": "Dune", "media_type": "book",
+        "external_id": "OL1W", "status": "watchlist",
+    })
+    monkeypatch.setattr(app_module, "_fetch_book_pages", lambda wid: 412)
+    client.post("/api/backfill-lengths")
+    row = client.get("/api/list").get_json()[0]
+    assert row["length"] == "412 Pages"
+    assert row["total_pages"] == 412
+
+
+def test_backfill_lengths_does_not_touch_status_dates(client, monkeypatch):
+    """A derived-metadata write must not look like user activity: a sweep that
+    bumped date_added would silently reshuffle every "recently added" sort."""
+    _register(client)
+    _add_movie(client)
+    before = client.get("/api/list").get_json()[0]
+    monkeypatch.setattr(app_module, "_resolve_length", lambda item, key: ("2h 28m", None))
+    client.post("/api/backfill-lengths")
+    after = client.get("/api/list").get_json()[0]
+    for col in ("date_added", "date_watchlist", "date_watching", "date_finished"):
+        assert after[col] == before[col]
+
+
+def test_backfill_lengths_movie_end_to_end(client, monkeypatch):
+    """The whole chain with only the network mocked: sweep -> _resolve_length ->
+    _cached_tmdb_meta -> TMDB -> persisted column. The other backfill tests stub
+    _resolve_length, so this is what proves the pieces actually connect."""
+    _register(client)
+    _add_movie(client)
+    calls = []
+
+    def fake_get(url, **kwargs):
+        calls.append(url)
+        return _FakeTMDBResp({
+            "runtime": 148,
+            "credits": {"crew": [{"name": "Christopher Nolan", "job": "Director"}]},
+        })
+
+    monkeypatch.setattr(app_module.requests, "get", fake_get)
+    client.post("/api/backfill-lengths")
+    assert client.get("/api/list").get_json()[0]["length"] == "2h 28m"
+    assert len(calls) == 1                        # one request for runtime + director
+
+
+def test_backfill_lengths_manga_end_to_end(client, monkeypatch):
+    _register(client)
+    _ensure_tmdb_key()
+    client.post("/api/add", json={
+        "title": "Berserk", "media_type": "manga",
+        "external_id": "berserk-sweep-id", "status": "watchlist",
+    })
+    monkeypatch.setattr(
+        app_module.requests, "get",
+        lambda *a, **k: _FakeTMDBResp({"data": {"attributes": {"lastChapter": "374"}}}),
+    )
+    app_module.manga_info_cache.clear()
+    client.post("/api/backfill-lengths")
+    assert client.get("/api/list").get_json()[0]["length"] == "374 Chapters"
