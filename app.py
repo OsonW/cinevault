@@ -1455,12 +1455,15 @@ def restore_media():
     if update_fields:
         update_media_entry(new_media_id, **update_fields)
 
-    # Restore the original per-status dates (overriding the today-seeded ones) so
-    # undo brings the item back exactly as it was, not freshly "added today".
+    # Restore the original per-status stamps (overriding the freshly-seeded ones) so
+    # undo brings the item back exactly as it was, not freshly "added today" — which
+    # would also jump it to the top of the "recently added" sort. The time half is
+    # optional: rows written before stamps gained a time are still date-only.
     date_fields = {
         k: media_data[k]
         for k in ("date_added", "date_watchlist", "date_watching", "date_finished")
-        if isinstance(media_data.get(k), str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", media_data[k])
+        if isinstance(media_data.get(k), str)
+        and re.fullmatch(r"\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}\.\d{3})?", media_data[k])
     }
     if date_fields:
         set_media_dates(new_media_id, **date_fields)

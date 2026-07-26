@@ -2336,14 +2336,23 @@ document.addEventListener('click', e => {
 
 function fmtDate(dateStr) {
   if (!dateStr) return '';
-  const parts = dateStr.split('-');
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  const month = months[parseInt(parts[1],10)-1];
-  const day   = parseInt(parts[2],10);
-  const yr    = parts[0].slice(2);
+  // Stamps ("2026-07-25T14:30:12.345") are stored UTC — the sort needs one clock that
+  // only ever moves forward — and shown in the viewer's zone, so something finished at
+  // 11pm reads as tonight rather than tomorrow. The stored string has no offset, which
+  // JS would otherwise read as local, hence the explicit Z. Legacy rows are bare dates
+  // with no time to convert, so they're taken at face value.
+  let y, m, d;
+  const local = dateStr.includes('T') ? new Date(dateStr + 'Z') : null;
+  if (local && !isNaN(local)) {
+    [y, m, d] = [local.getFullYear(), local.getMonth() + 1, local.getDate()];
+  } else {
+    const parts = dateStr.split('T')[0].split('-');
+    [y, m, d] = [parseInt(parts[0],10), parseInt(parts[1],10), parseInt(parts[2],10)];
+  }
   // Bare date only — the tab-specific verb (Added/Updated/Finished) is prefixed by
   // the caller in renderGrid.
-  return `${month} ${day}, '${yr}`;
+  return `${months[m-1]} ${d}, '${String(y).slice(2)}`;
 }
 
 // ─────────────────────────────────────────────
@@ -2530,17 +2539,21 @@ async function apiPost(path, body, timeoutMs = 60000, externalSignal = null) {
   return res.json();
 }
 
-// Optimistically bump an item's "watching" date to today when the user records
-// progress, so the card date updates instantly instead of waiting on the save
-// request. Progress only affects the date while the item is in the watching tab
-// — this mirrors the backend. Returns a snapshot for rollback, or null if nothing changed.
+// A stamp in the server's format: date + time to the millisecond, UTC — matches
+// strftime('%Y-%m-%dT%H:%M:%f','now') in db.py character for character, so optimistic
+// values sort against server ones without special-casing.
+function nowStamp() { return new Date().toISOString().slice(0, 23); }
+
+// Optimistically bump an item's "watching" stamp when the user records progress, so
+// the card date — and its place in the "Last Progress" order — updates instantly
+// instead of waiting on the save request. Progress only affects the stamp while the
+// item is in the watching tab; this mirrors the backend. Returns a snapshot for
+// rollback, or null if the item isn't eligible.
 function bumpWatchingDate(item) {
   if (!item || item.status !== 'watching') return null;
-  const today = new Date().toISOString().slice(0, 10);   // UTC, matches SQL date('now')
-  if (item.date_watching === today && item.date_added === today) return null;
   const snap = { date_added: item.date_added, date_watching: item.date_watching };
-  item.date_watching = today;
-  item.date_added = today;
+  item.date_watching = nowStamp();
+  item.date_added = item.date_watching;
   renderGrid();
   return snap;
 }
@@ -2687,10 +2700,14 @@ function sortedItems() {
   if (currentSort === 'rating' && currentTab === 'finished')
     items.sort((a, b) => (b.rating || 0) - (a.rating || 0));
   else if (currentSort === 'added')
-    // Sort by the date shown on the card (the current tab's "added" date),
-    // newest first; fall back to insertion order for items added the same day.
-    items.sort((a, b) =>
-      (b.date_added || '').localeCompare(a.date_added || '') || (b.id - a.id));
+    // Sort by the current tab's "added" stamp, newest first. Plain string compare,
+    // not localeCompare: the stamps are fixed-width ISO, so byte order IS time order
+    // (and a legacy date-only value sorts just below that same day's stamped ones).
+    // Row id only breaks a same-millisecond tie.
+    items.sort((a, b) => {
+      const x = a.date_added || '', y = b.date_added || '';
+      return (x < y ? 1 : x > y ? -1 : 0) || (b.id - a.id);
+    });
   else
     items.sort((a, b) => a.title.localeCompare(b.title));
   const f = tabFilter[currentTab];
@@ -3849,6 +3866,11 @@ async function saveField(id, field, value) {
 
 const statusChangePending = new Map();
 
+// Which per-status stamp `date_added` mirrors for a given status.
+const STATUS_DATE_KEY = {
+  watchlist: 'date_watchlist', watching: 'date_watching', finished: 'date_finished',
+};
+
 async function changeStatus(id, status) {
   const item = allItems.find(i => i.id === id);
   if (!item || item.status === status) return;
@@ -3867,23 +3889,24 @@ async function changeStatus(id, status) {
   };
   item.status = status;
 
-  // Mirror the backend's per-status date rules locally so the card date updates
+  // Mirror the backend's per-status stamp rules locally so the card date updates
   // instantly instead of stalling behind the save request.
-  const today = new Date().toISOString().slice(0, 10);   // UTC, matches SQL date('now')
-  if (status === 'finished') item.date_finished = today;                       // always refresh
-  else if (status === 'watchlist' && !item.date_watchlist) item.date_watchlist = today;  // first entry only
-  else if (status === 'watching'  && !item.date_watching)  item.date_watching  = today;  // first entry only
-  item.date_added = status === 'finished'  ? item.date_finished
-                  : status === 'watchlist' ? item.date_watchlist
-                  :                          item.date_watching;
+  const now = nowStamp();
+  if (status === 'finished') item.date_finished = now;                       // always refresh
+  else if (status === 'watchlist' && !item.date_watchlist) item.date_watchlist = now;  // first entry only
+  else if (status === 'watching'  && !item.date_watching)  item.date_watching  = now;  // first entry only
+  item.date_added = item[STATUS_DATE_KEY[status]];
 
   switchTab(status, id);
 
   try {
     const resp = await apiPost('/api/add', { id, status }, 60000, controller.signal);
-    // Reconcile with the server's authoritative value (normally identical).
+    // Reconcile with the server's authoritative stamp. The optimistic one came off
+    // the client clock, so the two differ in the milliseconds even when they agree
+    // on everything else — the status column moves with it to stay consistent.
     if (resp && resp.date_added && resp.date_added !== item.date_added) {
       item.date_added = resp.date_added;
+      item[STATUS_DATE_KEY[status]] = resp.date_added;
       renderGrid();
     }
   } catch (err) {

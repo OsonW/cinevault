@@ -26,9 +26,19 @@ def init_user_db(user_id: int) -> None:
     _create_tables(get_user_db_path(user_id))
 
 
+# The per-status "date added" columns double as the sort key behind the grid's
+# "Recently Added" / "Last Progress" order, so they are stamped to the millisecond
+# rather than the day — a bare date ties for everything touched on the same day and
+# the client then falls back to row id, which is creation order and has nothing to
+# do with when an item entered its current tab. The stamp still starts with a plain
+# YYYY-MM-DD (what the card displays) and stays sortable as a string, including
+# against the date-only values legacy rows still hold. UTC, like date('now') was.
+_NOW = "strftime('%Y-%m-%dT%H:%M:%f','now')"
+
+
 def _create_tables(db_path: str) -> None:
     with get_conn(db_path) as conn:
-        conn.execute("""
+        conn.execute(f"""
             CREATE TABLE IF NOT EXISTS media (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
                 tmdb_id         INTEGER,
@@ -53,7 +63,7 @@ def _create_tables(db_path: str) -> None:
                 ratings         TEXT,
                 ratings_updated_at TEXT,
                 tmdb_rating     REAL,
-                date_added      TEXT DEFAULT (date('now')),
+                date_added      TEXT DEFAULT ({_NOW}),
                 date_watchlist  TEXT,
                 date_watching   TEXT,
                 date_finished   TEXT,
@@ -157,8 +167,8 @@ def add_media_entry(
             INSERT OR IGNORE INTO media
                 (tmdb_id, external_id, title, media_type, status,
                  cover_url, author, total_pages, overview, year, tmdb_rating,
-                 length, {date_col})
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, date('now'))
+                 length, {date_col}, date_added)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, {_NOW}, {_NOW})
         """, (tmdb_id, ext, title, media_type, status,
               cover_url, author, total_pages, overview, year, tmdb_rating, length))
         row = conn.execute(
@@ -192,8 +202,9 @@ def update_media_entry(media_id: int, **fields):
     """Update whitelisted fields, and maintain the per-status "date added":
       • watchlist — set once on first entry, then preserved forever
       • watching  — set on first entry, refreshed only when progress is made
-      • finished  — refreshed to today every time the item (re-)enters finished
-    `date_added` always mirrors the date of the item's current status (what the UI shows).
+      • finished  — restamped every time the item (re-)enters finished
+    `date_added` always mirrors the stamp of the item's current status (the UI shows
+    its date half; the sort uses the whole thing).
     """
     updates = {k: v for k, v in fields.items() if k in _UPDATABLE}
     if not updates:
@@ -208,27 +219,27 @@ def update_media_entry(media_id: int, **fields):
         prev_status = row["status"]
         new_status  = updates.get("status", prev_status)
 
-        # Which per-status date columns should refresh to today.
-        touch_today = set()
+        # Which per-status date columns should be restamped as of now.
+        touch_now = set()
         if new_status != prev_status:
             if new_status == "watchlist" and not row["date_watchlist"]:
-                touch_today.add("date_watchlist")
+                touch_now.add("date_watchlist")
             elif new_status == "watching" and not row["date_watching"]:
-                touch_today.add("date_watching")
+                touch_now.add("date_watching")
             elif new_status == "finished":
-                touch_today.add("date_finished")          # finished always refreshes
+                touch_now.add("date_finished")          # finished always refreshes
         if new_status == "watching" and any(k in updates for k in _PROGRESS_FIELDS):
-            touch_today.add("date_watching")              # progress bumps the watching date
+            touch_now.add("date_watching")              # progress bumps the watching date
 
         set_parts = [f"{k} = ?" for k in updates]
         params    = list(updates.values())
-        for col in touch_today:
-            set_parts.append(f"{col} = date('now')")
+        for col in touch_now:
+            set_parts.append(f"{col} = {_NOW}")
 
         # Keep date_added in sync with the current status's date.
         status_col = _STATUS_DATE_COL[new_status]
-        if status_col in touch_today:
-            set_parts.append("date_added = date('now')")
+        if status_col in touch_now:
+            set_parts.append(f"date_added = {_NOW}")
         else:
             set_parts.append(f"date_added = COALESCE({status_col}, date_added)")
 

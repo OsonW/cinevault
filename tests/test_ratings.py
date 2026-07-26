@@ -1,6 +1,9 @@
 import os
 import json
+import re
 import sqlite3
+import time
+from datetime import datetime, timezone
 import pytest
 
 import db
@@ -1306,3 +1309,83 @@ def test_backfill_lengths_manga_end_to_end(client, monkeypatch):
     app_module.manga_info_cache.clear()
     client.post("/api/backfill-lengths")
     assert client.get("/api/list").get_json()[0]["length"] == "374 Chapters"
+
+
+# ── "Recently added" ordering ────────────────────────────────────────────────
+# The per-status stamps double as the sort key for the grid's "Recently Added" /
+# "Last Progress" order. Stored as a bare date they tie for everything touched on
+# the same day, and the client's tiebreak (row id) is creation order — unrelated
+# to when an item entered the tab — so same-day items came out shuffled.
+
+_STAMP_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}")
+
+
+def test_status_stamps_are_stored_in_utc(client):
+    """The card converts the stamp into the viewer's zone for display, which only
+    works if what's stored is UTC — one clock, no DST fold in the sort key."""
+    _register(client)
+    _add_movie(client)
+    stamp = client.get("/api/list").get_json()[0]["date_added"]
+    written = datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%S.%f").replace(tzinfo=timezone.utc)
+    assert abs((datetime.now(timezone.utc) - written).total_seconds()) < 60
+
+
+def test_status_stamps_carry_time_of_day(client):
+    """Every stamp keeps its leading YYYY-MM-DD (what the card shows) and gains a
+    time part (what the sort needs)."""
+    _register(client)
+    _add_movie(client)
+    item = client.get("/api/list").get_json()[0]
+    assert _STAMP_RE.fullmatch(item["date_added"])
+    assert _STAMP_RE.fullmatch(item["date_watchlist"])
+
+
+def test_same_day_finishes_are_ordered_by_time(client):
+    """Two items finished on the same day must stay in the order they were
+    finished. The newer row is finished FIRST here, so a row-id tiebreak would
+    put it on top — only a real timestamp gets this right."""
+    _register(client)
+    _add_movie(client, "Inception", "27205")
+    _add_movie(client, "Dune", "438631")
+    ids = {i["title"]: i["id"] for i in client.get("/api/list").get_json()}
+
+    client.post("/api/add", json={"id": ids["Dune"], "status": "finished"})
+    time.sleep(0.01)
+    client.post("/api/add", json={"id": ids["Inception"], "status": "finished"})
+
+    rows = {i["title"]: i for i in client.get("/api/list").get_json()}
+    assert rows["Inception"]["date_finished"] > rows["Dune"]["date_finished"]
+    assert rows["Inception"]["date_added"] > rows["Dune"]["date_added"]
+
+
+def test_same_day_progress_advances_the_watching_stamp(client):
+    """Progress bumps the watching stamp every time, not just the first time that
+    day — otherwise a second edit never moves the card to the front."""
+    _register(client)
+    _add_movie(client)
+    media_id = client.get("/api/list").get_json()[0]["id"]
+    client.post("/api/add", json={"id": media_id, "status": "watching"})
+
+    client.post("/api/add", json={"id": media_id, "last_timestamp": "0:20:00"})
+    first = client.get("/api/list").get_json()[0]["date_watching"]
+    time.sleep(0.01)
+    client.post("/api/add", json={"id": media_id, "last_timestamp": "0:40:00"})
+    second = client.get("/api/list").get_json()[0]
+
+    assert second["date_watching"] > first
+    assert second["date_added"] == second["date_watching"]
+
+
+def test_restore_media_preserves_timestamped_dates(client):
+    """Undo restores the original stamps rather than re-adding as "today", so the
+    restore path's format check has to accept the timestamped form."""
+    _register(client)
+    _add_movie(client)
+    media_id = client.get("/api/list").get_json()[0]["id"]
+    backup = client.get(f"/api/media-backup/{media_id}").get_json()["media"]
+    client.post(f"/api/delete/{media_id}")
+
+    client.post("/api/restore-media", json={"media": backup})
+    restored = client.get("/api/list").get_json()[0]
+    assert restored["date_added"] == backup["date_added"]
+    assert restored["date_watchlist"] == backup["date_watchlist"]
