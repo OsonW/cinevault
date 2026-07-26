@@ -2126,12 +2126,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (!_cachedKeys.has_keys) showKeyModal('entry');
   // The detail panel can render (autoSelectFirst on first load) before MDBList status
   // resolves, and _ratingsMetaHtml hides the refresh button + "Updated …" label while
-  // has_key is still false. Re-render the meta for the open item once status lands.
-  refreshMdblistStatus().then(() => {
-    if (selectedId === null) return;
-    const it = allItems.find(i => i.id === selectedId);
-    if (it) _rerenderRatingsMeta(it);
-  });
+  // has_key is still false. refreshMdblistStatus re-renders the open item's meta itself
+  // whenever has_key/exhausted changes, so no repair is needed here.
+  refreshMdblistStatus();
   const _sfh = document.getElementById('searchFilterHost');
   if (_sfh) _sfh.innerHTML = renderSearchFilter();
 });
@@ -2415,12 +2412,23 @@ async function proactiveRefreshStale() {
       _ratingsCache[item.media_type + ':' + tid] = ratings;
       if (item.ratings_updated_at) _ratingsUpdatedAt[item.media_type + ':' + tid] = item.ratings_updated_at;
     }
-    // updated_at didn't advance -> server served stale (cap reached) -> stop and
-    // go dormant until the MDBList quota resets (used-count drops).
-    if (!d.updated_at || d.updated_at === prev) {
+    // Did the server actually refresh? Read the stamp it returned rather than only
+    // asking whether it changed — "unchanged" is ambiguous and the two cases need
+    // opposite responses (the server shares our 7-day ceiling, so freshness agrees):
+    //   * stale or missing stamp -> the server declined to refresh, i.e. its 500/day
+    //     cap is spent. Stop and go dormant until the MDBList quota resets.
+    //   * fresh stamp -> this title is already up to date. Usually the grid's lazy
+    //     hydration refreshed it moments ago (a plain /api/ratings call refreshes a
+    //     stale row server-side), so the stamp matches `prev` even though no cap was
+    //     hit. Skip the item and keep sweeping the rest.
+    // Treating that second case as a cap hit put the sweep to sleep during almost
+    // every load, silently disabling the hourly refresh for the whole session.
+    const stampMs = d.updated_at ? (new Date(d.updated_at).getTime() || 0) : 0;
+    if (!stampMs || (Date.now() - stampMs) >= WEEK) {
       if (typeof _mdblist.used === 'number') _sweepDormantUsed = _mdblist.used;
       break;
     }
+    if (d.updated_at === prev) continue;   // already fresh — nothing new to paint
     // Repaint this card's pills + the detail panel if it's the open one.
     const host = document.getElementById('pills-' + item.id);
     if (host) host.innerHTML = renderPills(item, ratings, tabGridPills[currentTab]);
@@ -4582,12 +4590,30 @@ let _mdblist = { has_key: false, limit: null, remaining: null, used: null, exhau
 async function refreshMdblistStatus() {
   try {
     const d = await fetch('/api/mdblist-status').then(r => r.json());
-    _mdblist = {
+    const next = {
       has_key: !!d.has_key, limit: d.limit, remaining: d.remaining, used: d.used,
       exhausted: !!d.has_key && d.remaining !== null && d.remaining <= 0,
     };
+    const changed = next.has_key !== _mdblist.has_key || next.exhausted !== _mdblist.exhausted;
+    _mdblist = next;
+    // The open detail panel renders its refresh button straight off this state, which
+    // lands AFTER the first paint (/api/mdblist-status makes a live MDBList call on a
+    // cache miss, so it's often the slowest request on the page). Reconcile the panel on
+    // every transition. This used to rest on a one-shot DOMContentLoaded repair — which
+    // silently no-ops when the item list hasn't loaded yet, and never runs again — plus
+    // an opportunistic rescue in hydratePills that only fires when the ratings response
+    // happens to carry an updated_at. When both missed, the panel kept the button-less
+    // markup it was first rendered with, and only re-selecting the item brought it back.
+    if (changed) _reconcileRatingsMeta();
   } catch {}
   return _mdblist;
+}
+
+// Re-render the open detail panel's ratings-meta block after late-arriving MDBList state.
+function _reconcileRatingsMeta() {
+  if (selectedId === null) return;
+  const it = allItems.find(i => i.id === selectedId);
+  if (it) _rerenderRatingsMeta(it);
 }
 
 function _pillValue(src, ratings) {
@@ -4748,7 +4774,13 @@ async function refreshRatingsNow(itemId) {
   if (!_mdblist.has_key || _mdblist.exhausted) return;
   const tid = item.tmdb_id || item.external_id;
   if (!tid || (item.media_type !== 'movie' && item.media_type !== 'tv')) return;
-  if (_updatedAgo(item.ratings_updated_at) === 'just now') return;  // 60s debounce
+  // 60s debounce. Say so rather than returning silently: the proactive sweep stamps
+  // items as it refreshes them, so right after it touches the open title the button
+  // would otherwise look alive but do nothing at all — no spinner, no toast.
+  if (_updatedAgo(item.ratings_updated_at) === 'just now') {
+    showToast('Ratings are already up to date');
+    return;
+  }
   if (_refreshingIds.has(itemId)) return;   // already refreshing this title
   _refreshingIds.add(itemId);
   const prevStamp = item.ratings_updated_at;
